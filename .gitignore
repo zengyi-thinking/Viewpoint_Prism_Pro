@@ -1,0 +1,48 @@
+# Dependencies
+node_modules/
+
+# Build output
+client/.next/
+client/out/
+server/dist/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor / IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Excalidraw
+*.excalidraw
+*.excalidraw.crswap
+
+# Prisma
+server/prisma/migrations/
+
+# Docker volumes
+postgres_data/
+redis_data/
+minio_data/
+
+# Logs
+*.log
+npm-debug.log*
+
+# TypeScript
+*.tsbuildinfo
+
+# Next.js
+client/.next/
+client/out/
+
+# Misc
+*.txt
