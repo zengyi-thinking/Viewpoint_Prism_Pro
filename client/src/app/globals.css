@@ -158,6 +158,36 @@ body {
   background: linear-gradient(90deg, rgba(255,107,53,0.4), rgba(233,30,140,0.4));
 }
 
+/* 登录/注册页背景光晕 */
+.auth-glow {
+  position: absolute;
+  width: 500px;
+  height: 500px;
+  border-radius: 50%;
+  filter: blur(100px);
+  opacity: 0.12;
+  pointer-events: none;
+}
+
+.auth-glow-orange {
+  background: #FF6B35;
+  bottom: -150px;
+  left: -100px;
+}
+
+.auth-glow-pink {
+  background: #E91E8C;
+  top: -100px;
+  left: 30%;
+}
+
+.auth-glow-indigo {
+  background: #4F46E5;
+  top: 50%;
+  right: -100px;
+  transform: translateY(-50%);
+}
+
 /* 滚动平滑 */
 html {
   scroll-behavior: smooth;

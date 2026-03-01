@@ -23,115 +23,194 @@ export default function RegisterPage() {
       return;
     }
 
+    if (password.length < 6) {
+      setError('密码至少需要 6 位字符');
+      return;
+    }
+
     setLoading(true);
     try {
       await authApi.register(email, password, name || undefined);
       router.push('/projects');
     } catch (err: any) {
-      setError(err.message || '注册失败');
+      setError(err.message || '注册失败，请稍后重试');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-[#0a0a0f] px-4">
-      <div className="w-full max-w-md">
+    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[#0a0a0f] px-4 py-8">
+      {/* 背景光晕 */}
+      <div className="auth-glow auth-glow-indigo" />
+      <div className="auth-glow auth-glow-pink" />
+      <div className="auth-glow auth-glow-orange" />
+
+      {/* 棱镜装饰 */}
+      <div className="absolute left-0 bottom-0 h-80 w-80 opacity-10">
+        <svg width="100%" height="100%" viewBox="0 0 400 400" fill="none">
+          <path d="M50 350L200 50L350 350" stroke="url(#reg-deco)" strokeWidth="1.5" fill="none" />
+          <path d="M100 300L200 150L300 300" stroke="url(#reg-deco)" strokeWidth="1" fill="none" opacity="0.5" />
+          <defs>
+            <linearGradient id="reg-deco" x1="0" y1="0" x2="400" y2="400">
+              <stop offset="0%" stopColor="#4F46E5" stopOpacity="0.5" />
+              <stop offset="50%" stopColor="#E91E8C" stopOpacity="0.5" />
+              <stop offset="100%" stopColor="#FF6B35" stopOpacity="0.5" />
+            </linearGradient>
+          </defs>
+        </svg>
+      </div>
+
+      <div className="relative z-10 w-full max-w-md">
         {/* Logo */}
-        <div className="mb-10 text-center">
-          <Link href="/" className="inline-flex items-center gap-2">
-            <svg width="32" height="32" viewBox="0 0 28 28" fill="none">
-              <defs>
-                <linearGradient id="lg" x1="0" y1="0" x2="28" y2="28">
-                  <stop offset="0%" stopColor="#FF6B35" />
-                  <stop offset="50%" stopColor="#E91E8C" />
-                  <stop offset="100%" stopColor="#4F46E5" />
-                </linearGradient>
-              </defs>
-              <path d="M14 2L26 24H2L14 2Z" stroke="url(#lg)" strokeWidth="2" fill="none" />
-              <path d="M14 8L20 20H8L14 8Z" fill="url(#lg)" opacity="0.2" />
-            </svg>
-            <span className="text-xl font-semibold text-white">Viewpoint Prism</span>
+        <div className="mb-8 text-center">
+          <Link href="/" className="inline-flex items-center gap-2.5 group">
+            <div className="relative">
+              <svg width="36" height="36" viewBox="0 0 28 28" fill="none" className="transition-transform group-hover:scale-110">
+                <defs>
+                  <linearGradient id="reg-logo" x1="0" y1="0" x2="28" y2="28">
+                    <stop offset="0%" stopColor="#FF6B35" />
+                    <stop offset="50%" stopColor="#E91E8C" />
+                    <stop offset="100%" stopColor="#4F46E5" />
+                  </linearGradient>
+                </defs>
+                <path d="M14 2L26 24H2L14 2Z" stroke="url(#reg-logo)" strokeWidth="2" fill="none" />
+                <path d="M14 8L20 20H8L14 8Z" fill="url(#reg-logo)" opacity="0.2" />
+              </svg>
+              <div className="absolute -inset-2 rounded-full bg-gradient-to-r from-[#FF6B35]/20 to-[#E91E8C]/20 blur-xl group-hover:from-[#FF6B35]/30 group-hover:to-[#E91E8C]/30 transition-all" />
+            </div>
+            <span className="text-xl font-bold tracking-tight text-white">Viewpoint Prism</span>
           </Link>
+          <p className="mt-3 text-sm text-white/30">开启你的视频内容创作之旅</p>
         </div>
 
         {/* Card */}
-        <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-8 backdrop-blur-sm">
-          <h1 className="mb-2 text-2xl font-bold text-white">创建账户</h1>
-          <p className="mb-8 text-sm text-white/40">开始你的视频内容工作台之旅</p>
-
-          <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-            <div>
-              <label htmlFor="name" className="mb-1.5 block text-sm text-white/60">昵称 (可选)</label>
-              <input
-                id="name"
-                type="text"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="你的昵称"
-                className="w-full rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder-white/20 outline-none transition focus:border-white/25 focus:ring-1 focus:ring-white/10"
-              />
+        <div className="prism-card overflow-hidden !p-0">
+          <div className="p-8">
+            <div className="mb-6">
+              <h1 className="text-2xl font-bold text-white">创建账户</h1>
+              <p className="mt-2 text-sm text-white/40">免费开始，一个视频四道光谱</p>
             </div>
 
-            <div>
-              <label htmlFor="email" className="mb-1.5 block text-sm text-white/60">邮箱</label>
-              <input
-                id="email"
-                type="email"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="you@example.com"
-                className="w-full rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder-white/20 outline-none transition focus:border-white/25 focus:ring-1 focus:ring-white/10"
-              />
-            </div>
+            <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+              <div className="space-y-1.5">
+                <label htmlFor="name" className="block text-xs font-medium uppercase tracking-wider text-white/50">
+                  昵称（可选）
+                </label>
+                <div className="relative">
+                  <input
+                    id="name"
+                    type="text"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder="你的昵称"
+                    className="w-full rounded-lg border border-white/10 bg-white/5 px-4 py-2.5 pl-10 text-sm text-white placeholder-white/20 outline-none transition-all focus:border-[#E91E8C]/50 focus:bg-white/[0.08] focus:ring-1 focus:ring-[#E91E8C]/20"
+                  />
+                  <svg className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-white/20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2" />
+                    <circle cx="12" cy="7" r="4" />
+                  </svg>
+                </div>
+              </div>
 
-            <div>
-              <label htmlFor="password" className="mb-1.5 block text-sm text-white/60">密码</label>
-              <input
-                id="password"
-                type="password"
-                required
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="至少 6 位"
-                className="w-full rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder-white/20 outline-none transition focus:border-white/25 focus:ring-1 focus:ring-white/10"
-              />
-            </div>
+              <div className="space-y-1.5">
+                <label htmlFor="email" className="block text-xs font-medium uppercase tracking-wider text-white/50">
+                  邮箱地址
+                </label>
+                <div className="relative">
+                  <input
+                    id="email"
+                    type="email"
+                    required
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="you@example.com"
+                    className="w-full rounded-lg border border-white/10 bg-white/5 px-4 py-2.5 pl-10 text-sm text-white placeholder-white/20 outline-none transition-all focus:border-[#E91E8C]/50 focus:bg-white/[0.08] focus:ring-1 focus:ring-[#E91E8C]/20"
+                  />
+                  <svg className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-white/20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                  </svg>
+                </div>
+              </div>
 
-            <div>
-              <label htmlFor="confirmPassword" className="mb-1.5 block text-sm text-white/60">确认密码</label>
-              <input
-                id="confirmPassword"
-                type="password"
-                required
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                placeholder="再次输入密码"
-                className="w-full rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder-white/20 outline-none transition focus:border-white/25 focus:ring-1 focus:ring-white/10"
-              />
-            </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <label htmlFor="password" className="block text-xs font-medium uppercase tracking-wider text-white/50">
+                    密码
+                  </label>
+                  <div className="relative">
+                    <input
+                      id="password"
+                      type="password"
+                      required
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      placeholder="••••••"
+                      className="w-full rounded-lg border border-white/10 bg-white/5 px-4 py-2.5 pl-9 text-sm text-white placeholder-white/20 outline-none transition-all focus:border-[#E91E8C]/50 focus:bg-white/[0.08] focus:ring-1 focus:ring-[#E91E8C]/20"
+                    />
+                    <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-white/20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                      <path d="M7 11V7a5 5 0 0110 0v4" />
+                    </svg>
+                  </div>
+                </div>
 
-            {error && (
-              <p className="rounded-lg bg-red-500/10 px-4 py-2 text-sm text-red-400">{error}</p>
-            )}
+                <div className="space-y-1.5">
+                  <label htmlFor="confirmPassword" className="block text-xs font-medium uppercase tracking-wider text-white/50">
+                    确认密码
+                  </label>
+                  <div className="relative">
+                    <input
+                      id="confirmPassword"
+                      type="password"
+                      required
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      placeholder="••••••"
+                      className="w-full rounded-lg border border-white/10 bg-white/5 px-4 py-2.5 pl-9 text-sm text-white placeholder-white/20 outline-none transition-all focus:border-[#E91E8C]/50 focus:bg-white/[0.08] focus:ring-1 focus:ring-[#E91E8C]/20"
+                    />
+                    <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-white/20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  </div>
+                </div>
+              </div>
 
-            <button
-              type="submit"
-              disabled={loading}
-              className="mt-2 w-full rounded-lg bg-gradient-to-r from-[#FF6B35] to-[#E91E8C] py-3 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-50"
-            >
-              {loading ? '注册中...' : '注册'}
-            </button>
-          </form>
+              {error && (
+                <div className="flex items-start gap-2 rounded-lg bg-red-500/10 px-3 py-2.5">
+                  <svg className="h-4 w-4 text-red-400 mt-0.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <circle cx="12" cy="12" r="10" />
+                    <path d="M12 8v4M12 16h.01" />
+                  </svg>
+                  <p className="text-sm text-red-400">{error}</p>
+                </div>
+              )}
 
-          <p className="mt-6 text-center text-sm text-white/30">
-            已有账户？{' '}
-            <Link href="/login" className="text-white/60 underline transition hover:text-white">
-              登录
-            </Link>
-          </p>
+              <button
+                type="submit"
+                disabled={loading}
+                className="group relative mt-2 w-full overflow-hidden rounded-lg bg-gradient-to-r from-[#FF6B35] via-[#E91E8C] to-[#4F46E5] py-3 text-sm font-semibold text-white transition-all hover:opacity-90 disabled:opacity-50"
+              >
+                <span className="relative z-10">{loading ? '注册中...' : '创建账户'}</span>
+                <div className="absolute inset-0 bg-gradient-to-r from-[#FF6B35] via-[#E91E8C] to-[#4F46E5] opacity-0 transition-opacity group-hover:opacity-100" />
+              </button>
+            </form>
+          </div>
+
+          <div className="border-t border-white/5 px-8 py-4 text-center">
+            <p className="text-sm text-white/30">
+              已有账户？{' '}
+              <Link href="/login" className="font-medium text-white/60 underline decoration-white/20 underline-offset-4 transition hover:text-white hover:decoration-white/40">
+                立即登录
+              </Link>
+            </p>
+          </div>
         </div>
+
+        {/* 底部提示 */}
+        <p className="mt-6 text-center text-[10px] text-white/15">
+          注册即表示你同意我们的服务条款和隐私政策
+        </p>
       </div>
     </div>
   );

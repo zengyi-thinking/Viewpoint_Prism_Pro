@@ -14,12 +14,12 @@ export default function LandingPage() {
             <a href="#byok" className="transition hover:text-white/90">开放架构</a>
           </div>
           <div className="flex items-center gap-3">
-            <button className="rounded-lg px-4 py-2 text-sm text-white/60 transition hover:text-white">
+            <a href="/login" className="rounded-lg px-4 py-2 text-sm text-white/60 transition hover:text-white hover:bg-white/5">
               登录
-            </button>
-            <button className="prism-btn-primary !rounded-lg !px-5 !py-2 !text-sm">
+            </a>
+            <a href="/register" className="prism-btn-primary !rounded-lg !px-5 !py-2 !text-sm">
               开始使用
-            </button>
+            </a>
           </div>
         </div>
       </nav>
@@ -54,10 +54,10 @@ export default function LandingPage() {
           </p>
 
           <div className="flex flex-col items-center justify-center gap-4 sm:flex-row">
-            <button className="prism-btn-primary">
+            <a href="/register" className="prism-btn-primary">
               免费开始
-            </button>
-            <button className="prism-btn-secondary">
+            </a>
+            <button className="prism-btn-secondary" disabled>
               查看演示
             </button>
           </div>
