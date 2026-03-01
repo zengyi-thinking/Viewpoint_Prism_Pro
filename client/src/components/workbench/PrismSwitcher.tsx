@@ -53,25 +53,58 @@ const prisms: { type: PrismType; label: string; subtitle: string; color: string;
   },
 ];
 
-export function PrismSwitcher() {
+interface PrismSwitcherProps {
+  collapsed?: boolean;
+  onToggle?: () => void;
+}
+
+export function PrismSwitcher({ collapsed = false, onToggle }: PrismSwitcherProps) {
   const { activePrism, setActivePrism } = useWorkbenchStore();
 
-  return (
-    <div className="flex h-full flex-col">
-      {/* Studio header */}
-      <div className="border-b border-white/5 px-4 py-3">
-        <div className="flex items-center gap-2">
-          <svg width="16" height="16" viewBox="0 0 28 28" fill="none">
-            <defs>
-              <linearGradient id="psg" x1="0" y1="0" x2="28" y2="28">
-                <stop offset="0%" stopColor="#FF6B35" />
-                <stop offset="50%" stopColor="#E91E8C" />
-                <stop offset="100%" stopColor="#4F46E5" />
-              </linearGradient>
-            </defs>
-            <path d="M14 2L26 24H2L14 2Z" stroke="url(#psg)" strokeWidth="1.5" fill="none" />
+  // 收起状态：只显示图标
+  if (collapsed) {
+    return (
+      <div className="flex h-full w-full flex-col items-center py-4">
+        <button
+          onClick={onToggle}
+          className="rounded-lg p-2 text-text-tertiary transition hover:bg-bg-panel-secondary hover:text-text-secondary"
+          title="展开棱镜面板"
+        >
+          <svg width="18" height="18" viewBox="0 0 28 28" fill="none" stroke="currentColor" strokeWidth="1.5">
+            <path d="M14 2L26 24H2L14 2Z" />
           </svg>
-          <span className="text-xs font-semibold text-white/50">Studio</span>
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex h-full w-full flex-col">
+      {/* Studio header */}
+      <div className="border-b border-border-subtle px-4 py-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <svg width="16" height="16" viewBox="0 0 28 28" fill="none">
+              <defs>
+                <linearGradient id="psg" x1="0" y1="0" x2="28" y2="28">
+                  <stop offset="0%" stopColor="#FF6B35" />
+                  <stop offset="50%" stopColor="#E91E8C" />
+                  <stop offset="100%" stopColor="#4F46E5" />
+                </linearGradient>
+              </defs>
+              <path d="M14 2L26 24H2L14 2Z" stroke="url(#psg)" strokeWidth="1.5" fill="none" />
+            </svg>
+            <span className="text-xs font-semibold text-text-tertiary">Studio</span>
+          </div>
+          <button
+            onClick={onToggle}
+            className="rounded-lg p-1 text-text-tertiary transition hover:bg-bg-panel-secondary hover:text-text-secondary"
+            title="收起面板"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M13 5l7 7-7 7M5 5l7 7-7 7" />
+            </svg>
+          </button>
         </div>
       </div>
 
@@ -83,26 +116,26 @@ export function PrismSwitcher() {
             <button
               key={p.type}
               onClick={() => setActivePrism(isActive ? null : p.type)}
-              className="group relative flex flex-col items-start gap-2 rounded-xl border p-3 text-left transition-all duration-200"
+              className="group relative flex flex-col items-start gap-2 rounded-2xl border p-3 text-left transition-all duration-200"
               style={{
-                borderColor: isActive ? `${p.color}40` : 'rgba(255,255,255,0.05)',
-                background: isActive ? `${p.color}10` : 'rgba(255,255,255,0.02)',
+                borderColor: isActive ? `${p.color}40` : 'var(--border-subtle)',
+                background: isActive ? `${p.color}10` : 'var(--bg-panel-secondary)',
               }}
             >
               <div
-                className="flex h-8 w-8 items-center justify-center rounded-lg transition-colors"
+                className="flex h-8 w-8 items-center justify-center rounded-xl transition-colors"
                 style={{
                   background: `${p.color}15`,
-                  color: isActive ? p.color : 'rgba(255,255,255,0.4)',
+                  color: isActive ? p.color : 'var(--text-tertiary)',
                 }}
               >
                 {p.icon}
               </div>
               <div>
-                <div className="text-[11px] font-medium" style={{ color: isActive ? p.color : 'rgba(255,255,255,0.6)' }}>
+                <div className="text-[11px] font-medium" style={{ color: isActive ? p.color : 'var(--text-secondary)' }}>
                   {p.label}
                 </div>
-                <div className="mt-0.5 text-[9px] text-white/20">{p.subtitle}</div>
+                <div className="mt-0.5 text-[9px] text-text-tertiary">{p.subtitle}</div>
               </div>
               {isActive && (
                 <span
@@ -121,7 +154,7 @@ export function PrismSwitcher() {
           <PrismActivePanel />
         ) : (
           <div className="flex h-full items-center justify-center px-4">
-            <p className="text-center text-[10px] text-white/15">选择棱镜开始工作</p>
+            <p className="text-center text-[10px] text-text-tertiary">选择棱镜开始工作</p>
           </div>
         )}
       </div>
@@ -143,20 +176,20 @@ function PrismActivePanel() {
   const c = config[activePrism];
 
   return (
-    <div className="flex h-full flex-col border-t border-white/5">
+    <div className="panel flex h-full flex-col rounded-none border-t border-l-0 border-r-0 border-b-0">
       <div className="px-4 py-3">
         <div className="flex items-center gap-2">
-          <span className="h-1.5 w-1.5 rounded-full" style={{ background: c.color }} />
-          <span className="text-xs font-medium text-white/60">{c.title}</span>
+          <span className="status-dot" style={{ background: c.color }} />
+          <span className="text-xs font-medium text-text-secondary">{c.title}</span>
         </div>
-        <p className="mt-1 text-[10px] text-white/20">{c.desc}</p>
+        <p className="mt-1 text-[10px] text-text-tertiary">{c.desc}</p>
       </div>
       <div className="flex flex-1 items-center justify-center">
-        <p className="text-[10px] text-white/10">请先选择视频开始分析</p>
+        <p className="text-[10px] text-text-tertiary">请先选择视频开始分析</p>
       </div>
-      <div className="border-t border-white/5 px-4 py-2.5">
+      <div className="border-t border-border-subtle px-4 py-2.5">
         <button
-          className="w-full rounded-lg py-1.5 text-[10px] font-medium text-white/25"
+          className="input w-full py-1.5 text-[10px] font-medium text-text-tertiary"
           style={{ background: `${c.color}08` }}
           disabled
         >

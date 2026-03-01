@@ -1,32 +1,223 @@
 @import "tailwindcss";
 
+/* ============================================
+   主题 CSS 变量
+   通过 data-theme 属性切换不同主题
+   ============================================ */
+
+/* 默认主题: Viewpoint Dark */
+[data-theme="vsm-dark"] {
+  --bg-primary: #0F0F0F;
+  --bg-panel: #1E1E1E;
+  --bg-panel-secondary: #252526;
+  --bg-panel-tertiary: #2D2D30;
+  --border: rgba(255,255,255,0.1);
+  --border-subtle: rgba(255,255,255,0.06);
+  --border-focus: #E91E8C;
+  --text-primary: #E8EAED;
+  --text-secondary: #9AA0A6;
+  --text-tertiary: #6E7681;
+  --text-inverse: #FFFFFF;
+  --accent-primary: #E91E8C;
+  --accent-hover: #F06A9D;
+  --accent-muted: rgba(233,30,140,0.15);
+  --color-success: #10B981;
+  --color-warning: #F59E0B;
+  --color-error: #EF4444;
+  --color-info: #06B6D4;
+}
+
+/* 深度专注主题 */
+[data-theme="vsm-dark-plus"] {
+  --bg-primary: #0A0A0A;
+  --bg-panel: #141414;
+  --bg-panel-secondary: #1A1A1A;
+  --bg-panel-tertiary: #1F1F1F;
+  --border: rgba(255,255,255,0.08);
+  --border-subtle: rgba(255,255,255,0.04);
+  --border-focus: #E91E8C;
+  --text-primary: #E0E0E0;
+  --text-secondary: #8A8A8A;
+  --text-tertiary: #5A5A5A;
+  --text-inverse: #FFFFFF;
+  --accent-primary: #E91E8C;
+  --accent-hover: #F06A9D;
+  --accent-muted: rgba(233,30,140,0.15);
+  --color-success: #10B981;
+  --color-warning: #F59E0B;
+  --color-error: #EF4444;
+  --color-info: #06B6D4;
+}
+
+/* Viewpoint 浅色主题 */
+[data-theme="vsm-light"] {
+  --bg-primary: #FFFFFF;
+  --bg-panel: #F5F5F5;
+  --bg-panel-secondary: #E8E8E8;
+  --bg-panel-tertiary: #DCDCDC;
+  --border: rgba(0,0,0,0.1);
+  --border-subtle: rgba(0,0,0,0.06);
+  --border-focus: #E91E8C;
+  --text-primary: #1F1F1F;
+  --text-secondary: #5A5A5A;
+  --text-tertiary: #8A8A8A;
+  --text-inverse: #FFFFFF;
+  --accent-primary: #E91E8C;
+  --accent-hover: #D6147A;
+  --accent-muted: rgba(233,30,140,0.1);
+  --color-success: #10B981;
+  --color-warning: #F59E0B;
+  --color-error: #EF4444;
+  --color-info: #06B6D4;
+}
+
+/* VS Code Dark 主题 */
+[data-theme="vscode-dark"] {
+  --bg-primary: #1E1E1E;
+  --bg-panel: #252526;
+  --bg-panel-secondary: #2D2D30;
+  --bg-panel-tertiary: #333337;
+  --border: rgba(255,255,255,0.1);
+  --border-subtle: rgba(255,255,255,0.06);
+  --border-focus: #007ACC;
+  --text-primary: #CCCCCC;
+  --text-secondary: #858585;
+  --text-tertiary: #6E6E6E;
+  --text-inverse: #FFFFFF;
+  --accent-primary: #007ACC;
+  --accent-hover: #1C97EA;
+  --accent-muted: rgba(0,122,204,0.15);
+  --color-success: #4EC9B0;
+  --color-warning: #DCDCAA;
+  --color-error: #F48771;
+  --color-info: #75BEFF;
+}
+
+/* VS Code Dark+ 主题 */
+[data-theme="vscode-dark-plus"] {
+  --bg-primary: #1E1E1E;
+  --bg-panel: #2D2D2D;
+  --bg-panel-secondary: #353535;
+  --bg-panel-tertiary: #3E3E42;
+  --border: rgba(255,255,255,0.12);
+  --border-subtle: rgba(255,255,255,0.08);
+  --border-focus: #3794FF;
+  --text-primary: #D4D4D4;
+  --text-secondary: #808080;
+  --text-tertiary: #5A5A5A;
+  --text-inverse: #FFFFFF;
+  --accent-primary: #3794FF;
+  --accent-hover: #55AAFF;
+  --accent-muted: rgba(55,148,255,0.15);
+  --color-success: #4EC9B0;
+  --color-warning: #DCDCAA;
+  --color-error: #F48771;
+  --color-info: #75BEFF;
+}
+
+/* NotebookLM 主题 */
+[data-theme="notebook"] {
+  --bg-primary: #0F0F0F;
+  --bg-panel: #1E1E1E;
+  --bg-panel-secondary: #252525;
+  --bg-panel-tertiary: #2A2A2A;
+  --border: rgba(255,255,255,0.08);
+  --border-subtle: rgba(255,255,255,0.05);
+  --border-focus: #8AB4F8;
+  --text-primary: #E8EAED;
+  --text-secondary: #9AA0A6;
+  --text-tertiary: #6E7681;
+  --text-inverse: #FFFFFF;
+  --accent-primary: #8AB4F8;
+  --accent-hover: #A5C9FF;
+  --accent-muted: rgba(138,180,248,0.15);
+  --color-success: #81C995;
+  --color-warning: #F28B82;
+  --color-error: #F28B82;
+  --color-info: #8AB4F8;
+}
+
+/* 默认主题（用于没有 data-theme 属性时的回退） */
 :root {
-  --background: #0a0a0f;
-  --foreground: #e8e8ed;
+  --bg-primary: #0F0F0F;
+  --bg-panel: #1E1E1E;
+  --bg-panel-secondary: #252526;
+  --bg-panel-tertiary: #2D2D30;
+  --border: rgba(255,255,255,0.1);
+  --border-subtle: rgba(255,255,255,0.06);
+  --border-focus: #E91E8C;
+  --text-primary: #E8EAED;
+  --text-secondary: #9AA0A6;
+  --text-tertiary: #6E7681;
+  --text-inverse: #FFFFFF;
+  --accent-primary: #E91E8C;
+  --accent-hover: #F06A9D;
+  --accent-muted: rgba(233,30,140,0.15);
+  --color-success: #10B981;
+  --color-warning: #F59E0B;
+  --color-error: #EF4444;
+  --color-info: #06B6D4;
+
+  /* 棱镜品牌色（保持不变） */
   --prism-orange: #FF6B35;
   --prism-pink: #E91E8C;
   --prism-indigo: #4F46E5;
   --prism-cyan: #06B6D4;
-  --card-bg: rgba(255, 255, 255, 0.04);
-  --card-border: rgba(255, 255, 255, 0.08);
 }
 
+/* ============================================
+   Tailwind v4 主题配置
+   使用 @theme inline 定义语义化颜色
+   ============================================ */
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  /* 背景色 */
+  --color-bg-primary: var(--bg-primary);
+  --color-bg-panel: var(--bg-panel);
+  --color-bg-panel-secondary: var(--bg-panel-secondary);
+  --color-bg-panel-tertiary: var(--bg-panel-tertiary);
+
+  /* 边框色 */
+  --color-border: var(--border);
+  --color-border-subtle: var(--border-subtle);
+  --color-border-focus: var(--border-focus);
+
+  /* 文字色 */
+  --color-text-primary: var(--text-primary);
+  --color-text-secondary: var(--text-secondary);
+  --color-text-tertiary: var(--text-tertiary);
+  --color-text-inverse: var(--text-inverse);
+
+  /* 强调色 */
+  --color-accent-primary: var(--accent-primary);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-muted: var(--accent-muted);
+
+  /* 状态色 */
+  --color-success: var(--color-success);
+  --color-warning: var(--color-warning);
+  --color-error: var(--color-error);
+  --color-info: var(--color-info);
+
+  /* 棱镜品牌色 */
   --color-prism-orange: var(--prism-orange);
   --color-prism-pink: var(--prism-pink);
   --color-prism-indigo: var(--prism-indigo);
   --color-prism-cyan: var(--prism-cyan);
-  --color-card-bg: var(--card-bg);
-  --color-card-border: var(--card-border);
+
+  /* 字体 */
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+
+  /* 圆角 */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 24px;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
+  background: var(--bg-primary);
+  color: var(--text-primary);
   font-family: var(--font-geist-sans), system-ui, sans-serif;
 }
 
@@ -100,18 +291,79 @@ body {
   animation: prism-refract 4s ease-in-out infinite;
 }
 
+/* ============================================
+   工作台面板样式
+   ============================================ */
+
+/* 面板基础样式 */
+.panel {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  transition: all 0.2s ease;
+}
+
+.panel-secondary {
+  background: var(--bg-panel-secondary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+}
+
+.panel-tertiary {
+  background: var(--bg-panel-tertiary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+}
+
+/* 面板悬浮效果 */
+.panel-hoverable:hover {
+  background: var(--bg-panel-secondary);
+  border-color: var(--border);
+}
+
+/* 面板分隔条 */
+.panel-separator {
+  background: transparent;
+  transition: background 0.2s ease;
+}
+
+.panel-separator:hover,
+.panel-separator.dragging {
+  background: var(--accent-primary);
+}
+
+/* 收起的面板 */
+.panel-collapsed {
+  width: 48px !important;
+  min-width: 48px !important;
+}
+
+.panel-collapsed .panel-content {
+  opacity: 0;
+  pointer-events: none;
+  position: absolute;
+}
+
+.panel-collapsed .panel-icon {
+  opacity: 1;
+}
+
+/* ============================================
+   通用组件样式
+   ============================================ */
+
 /* 卡片悬浮效果 */
 .prism-card {
-  background: var(--card-bg);
-  border: 1px solid var(--card-border);
-  border-radius: 16px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
   transition: all 0.3s ease;
   backdrop-filter: blur(8px);
 }
 
 .prism-card:hover {
-  background: rgba(255, 255, 255, 0.07);
-  border-color: rgba(255, 255, 255, 0.15);
+  background: var(--bg-panel-secondary);
+  border-color: var(--accent-primary);
   transform: translateY(-4px);
   box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
 }
@@ -119,9 +371,9 @@ body {
 /* CTA 按钮 */
 .prism-btn-primary {
   background: linear-gradient(135deg, #FF6B35, #E91E8C);
-  color: white;
+  color: var(--text-inverse);
   border: none;
-  border-radius: 12px;
+  border-radius: var(--radius-md);
   padding: 14px 32px;
   font-weight: 600;
   font-size: 16px;
@@ -130,15 +382,15 @@ body {
 }
 
 .prism-btn-primary:hover {
-  box-shadow: 0 8px 30px rgba(233, 30, 140, 0.3);
+  box-shadow: 0 8px 30px var(--accent-muted);
   transform: translateY(-2px);
 }
 
 .prism-btn-secondary {
   background: transparent;
-  color: var(--foreground);
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  border-radius: 12px;
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
   padding: 14px 32px;
   font-weight: 600;
   font-size: 16px;
@@ -147,8 +399,8 @@ body {
 }
 
 .prism-btn-secondary:hover {
-  border-color: rgba(255, 255, 255, 0.3);
-  background: rgba(255, 255, 255, 0.05);
+  border-color: var(--accent-primary);
+  background: var(--bg-panel-secondary);
 }
 
 /* 流程步骤连接线 */
@@ -191,4 +443,136 @@ body {
 /* 滚动平滑 */
 html {
   scroll-behavior: smooth;
+}
+
+/* ============================================
+   通用工具样式
+   ============================================ */
+
+/* 输入框样式 */
+.input {
+  background: var(--bg-panel-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  padding: 10px 14px;
+  outline: none;
+  transition: all 0.2s ease;
+}
+
+.input::placeholder {
+  color: var(--text-tertiary);
+}
+
+.input:focus {
+  border-color: var(--accent-primary);
+  background: var(--bg-panel-tertiary);
+}
+
+.input-disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* 徽章/标签 */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  font-weight: 500;
+  background: var(--bg-panel-secondary);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+}
+
+.badge-accent {
+  background: var(--accent-muted);
+  border-color: var(--accent-primary);
+  color: var(--accent-primary);
+}
+
+.badge-success {
+  background: rgba(16, 185, 129, 0.15);
+  border-color: var(--color-success);
+  color: var(--color-success);
+}
+
+.badge-warning {
+  background: rgba(245, 158, 11, 0.15);
+  border-color: var(--color-warning);
+  color: var(--color-warning);
+}
+
+.badge-error {
+  background: rgba(239, 68, 68, 0.15);
+  border-color: var(--color-error);
+  color: var(--color-error);
+}
+
+/* 状态指示点 */
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.status-dot-active {
+  background: var(--color-success);
+}
+
+.status-dot-warning {
+  background: var(--color-warning);
+}
+
+.status-dot-error {
+  background: var(--color-error);
+}
+
+/* 下拉菜单 */
+.dropdown-menu {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.4);
+  overflow: hidden;
+}
+
+.dropdown-item {
+  padding: 10px 14px;
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.dropdown-item:hover {
+  background: var(--bg-panel-secondary);
+}
+
+.dropdown-item-active {
+  background: var(--accent-muted);
+  color: var(--accent-primary);
+}
+
+/* 滚动条样式 */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--bg-panel-tertiary);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--border);
 }
