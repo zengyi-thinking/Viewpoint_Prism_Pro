@@ -1,4 +1,5 @@
 import { apiFetch } from './api';
+import type { ChatMessage, ChatSession, PrismActionType } from '@/types/chat';
 
 export type ChatPrismType = 'knowledge' | 'creation' | 'translation' | 'diffraction';
 
@@ -15,9 +16,32 @@ export interface SendChatMessagePayload {
   metadata?: Record<string, unknown>;
 }
 
+export interface CreateChatSessionResponse {
+  session: ChatSession;
+}
+
+export interface GetChatMessagesResponse {
+  session: ChatSession;
+  items: ChatMessage[];
+  pagination: {
+    limit: number;
+    before: string | null;
+    hasMore: boolean;
+  };
+}
+
+export interface SendChatMessageResponse {
+  session: ChatSession;
+  message: ChatMessage;
+  reply: ChatMessage;
+  prismAction: PrismActionType;
+  prismPayload: Record<string, unknown> | null;
+  status: 'completed';
+}
+
 export const chatApi = {
   createSession: (payload: CreateChatSessionPayload) =>
-    apiFetch('/api/chat/sessions', {
+    apiFetch<CreateChatSessionResponse>('/api/chat/sessions', {
       method: 'POST',
       body: JSON.stringify(payload),
     }),
@@ -27,11 +51,13 @@ export const chatApi = {
     if (params?.limit) query.set('limit', String(params.limit));
     if (params?.before) query.set('before', params.before);
     const suffix = query.toString() ? `?${query.toString()}` : '';
-    return apiFetch(`/api/chat/sessions/${sessionId}/messages${suffix}`);
+    return apiFetch<GetChatMessagesResponse>(
+      `/api/chat/sessions/${sessionId}/messages${suffix}`,
+    );
   },
 
   sendMessage: (sessionId: string, payload: SendChatMessagePayload) =>
-    apiFetch(`/api/chat/sessions/${sessionId}/messages`, {
+    apiFetch<SendChatMessageResponse>(`/api/chat/sessions/${sessionId}/messages`, {
       method: 'POST',
       body: JSON.stringify(payload),
     }),

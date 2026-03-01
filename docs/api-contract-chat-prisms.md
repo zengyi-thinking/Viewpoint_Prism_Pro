@@ -35,6 +35,30 @@ Base: `/api/chat`
 - `GET /api/chat/:sessionId/messages`
 - `POST /api/chat/:sessionId/messages`
 
+### 1.1 PrismAction 协议（Chat -> 棱镜）
+
+`POST /sessions/:sessionId/messages` 的响应会包含：
+
+- `prismAction`
+- `prismPayload`
+
+标准动作枚举：
+
+- `none`
+- `inject_qa_card`（知识棱镜）
+- `update_node_prompt`（创作棱镜）
+- `refine_translation_segment`（译制棱镜）
+- `regenerate_platform_draft`（衍射棱镜）
+- `generate_summary`（快捷指令 `/summarize`）
+- `generate_mindmap`（快捷指令 `/mindmap`）
+
+## 1.2 WebSocket 事件（与 Chat/Prism 协同）
+
+通过 `/ws` 命名空间，客户端先 `join:project`，然后接收：
+
+- `chat:message`：会话消息同步
+- `prism:action`：棱镜动作广播
+
 ## 2. 知识棱镜 (Knowledge)
 
 Base: `/api/prism/knowledge`
@@ -146,4 +170,3 @@ Base: `/api/prism/diffraction`
 
 - `POST /:videoId/generate`
 - `POST /:videoId/batch-export`
-

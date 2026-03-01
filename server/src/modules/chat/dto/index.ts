@@ -8,6 +8,16 @@ export enum ChatPrismType {
   DIFFRACTION = 'diffraction',
 }
 
+export enum PrismActionType {
+  NONE = 'none',
+  INJECT_QA_CARD = 'inject_qa_card',
+  UPDATE_NODE_PROMPT = 'update_node_prompt',
+  REFINE_TRANSLATION_SEGMENT = 'refine_translation_segment',
+  REGENERATE_PLATFORM_DRAFT = 'regenerate_platform_draft',
+  GENERATE_SUMMARY = 'generate_summary',
+  GENERATE_MINDMAP = 'generate_mindmap',
+}
+
 export class CreateChatSessionDto {
   @IsString()
   projectId: string;

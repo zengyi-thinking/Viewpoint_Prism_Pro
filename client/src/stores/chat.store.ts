@@ -4,6 +4,9 @@ interface Message {
   id: string;
   role: 'user' | 'assistant' | 'system';
   content: string;
+  metadata?: Record<string, unknown> | null;
+  prismAction?: string | null;
+  prismPayload?: Record<string, unknown> | null;
   createdAt: string;
 }
 
