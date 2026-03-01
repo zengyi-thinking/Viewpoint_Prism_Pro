@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { BaseProvider } from './base.provider';
 import { AITaskType } from '../ai-router.interface';
 import OpenAI from 'openai';
+import { ConfigService } from '@nestjs/config';
 
 @Injectable()
 export class WhisperProvider extends BaseProvider {
@@ -9,15 +10,33 @@ export class WhisperProvider extends BaseProvider {
   supportedTasks = [AITaskType.ASR];
   private readonly logger = new Logger(WhisperProvider.name);
 
+  constructor(private readonly configService: ConfigService) {
+    super();
+  }
+
   async execute(taskType: AITaskType, payload: any, apiKey: string): Promise<any> {
     if (taskType !== AITaskType.ASR) {
       throw new Error(`Whisper only supports ASR, got ${taskType}`);
     }
 
-    const openai = new OpenAI({ apiKey });
+    const openai = new OpenAI({
+      apiKey,
+      baseURL:
+        this.configService.get<string>('OPENAI_BASE_URL') ||
+        this.configService.get<string>('SILICONFLOW_BASE_URL') ||
+        undefined,
+    });
 
     try {
-      const { audio, language = 'auto', format = 'mp3' } = payload;
+      const {
+        audio,
+        language = 'auto',
+        format = 'mp3',
+        model =
+          this.configService.get<string>('OPENAI_MODEL_WHISPER') ||
+          this.configService.get<string>('SILICONFLOW_MODEL_ASR') ||
+          'whisper-1',
+      } = payload;
 
       // Convert base64 audio to buffer
       const audioBuffer = Buffer.from(audio, 'base64');
@@ -26,7 +45,7 @@ export class WhisperProvider extends BaseProvider {
       // Call Whisper API
       const response = await openai.audio.transcriptions.create({
         file: audioFile,
-        model: 'whisper-1',
+        model,
         language: language === 'auto' ? undefined : language,
         response_format: 'verbose_json', // Get timestamps
       });
@@ -54,7 +73,13 @@ export class WhisperProvider extends BaseProvider {
 
   async testConnection(apiKey: string): Promise<boolean> {
     try {
-      const openai = new OpenAI({ apiKey });
+      const openai = new OpenAI({
+        apiKey,
+        baseURL:
+          this.configService.get<string>('OPENAI_BASE_URL') ||
+          this.configService.get<string>('SILICONFLOW_BASE_URL') ||
+          undefined,
+      });
       // Try a minimal API call
       await openai.models.list();
       return true;

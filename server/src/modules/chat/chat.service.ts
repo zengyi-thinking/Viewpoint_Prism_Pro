@@ -1,6 +1,9 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { MessageRole as DbMessageRole, PrismType as DbPrismType } from '../../../generated/prisma/enums';
+import { AITaskType } from '../../infrastructure/ai-router/ai-router.interface';
+import { AiRouterService } from '../../infrastructure/ai-router/ai-router.service';
 import { WsGateway } from '../../infrastructure/websocket/ws.gateway';
+import { KnowledgeService } from '../prism-knowledge/knowledge.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
   ChatPrismType,
@@ -17,6 +20,8 @@ export class ChatService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly wsGateway: WsGateway,
+    private readonly knowledgeService: KnowledgeService,
+    private readonly aiRouter: AiRouterService,
   ) {}
 
   async createSession(userId: string, dto: CreateChatSessionDto) {
@@ -139,16 +144,38 @@ export class ChatService {
       dto.metadata,
     );
 
+    const assistantContent = await this.buildAssistantReplyFromModel(
+      userId,
+      sessionId,
+      resolvedPrism,
+      resolvedVideoId,
+      dto.content,
+      prismAction,
+    );
+
     const assistantMessage = await this.prisma.chatMessage.create({
       data: {
         sessionId,
         role: DbMessageRole.ASSISTANT,
-        content: this.buildAssistantAck(prismAction, resolvedPrism),
+        content: assistantContent,
         prismAction:
           prismAction === PrismActionType.NONE ? null : prismAction,
         prismPayload: prismPayload as any,
       },
     });
+
+    if (
+      prismAction === PrismActionType.INJECT_QA_CARD &&
+      resolvedVideoId
+    ) {
+      await this.knowledgeService.injectQaCard({
+        userId,
+        videoId: resolvedVideoId,
+        question: dto.content,
+        answer: assistantMessage.content,
+        metadata: dto.metadata ?? null,
+      });
+    }
 
     this.wsGateway.emitChatMessage(updatedSession.projectId, {
       projectId: updatedSession.projectId,
@@ -375,5 +402,101 @@ export class ChatService {
           ? '已收到消息，正在按当前棱镜上下文处理。'
           : '已收到消息，正在处理。';
     }
+  }
+
+  private async buildAssistantReplyFromModel(
+    userId: string,
+    sessionId: string,
+    prism: ChatPrismType | null,
+    videoId: string | null,
+    userContent: string,
+    action: PrismActionType,
+  ) {
+    try {
+      const history = await this.prisma.chatMessage.findMany({
+        where: { sessionId },
+        orderBy: { createdAt: 'desc' },
+        take: 8,
+      });
+
+      const transcriptContext =
+        prism === ChatPrismType.KNOWLEDGE && videoId
+          ? await this.getKnowledgeTranscriptContext(videoId)
+          : null;
+
+      const systemPrompt = this.buildSystemPrompt(prism, action, transcriptContext);
+      const chatMessages = [
+        { role: 'system', content: systemPrompt },
+        ...history
+          .reverse()
+          .map((m) => ({
+            role: m.role === DbMessageRole.USER ? 'user' : 'assistant',
+            content: m.content,
+          })),
+        { role: 'user', content: userContent },
+      ];
+
+      const llm = await this.aiRouter.execute(
+        AITaskType.LLM_CHAT,
+        {
+          messages: chatMessages,
+          temperature: 0.5,
+          maxTokens: 1600,
+        },
+        userId,
+      );
+
+      const text = String(llm?.text ?? '').trim();
+      if (text) return text;
+    } catch {
+      // fallback below
+    }
+
+    return this.buildAssistantAck(action, prism);
+  }
+
+  private async getKnowledgeTranscriptContext(videoId: string) {
+    const transcript = await this.prisma.transcript.findFirst({
+      where: { videoId },
+      orderBy: { createdAt: 'desc' },
+      select: { segments: true },
+    });
+
+    const segments = (transcript?.segments as Array<{ text?: string }>) ?? [];
+    return segments.slice(0, 10).map((s) => s.text ?? '').join('\n');
+  }
+
+  private buildSystemPrompt(
+    prism: ChatPrismType | null,
+    action: PrismActionType,
+    transcriptContext: string | null,
+  ) {
+    const base =
+      '你是 Viewpoint Prism Pro 的工作台助手。回答必须简洁、可执行，优先给结构化结论。';
+
+    if (prism === ChatPrismType.KNOWLEDGE) {
+      return [
+        base,
+        '当前处于知识棱镜，请给学习者可理解的解释，并尽量对应视频上下文。',
+        `当前动作: ${action}`,
+        transcriptContext ? `视频转写片段:\n${transcriptContext}` : '',
+      ]
+        .filter(Boolean)
+        .join('\n\n');
+    }
+
+    if (prism === ChatPrismType.CREATION) {
+      return `${base}\n\n当前处于创作棱镜，请输出可直接用于节点 Prompt 的建议。`;
+    }
+
+    if (prism === ChatPrismType.TRANSLATION) {
+      return `${base}\n\n当前处于译制棱镜，请优先保证语境自然和术语一致。`;
+    }
+
+    if (prism === ChatPrismType.DIFFRACTION) {
+      return `${base}\n\n当前处于衍射棱镜，请按平台语境给出改写建议。`;
+    }
+
+    return base;
   }
 }

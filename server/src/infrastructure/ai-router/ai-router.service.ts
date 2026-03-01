@@ -9,6 +9,7 @@ import { MidjourneyProvider } from './providers/midjourney.provider';
 import { SeedanceProvider } from './providers/seedance.provider';
 import { ElevenLabsProvider } from './providers/elevenlabs.provider';
 import { PrismaService } from '../../prisma/prisma.service';
+import { ConfigService } from '@nestjs/config';
 
 // Task type to provider class mappings (using constructor types)
 const PROVIDER_MAPPING: Record<AITaskType, any[]> = {
@@ -40,6 +41,7 @@ export class AiRouterService {
 
   constructor(
     private readonly prisma: PrismaService,
+    private readonly configService: ConfigService,
     private readonly openaiProvider: OpenAIProvider,
     private readonly geminiProvider: GeminiProvider,
     private readonly whisperProvider: WhisperProvider,
@@ -218,15 +220,18 @@ export class AiRouterService {
       openai: 'openaiKey',
       gemini: 'geminiKey',
       whisper: 'openaiKey', // Whisper uses OpenAI key
-      volcengine: 'volcengineKey',
-      aliyun: 'aliyunAsrKey',
+      'volcengine-asr': 'volcengineKey',
+      'aliyun-asr': 'aliyunAsrKey',
       midjourney: 'midjourneyKey',
       seedance: 'seedanceKey',
       elevenlabs: 'elevenlabsKey',
     };
 
     const key = apiKeyMap[provider.name];
-    return userSettings?.[key] || null;
+    const userKey = key ? userSettings?.[key] : null;
+    if (userKey) return userKey;
+
+    return this.getEnvFallbackKey(provider.name);
   }
 
   /**
@@ -239,6 +244,41 @@ export class AiRouterService {
     });
 
     return user?.settings || null;
+  }
+
+  private getEnvFallbackKey(providerName: string): string | null {
+    switch (providerName) {
+      case 'openai':
+      case 'whisper':
+        return (
+          this.configService.get<string>('OPENAI_API_KEY') ||
+          this.configService.get<string>('SILICONFLOW_API_KEY') ||
+          this.configService.get<string>('OPENAI_PREMIUM_API_KEY') ||
+          null
+        );
+      case 'gemini':
+        return (
+          this.configService.get<string>('GEMINI_API_KEY') ||
+          this.configService.get<string>('GOOGLE_API_KEY') ||
+          null
+        );
+      case 'volcengine-asr':
+        return this.configService.get<string>('VOLCENGINE_ASR_TOKEN') || null;
+      case 'aliyun-asr':
+        return this.configService.get<string>('ALIYUN_ASR_ACCESS_KEY') || null;
+      case 'midjourney':
+        return this.configService.get<string>('MIDJOURNEY_API_KEY') || null;
+      case 'seedance':
+        return this.configService.get<string>('SEEDANCE_API_KEY') || null;
+      case 'elevenlabs':
+        return (
+          this.configService.get<string>('ELEVENLABS_API_KEY') ||
+          this.configService.get<string>('ELEVENLABS_PREMIUM_API_KEY') ||
+          null
+        );
+      default:
+        return null;
+    }
   }
 
   /**

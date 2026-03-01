@@ -1,8 +1,8 @@
-// @ts-nocheck
 import { Injectable, Logger } from '@nestjs/common';
 import { BaseProvider } from './base.provider';
 import { AITaskType } from '../ai-router.interface';
 import OpenAI from 'openai';
+import { ConfigService } from '@nestjs/config';
 
 @Injectable()
 export class OpenAIProvider extends BaseProvider {
@@ -10,8 +10,19 @@ export class OpenAIProvider extends BaseProvider {
   supportedTasks = [AITaskType.LLM_CHAT, AITaskType.MULTIMODAL, AITaskType.IMAGE_GEN, AITaskType.TTS];
   private readonly logger = new Logger(OpenAIProvider.name);
 
+  constructor(private readonly configService: ConfigService) {
+    super();
+  }
+
   async execute(taskType: AITaskType, payload: any, apiKey: string): Promise<any> {
-    const openai = new OpenAI({ apiKey });
+    const openai = new OpenAI({
+      apiKey,
+      baseURL:
+        this.configService.get<string>('OPENAI_BASE_URL') ||
+        this.configService.get<string>('SILICONFLOW_BASE_URL') ||
+        this.configService.get<string>('OPENAI_PREMIUM_BASE_URL') ||
+        undefined,
+    });
 
     try {
       switch (taskType) {
@@ -43,7 +54,15 @@ export class OpenAIProvider extends BaseProvider {
   }
 
   private async chat(openai: OpenAI, payload: any) {
-    const { messages, model = 'gpt-4o', temperature = 0.7, maxTokens = 2000 } = payload;
+    const {
+      messages,
+      model =
+        this.configService.get<string>('OPENAI_MODEL_CHAT') ||
+        this.configService.get<string>('SILICONFLOW_MODEL_LLM') ||
+        'gpt-4o',
+      temperature = 0.7,
+      maxTokens = 2000,
+    } = payload;
 
     const response = await openai.chat.completions.create({
       model,
@@ -60,7 +79,15 @@ export class OpenAIProvider extends BaseProvider {
   }
 
   private async multimodal(openai: OpenAI, payload: any) {
-    const { prompt, image, model = 'gpt-4o' } = payload;
+    const {
+      prompt,
+      image,
+      imageUrl,
+      model =
+        this.configService.get<string>('OPENAI_MODEL_VISION') ||
+        this.configService.get<string>('SILICONFLOW_MODEL_VLM') ||
+        'gpt-4o',
+    } = payload;
 
     // Build content array with text and image
     const content: any[] = [
@@ -68,14 +95,15 @@ export class OpenAIProvider extends BaseProvider {
     ];
 
     // Add image if provided (base64 or URL)
-    if (image) {
-      if (image.startsWith('http')) {
-        content.push({ type: 'image_url', image_url: { url: image } });
+    const finalImage = imageUrl || image;
+    if (finalImage) {
+      if (finalImage.startsWith('http')) {
+        content.push({ type: 'image_url', image_url: { url: finalImage } });
       } else {
         // Base64 image
         content.push({
           type: 'image_url',
-          image_url: { url: `data:image/jpeg;base64,${image}` },
+          image_url: { url: `data:image/jpeg;base64,${finalImage}` },
         });
       }
     }
@@ -94,7 +122,15 @@ export class OpenAIProvider extends BaseProvider {
   }
 
   private async generateImage(openai: OpenAI, payload: any) {
-    const { prompt, model = 'dall-e-3', size = '1024x1024', quality = 'standard' } = payload;
+    const {
+      prompt,
+      model =
+        this.configService.get<string>('OPENAI_MODEL_DALLE') ||
+        this.configService.get<string>('SILICONFLOW_MODEL_IMAGE') ||
+        'dall-e-3',
+      size = '1024x1024',
+      quality = 'standard',
+    } = payload;
 
     const response = await openai.images.generate({
       model,
@@ -104,10 +140,11 @@ export class OpenAIProvider extends BaseProvider {
       n: 1,
     });
 
-    const imageData = response.data[0];
-    if (!imageData) {
+    if (!response.data || response.data.length === 0) {
       throw new Error('No image data returned');
     }
+
+    const imageData = response.data[0];
 
     return {
       imageUrl: imageData.url || null,
@@ -116,7 +153,14 @@ export class OpenAIProvider extends BaseProvider {
   }
 
   private async textToSpeech(openai: OpenAI, payload: any) {
-    const { text, model = 'tts-1', voice = 'alloy' } = payload;
+    const {
+      text,
+      model =
+        this.configService.get<string>('OPENAI_MODEL_TTS') ||
+        this.configService.get<string>('SILICONFLOW_MODEL_TTS') ||
+        'tts-1',
+      voice = 'alloy',
+    } = payload;
 
     const response = await openai.audio.speech.create({
       model,

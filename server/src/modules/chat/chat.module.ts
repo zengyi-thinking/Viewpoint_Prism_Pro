@@ -3,9 +3,10 @@ import { WsModule } from '../../infrastructure/websocket/ws.module';
 import { ChatController } from './chat.controller';
 import { ChatService } from './chat.service';
 import { ChatGateway } from './chat.gateway';
+import { KnowledgeModule } from '../prism-knowledge/knowledge.module';
 
 @Module({
-  imports: [WsModule],
+  imports: [WsModule, KnowledgeModule],
   controllers: [ChatController],
   providers: [ChatService, ChatGateway],
   exports: [ChatService],
