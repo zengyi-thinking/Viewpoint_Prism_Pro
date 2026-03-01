@@ -1,31 +1,28 @@
 import { apiFetch, setToken } from './api';
 
-interface AuthResponse {
-  data: {
-    user: { id: string; email: string; name?: string };
-    token: string;
-  };
+interface AuthPayload {
+  user: { id: string; email: string; name?: string };
+  token: string;
 }
 
 export const authApi = {
   login: async (email: string, password: string) => {
-    const res = await apiFetch<AuthResponse>('/api/auth/login', {
+    const payload = await apiFetch<AuthPayload>('/api/auth/login', {
       method: 'POST',
       body: JSON.stringify({ email, password }),
     });
-    setToken(res.data.token);
-    return res.data;
+    setToken(payload.token);
+    return payload;
   },
 
   register: async (email: string, password: string, name?: string) => {
-    const res = await apiFetch<AuthResponse>('/api/auth/register', {
+    const payload = await apiFetch<AuthPayload>('/api/auth/register', {
       method: 'POST',
       body: JSON.stringify({ email, password, name }),
     });
-    setToken(res.data.token);
-    return res.data;
+    setToken(payload.token);
+    return payload;
   },
 
-  getMe: () =>
-    apiFetch<{ data: { id: string; email: string; name?: string } }>('/api/auth/me'),
+  getMe: () => apiFetch<{ id: string; email: string; name?: string }>('/api/auth/me'),
 };

@@ -1,8 +1,287 @@
-import { WebSocketGateway, WebSocketServer } from '@nestjs/websockets';
-import { Server } from 'socket.io';
+import {
+  WebSocketGateway,
+  WebSocketServer,
+  SubscribeMessage,
+  OnGatewayInit,
+  OnGatewayConnection,
+  OnGatewayDisconnect,
+  MessageBody,
+  ConnectedSocket,
+} from '@nestjs/websockets';
+import { Logger, UseGuards } from '@nestjs/common';
+import { Server, Socket } from 'socket.io';
+import { JwtService } from '@nestjs/jwt';
+import { ConfigService } from '@nestjs/config';
 
-@WebSocketGateway({ cors: true, namespace: '/ws' })
-export class WsGateway {
+// Event payload interfaces
+interface TaskProgressPayload {
+  projectId: string;
+  videoId?: string;
+  nodeId?: string;
+  translationTaskId?: string;
+  assetId?: string;
+  task: string;
+  progress: number;
+  message: string;
+  timestamp: string;
+}
+
+interface TaskErrorPayload {
+  projectId: string;
+  videoId?: string;
+  nodeId?: string;
+  translationTaskId?: string;
+  assetId?: string;
+  task: string;
+  error: string;
+  timestamp: string;
+}
+
+interface TaskCompletePayload {
+  projectId: string;
+  task: string;
+  result?: any;
+  timestamp: string;
+}
+
+interface PrismActionPayload {
+  projectId: string;
+  prismType: 'knowledge' | 'creation' | 'translation' | 'diffraction';
+  action: string;
+  payload?: any;
+  timestamp: string;
+}
+
+interface ChatMessagePayload {
+  projectId: string;
+  sessionId: string;
+  role: 'user' | 'assistant' | 'system';
+  content: string;
+  metadata?: any;
+  timestamp: string;
+}
+
+@WebSocketGateway({
+  cors: {
+    origin: '*',
+    credentials: true,
+  },
+  namespace: '/ws',
+})
+export class WsGateway implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer()
   server: Server;
+
+  private readonly logger = new Logger(WsGateway.name);
+  private userSocketMap = new Map<string, Set<string>>(); // userId -> Set of socketIds
+  private projectRooms = new Map<string, Set<string>>(); // projectId -> Set of socketIds
+
+  constructor(
+    private readonly jwtService: JwtService,
+    private readonly configService: ConfigService,
+  ) {}
+
+  afterInit(server: Server) {
+    this.logger.log('WebSocket Gateway initialized');
+  }
+
+  async handleConnection(client: Socket) {
+    try {
+      // Extract JWT token from handshake auth
+      const token = this.extractToken(client);
+
+      if (!token) {
+        this.logger.warn(`Connection rejected: No token provided for socket ${client.id}`);
+        client.emit('error', { message: 'Authentication required' });
+        client.disconnect();
+        return;
+      }
+
+      // Verify JWT token
+      const payload = this.jwtService.verify(token);
+      const userId = payload.sub;
+
+      if (!userId) {
+        this.logger.warn(`Connection rejected: Invalid token for socket ${client.id}`);
+        client.emit('error', { message: 'Invalid token' });
+        client.disconnect();
+        return;
+      }
+
+      // Store user mapping
+      if (!this.userSocketMap.has(userId)) {
+        this.userSocketMap.set(userId, new Set());
+      }
+      this.userSocketMap.get(userId)!.add(client.id);
+
+      // Store userId in socket data for later use
+      client.data.userId = userId;
+
+      this.logger.log(`Client ${client.id} connected for user ${userId}`);
+
+      // Send welcome message
+      client.emit('connected', {
+        socketId: client.id,
+        userId,
+        timestamp: new Date().toISOString(),
+      });
+    } catch (error) {
+      this.logger.error(`Connection error for socket ${client.id}: ${error.message}`);
+      client.emit('error', { message: 'Authentication failed' });
+      client.disconnect();
+    }
+  }
+
+  handleDisconnect(client: Socket) {
+    const userId = client.data.userId;
+
+    if (userId) {
+      // Remove from user mapping
+      const userSockets = this.userSocketMap.get(userId);
+      if (userSockets) {
+        userSockets.delete(client.id);
+        if (userSockets.size === 0) {
+          this.userSocketMap.delete(userId);
+        }
+      }
+
+      // Remove from all project rooms
+      this.projectRooms.forEach((sockets, projectId) => {
+        sockets.delete(client.id);
+        if (sockets.size === 0) {
+          this.projectRooms.delete(projectId);
+        }
+      });
+
+      this.logger.log(`Client ${client.id} disconnected for user ${userId}`);
+    }
+  }
+
+  // Client subscribes to a project room
+  @SubscribeMessage('join:project')
+  handleJoinProject(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: { projectId: string },
+  ) {
+    const userId = client.data.userId;
+
+    if (!userId) {
+      client.emit('error', { message: 'Not authenticated' });
+      return;
+    }
+
+    const { projectId } = data;
+
+    // Join socket.io room
+    client.join(`project:${projectId}`);
+
+    // Track room membership
+    if (!this.projectRooms.has(projectId)) {
+      this.projectRooms.set(projectId, new Set());
+    }
+    this.projectRooms.get(projectId)!.add(client.id);
+
+    this.logger.log(`User ${userId} joined project room ${projectId}`);
+
+    client.emit('joined:project', {
+      projectId,
+      timestamp: new Date().toISOString(),
+    });
+  }
+
+  // Client leaves a project room
+  @SubscribeMessage('leave:project')
+  handleLeaveProject(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: { projectId: string },
+  ) {
+    const { projectId } = data;
+
+    // Leave socket.io room
+    client.leave(`project:${projectId}`);
+
+    // Remove from room tracking
+    const roomSockets = this.projectRooms.get(projectId);
+    if (roomSockets) {
+      roomSockets.delete(client.id);
+      if (roomSockets.size === 0) {
+        this.projectRooms.delete(projectId);
+      }
+    }
+
+    this.logger.log(`Socket ${client.id} left project room ${projectId}`);
+
+    client.emit('left:project', {
+      projectId,
+      timestamp: new Date().toISOString(),
+    });
+  }
+
+  // Send message to a specific user (used by processors)
+  emitToUser(userId: string, event: string, data: any) {
+    const userSockets = this.userSocketMap.get(userId);
+
+    if (userSockets && userSockets.size > 0) {
+      userSockets.forEach((socketId) => {
+        this.server.to(socketId).emit(event, data);
+      });
+    } else {
+      this.logger.warn(`No active sockets for user ${userId}`);
+    }
+  }
+
+  // Send message to all clients in a project room
+  emitToProject(projectId: string, event: string, data: any) {
+    this.server.to(`project:${projectId}`).emit(event, data);
+  }
+
+  // Send task progress event
+  emitTaskProgress(userId: string, payload: TaskProgressPayload) {
+    this.emitToUser(userId, 'task:progress', payload);
+    // Also send to project room
+    this.emitToProject(payload.projectId, 'task:progress', payload);
+  }
+
+  // Send task error event
+  emitTaskError(userId: string, payload: TaskErrorPayload) {
+    this.emitToUser(userId, 'task:error', payload);
+    this.emitToProject(payload.projectId, 'task:error', payload);
+  }
+
+  // Send task complete event
+  emitTaskComplete(userId: string, payload: TaskCompletePayload) {
+    this.emitToUser(userId, 'task:complete', payload);
+    this.emitToProject(payload.projectId, 'task:complete', payload);
+  }
+
+  // Send prism action event
+  emitPrismAction(projectId: string, payload: PrismActionPayload) {
+    this.emitToProject(projectId, 'prism:action', payload);
+  }
+
+  // Send chat message event
+  emitChatMessage(projectId: string, payload: ChatMessagePayload) {
+    this.emitToProject(projectId, 'chat:message', payload);
+  }
+
+  // Helper: Extract JWT token from socket
+  private extractToken(client: Socket): string | null {
+    // Try auth.token first (from handshake auth)
+    if (client.handshake.auth?.token) {
+      return client.handshake.auth.token;
+    }
+
+    // Try Authorization header
+    const authHeader = client.handshake.headers.authorization;
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      return authHeader.substring(7);
+    }
+
+    // Try query parameter (less secure, but fallback)
+    if (client.handshake.query?.token) {
+      return client.handshake.query.token as string;
+    }
+
+    return null;
+  }
 }

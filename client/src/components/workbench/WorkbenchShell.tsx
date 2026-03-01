@@ -10,19 +10,15 @@ import Link from 'next/link';
 
 const LEFT_MIN_WIDTH = 220;
 const RIGHT_MIN_WIDTH = 260;
-const CENTER_MIN_WIDTH = 520;
+const CENTER_MIN_WIDTH = 400;
 const COLLAPSED_WIDTH = 48;
-const CHAT_MIN_HEIGHT = 150;
-const CHAT_MAX_HEIGHT = 500;
 
-type DragTarget = 'left' | 'right' | 'horizontal' | null;
+type DragTarget = 'left' | 'right' | null;
 
-export function WorkbenchShell({ projectName }: { projectName?: string }) {
+export function WorkbenchShell({ projectName, projectId }: { projectName?: string; projectId?: string }) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const centerPanelRef = useRef<HTMLDivElement>(null);
   const [leftWidth, setLeftWidth] = useState(280);
   const [rightWidth, setRightWidth] = useState(320);
-  const [chatHeight, setChatHeight] = useState(280);
   const [leftCollapsed, setLeftCollapsed] = useState(false);
   const [rightCollapsed, setRightCollapsed] = useState(false);
   const [dragging, setDragging] = useState<DragTarget>(null);
@@ -50,12 +46,6 @@ export function WorkbenchShell({ projectName }: { projectName?: string }) {
         setRightWidth(clamp(rawRight, RIGHT_MIN_WIDTH, maxRight));
         return;
       }
-
-      if (dragging === 'horizontal' && centerPanelRef.current) {
-        const centerRect = centerPanelRef.current.getBoundingClientRect();
-        const newChatHeight = centerRect.bottom - e.clientY;
-        setChatHeight(clamp(newChatHeight, CHAT_MIN_HEIGHT, CHAT_MAX_HEIGHT));
-      }
     };
 
     const onMouseUp = () => setDragging(null);
@@ -63,9 +53,7 @@ export function WorkbenchShell({ projectName }: { projectName?: string }) {
     if (dragging) {
       document.addEventListener('mousemove', onMouseMove);
       document.addEventListener('mouseup', onMouseUp);
-
-      const cursor = dragging === 'horizontal' ? 'row-resize' : 'col-resize';
-      document.body.style.cursor = cursor;
+      document.body.style.cursor = 'col-resize';
       document.body.style.userSelect = 'none';
     }
 
@@ -189,7 +177,7 @@ export function WorkbenchShell({ projectName }: { projectName?: string }) {
           }`}
           style={{ width: leftCollapsed ? `${COLLAPSED_WIDTH}px` : `${leftWidth}px` }}
         >
-          <VideoSourcePanel collapsed={leftCollapsed} onToggle={() => setLeftCollapsed(!leftCollapsed)} />
+          <VideoSourcePanel projectId={projectId} collapsed={leftCollapsed} onToggle={() => setLeftCollapsed(!leftCollapsed)} />
         </div>
 
         <div
@@ -205,24 +193,13 @@ export function WorkbenchShell({ projectName }: { projectName?: string }) {
         </div>
 
         {/* Center: Player + Chat */}
-        <div ref={centerPanelRef} data-testid="center-panel" className="flex min-w-0 flex-1 flex-col overflow-hidden">
-          <div className="flex flex-1 flex-col overflow-hidden">
-            <PlayerCenter />
+        <div data-testid="center-panel" className="flex min-w-0 flex-1 flex-col overflow-y-auto overflow-x-hidden">
+          <PlayerCenter />
 
-            {/* Horizontal resize handle */}
-            <div
-              role="separator"
-              aria-orientation="horizontal"
-              onMouseDown={() => setDragging('horizontal')}
-              className={`panel-separator relative h-1.5 cursor-row-resize ${
-                dragging === 'horizontal' ? 'dragging' : ''
-              }`}
-            >
-              <div className="absolute inset-x-0 top-1/2 h-px -translate-y-1/2 bg-border-subtle" />
-            </div>
+          {/* Separator between Player and Chat */}
+          <div className="shrink-0 h-px bg-border-subtle" />
 
-            <ChatDock height={chatHeight} />
-          </div>
+          <ChatDock />
         </div>
 
         <div

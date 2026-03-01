@@ -33,5 +33,5 @@ export default function WorkbenchPage({ params }: { params: Promise<{ id: string
     );
   }
 
-  return <WorkbenchShell projectName={project?.name} />;
+  return <WorkbenchShell projectName={project?.name} projectId={id} />;
 }

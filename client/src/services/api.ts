@@ -38,5 +38,7 @@ export async function apiFetch<T>(path: string, options?: RequestInit): Promise<
     throw new Error(body.message || `请求失败 (${res.status})`);
   }
 
-  return res.json();
+  const json = await res.json();
+  // Auto-extract data field from standard API response format
+  return 'data' in json ? json.data : json;
 }

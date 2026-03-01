@@ -46,3 +46,13 @@ client/out/
 
 # Misc
 *.txt
+
+# vedios
+*.mp4
+*.mov
+*.avi
+*.mkv
+*.webm
+
+# Others
+docs/develop/

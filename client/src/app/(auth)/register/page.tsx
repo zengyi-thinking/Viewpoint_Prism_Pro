@@ -18,19 +18,26 @@ export default function RegisterPage() {
     e.preventDefault();
     setError('');
 
-    if (password !== confirmPassword) {
+    const form = e.currentTarget as HTMLFormElement;
+    const formData = new FormData(form);
+    const submittedName = String(formData.get('name') || '').trim();
+    const submittedEmail = String(formData.get('email') || '').trim().toLowerCase();
+    const submittedPassword = String(formData.get('password') || '');
+    const submittedConfirmPassword = String(formData.get('confirmPassword') || '');
+
+    if (submittedPassword !== submittedConfirmPassword) {
       setError('两次输入的密码不一致');
       return;
     }
 
-    if (password.length < 6) {
+    if (submittedPassword.length < 6) {
       setError('密码至少需要 6 位字符');
       return;
     }
 
     setLoading(true);
     try {
-      await authApi.register(email, password, name || undefined);
+      await authApi.register(submittedEmail, submittedPassword, submittedName || undefined);
       router.push('/projects');
     } catch (err: any) {
       setError(err.message || '注册失败，请稍后重试');
@@ -100,6 +107,7 @@ export default function RegisterPage() {
                 <div className="relative">
                   <input
                     id="name"
+                    name="name"
                     type="text"
                     value={name}
                     onChange={(e) => setName(e.target.value)}
@@ -120,6 +128,7 @@ export default function RegisterPage() {
                 <div className="relative">
                   <input
                     id="email"
+                    name="email"
                     type="email"
                     required
                     value={email}
@@ -141,6 +150,7 @@ export default function RegisterPage() {
                   <div className="relative">
                     <input
                       id="password"
+                      name="password"
                       type="password"
                       required
                       value={password}
@@ -162,6 +172,7 @@ export default function RegisterPage() {
                   <div className="relative">
                     <input
                       id="confirmPassword"
+                      name="confirmPassword"
                       type="password"
                       required
                       value={confirmPassword}

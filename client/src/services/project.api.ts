@@ -10,30 +10,22 @@ export interface Project {
   _count?: { videos: number };
 }
 
-interface ProjectListResponse {
-  data: Project[];
-}
-
-interface ProjectResponse {
-  data: Project;
-}
-
 export const projectApi = {
-  list: () => apiFetch<ProjectListResponse>('/api/projects').then((r) => r.data),
+  list: () => apiFetch<Project[]>('/api/projects'),
 
-  get: (id: string) => apiFetch<ProjectResponse>(`/api/projects/${id}`).then((r) => r.data),
+  get: (id: string) => apiFetch<Project>(`/api/projects/${id}`),
 
   create: (data: { name: string; description?: string }) =>
-    apiFetch<ProjectResponse>('/api/projects', {
+    apiFetch<Project>('/api/projects', {
       method: 'POST',
       body: JSON.stringify(data),
-    }).then((r) => r.data),
+    }),
 
   update: (id: string, data: { name?: string; description?: string }) =>
-    apiFetch<ProjectResponse>(`/api/projects/${id}`, {
+    apiFetch<Project>(`/api/projects/${id}`, {
       method: 'PATCH',
       body: JSON.stringify(data),
-    }).then((r) => r.data),
+    }),
 
   delete: (id: string) =>
     apiFetch(`/api/projects/${id}`, { method: 'DELETE' }),

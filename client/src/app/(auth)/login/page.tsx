@@ -17,7 +17,12 @@ export default function LoginPage() {
     setError('');
     setLoading(true);
     try {
-      await authApi.login(email, password);
+      const form = e.currentTarget as HTMLFormElement;
+      const formData = new FormData(form);
+      const submittedEmail = String(formData.get('email') || '').trim().toLowerCase();
+      const submittedPassword = String(formData.get('password') || '');
+
+      await authApi.login(submittedEmail, submittedPassword);
       router.push('/projects');
     } catch (err: any) {
       setError(err.message || '登录失败，请检查邮箱和密码');
@@ -87,6 +92,7 @@ export default function LoginPage() {
                 <div className="relative">
                   <input
                     id="email"
+                    name="email"
                     type="email"
                     required
                     value={email}
@@ -107,6 +113,7 @@ export default function LoginPage() {
                 <div className="relative">
                   <input
                     id="password"
+                    name="password"
                     type="password"
                     required
                     value={password}
