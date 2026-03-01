@@ -1,0 +1,164 @@
+@import "tailwindcss";
+
+:root {
+  --background: #0a0a0f;
+  --foreground: #e8e8ed;
+  --prism-orange: #FF6B35;
+  --prism-pink: #E91E8C;
+  --prism-indigo: #4F46E5;
+  --prism-cyan: #06B6D4;
+  --card-bg: rgba(255, 255, 255, 0.04);
+  --card-border: rgba(255, 255, 255, 0.08);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+  --color-prism-orange: var(--prism-orange);
+  --color-prism-pink: var(--prism-pink);
+  --color-prism-indigo: var(--prism-indigo);
+  --color-prism-cyan: var(--prism-cyan);
+  --color-card-bg: var(--card-bg);
+  --color-card-border: var(--card-border);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
+}
+
+/* 棱镜光谱渐变 */
+.prism-gradient-text {
+  background: linear-gradient(135deg, #FF6B35 0%, #E91E8C 50%, #4F46E5 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.prism-gradient-border {
+  border: 1px solid transparent;
+  background-clip: padding-box;
+  position: relative;
+}
+
+.prism-gradient-border::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(135deg, rgba(255,107,53,0.3), rgba(233,30,140,0.3), rgba(79,70,229,0.3));
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+}
+
+/* Hero 背景光晕 */
+.hero-glow {
+  position: absolute;
+  width: 600px;
+  height: 600px;
+  border-radius: 50%;
+  filter: blur(120px);
+  opacity: 0.15;
+  pointer-events: none;
+}
+
+.hero-glow-orange {
+  background: #FF6B35;
+  top: -200px;
+  left: 10%;
+}
+
+.hero-glow-pink {
+  background: #E91E8C;
+  top: -100px;
+  left: 40%;
+}
+
+.hero-glow-indigo {
+  background: #4F46E5;
+  top: -150px;
+  right: 10%;
+}
+
+/* 棱镜折射光线动画 */
+@keyframes prism-refract {
+  0% { opacity: 0.3; transform: rotate(-2deg) scaleY(1); }
+  50% { opacity: 0.6; transform: rotate(1deg) scaleY(1.02); }
+  100% { opacity: 0.3; transform: rotate(-2deg) scaleY(1); }
+}
+
+.prism-light-ray {
+  position: absolute;
+  width: 2px;
+  height: 300px;
+  animation: prism-refract 4s ease-in-out infinite;
+}
+
+/* 卡片悬浮效果 */
+.prism-card {
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: 16px;
+  transition: all 0.3s ease;
+  backdrop-filter: blur(8px);
+}
+
+.prism-card:hover {
+  background: rgba(255, 255, 255, 0.07);
+  border-color: rgba(255, 255, 255, 0.15);
+  transform: translateY(-4px);
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+}
+
+/* CTA 按钮 */
+.prism-btn-primary {
+  background: linear-gradient(135deg, #FF6B35, #E91E8C);
+  color: white;
+  border: none;
+  border-radius: 12px;
+  padding: 14px 32px;
+  font-weight: 600;
+  font-size: 16px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.prism-btn-primary:hover {
+  box-shadow: 0 8px 30px rgba(233, 30, 140, 0.3);
+  transform: translateY(-2px);
+}
+
+.prism-btn-secondary {
+  background: transparent;
+  color: var(--foreground);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 12px;
+  padding: 14px 32px;
+  font-weight: 600;
+  font-size: 16px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.prism-btn-secondary:hover {
+  border-color: rgba(255, 255, 255, 0.3);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+/* 流程步骤连接线 */
+.step-connector {
+  width: 80px;
+  height: 2px;
+  background: linear-gradient(90deg, rgba(255,107,53,0.4), rgba(233,30,140,0.4));
+}
+
+/* 滚动平滑 */
+html {
+  scroll-behavior: smooth;
+}

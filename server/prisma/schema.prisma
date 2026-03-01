@@ -1,0 +1,450 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ============================================================
+// 用户与认证
+// ============================================================
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String?
+  avatarUrl    String?
+  passwordHash String
+  profile      Json?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  settings     UserSettings?
+  projects     Project[]
+  chatSessions ChatSession[]
+
+  @@map("users")
+}
+
+model UserSettings {
+  id     String @id @default(cuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  openaiKey       String?
+  geminiKey       String?
+  volcengineKey   String?
+  aliyunAsrKey    String?
+  midjourneyKey   String?
+  seedanceKey     String?
+  elevenlabsKey   String?
+  notionToken     String?
+  feishuAppId     String?
+  feishuAppSecret String?
+
+  preferredAsr      String? @default("whisper")
+  preferredLlm      String? @default("openai")
+  preferredImageGen String? @default("midjourney")
+  preferredVideoGen String? @default("seedance")
+  preferredTts      String? @default("elevenlabs")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("user_settings")
+}
+
+// ============================================================
+// 工程管理
+// ============================================================
+
+model Project {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name        String
+  description String?
+  coverUrl    String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  videos       VideoSource[]
+  chatSessions ChatSession[]
+
+  @@index([userId])
+  @@map("projects")
+}
+
+// ============================================================
+// 视频源管理
+// ============================================================
+
+enum VideoSourceType {
+  LOCAL_UPLOAD
+  URL_IMPORT
+  YOUTUBE
+  BILIBILI
+}
+
+enum TaskStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+model VideoSource {
+  id          String          @id @default(cuid())
+  projectId   String
+  project     Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  title       String
+  sourceType  VideoSourceType
+  sourceUrl   String?
+  storagePath String
+  duration    Int?
+  resolution  String?
+  fileSize    BigInt?
+  thumbnailUrl String?
+  metadata    Json?
+
+  transcriptStatus TaskStatus @default(PENDING)
+  keyframeStatus   TaskStatus @default(PENDING)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  transcripts       Transcript[]
+  keyframes         Keyframe[]
+  knowledgeAssets   KnowledgeAsset[]
+  prismFlowProjects PrismFlowProject[]
+  translationTasks  TranslationTask[]
+  diffractionTasks  DiffractionTask[]
+
+  @@index([projectId])
+  @@map("video_sources")
+}
+
+// PLACEHOLDER_NEXT
+
+// ============================================================
+// 转写与关键帧
+// ============================================================
+
+model Transcript {
+  id       String      @id @default(cuid())
+  videoId  String
+  video    VideoSource @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  language String      @default("auto")
+  provider String
+  segments Json
+
+  createdAt DateTime @default(now())
+
+  @@index([videoId])
+  @@map("transcripts")
+}
+
+enum KeyframeType {
+  PPT
+  WHITEBOARD
+  CHART
+  SCENE_CHANGE
+  SPEAKER
+}
+
+model Keyframe {
+  id          String       @id @default(cuid())
+  videoId     String
+  video       VideoSource  @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  timestamp   Float
+  frameType   KeyframeType
+  storagePath String
+  description String?
+  similarity  Float?
+  metadata    Json?
+
+  createdAt DateTime @default(now())
+
+  @@index([videoId, timestamp])
+  @@map("keyframes")
+}
+
+// ============================================================
+// 知识棱镜
+// ============================================================
+
+model KnowledgeAsset {
+  id              String      @id @default(cuid())
+  videoId         String
+  video           VideoSource @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  outlineMarkdown String      @db.Text
+  notesMarkdown   String?     @db.Text
+  profileSnapshot Json?
+  status          TaskStatus  @default(PENDING)
+  syncedTo        String[]    @default([])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  flashcards Flashcard[]
+
+  @@index([videoId])
+  @@map("knowledge_assets")
+}
+
+model Flashcard {
+  id          String         @id @default(cuid())
+  assetId     String
+  asset       KnowledgeAsset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  front       String
+  back        String
+  chapter     String?
+  difficulty  Int            @default(1)
+  nextReview  DateTime?
+  reviewCount Int            @default(0)
+
+  createdAt DateTime @default(now())
+
+  @@index([assetId])
+  @@map("flashcards")
+}
+
+// PLACEHOLDER_PRISMFLOW
+
+// ============================================================
+// 创作棱镜 (PrismFlow)
+// ============================================================
+
+model PrismFlowProject {
+  id          String      @id @default(cuid())
+  videoId     String
+  video       VideoSource @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  name        String
+  stylePreset Json?
+  scriptText  String?     @db.Text
+  status      TaskStatus  @default(PENDING)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  nodes FlowNode[]
+
+  @@index([videoId])
+  @@map("prismflow_projects")
+}
+
+model FlowNode {
+  id            String           @id @default(cuid())
+  flowProjectId String
+  flowProject   PrismFlowProject @relation(fields: [flowProjectId], references: [id], onDelete: Cascade)
+
+  positionX      Float   @default(0)
+  positionY      Float   @default(0)
+  orderIndex     Int
+  prompt         String? @db.Text
+  scriptSegment  String?
+
+  firstFrameUrl    String?
+  lastFrameUrl     String?
+  firstFrameLocked Boolean    @default(false)
+  lastFrameLocked  Boolean    @default(false)
+
+  renderedVideoUrl String?
+  renderStatus     TaskStatus @default(PENDING)
+
+  parentNodeId String?
+  branchName   String?
+  isMerged     Boolean @default(false)
+
+  narrationUrl String?
+  bgmUrl       String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  parentNode    FlowNode?  @relation("NodeBranch", fields: [parentNodeId], references: [id])
+  childBranches FlowNode[] @relation("NodeBranch")
+
+  @@index([flowProjectId, orderIndex])
+  @@map("flow_nodes")
+}
+
+// PLACEHOLDER_TRANSLATION
+
+// ============================================================
+// 译制棱镜
+// ============================================================
+
+model TranslationTask {
+  id       String      @id @default(cuid())
+  videoId  String
+  video    VideoSource @relation(fields: [videoId], references: [id], onDelete: Cascade)
+
+  sourceLang  String
+  targetLangs String[]
+
+  subtitleStatus   TaskStatus @default(PENDING)
+  inpaintingStatus TaskStatus @default(PENDING)
+  voiceCloneStatus TaskStatus @default(PENDING)
+  lipSyncStatus    TaskStatus @default(PENDING)
+
+  outputVideoUrl String?
+  status         TaskStatus @default(PENDING)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  subtitleTracks SubtitleTrack[]
+
+  @@index([videoId])
+  @@map("translation_tasks")
+}
+
+model SubtitleTrack {
+  id            String          @id @default(cuid())
+  translationId String
+  translation   TranslationTask @relation(fields: [translationId], references: [id], onDelete: Cascade)
+
+  language    String
+  segments    Json
+  srtContent  String?  @db.Text
+  isConfirmed Boolean  @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([translationId])
+  @@map("subtitle_tracks")
+}
+
+// PLACEHOLDER_DIFFRACTION
+
+// ============================================================
+// 衍射棱镜
+// ============================================================
+
+model DiffractionTask {
+  id      String      @id @default(cuid())
+  videoId String
+  video   VideoSource @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  status  TaskStatus  @default(PENDING)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  platformDrafts PlatformDraft[]
+
+  @@index([videoId])
+  @@map("diffraction_tasks")
+}
+
+enum Platform {
+  XIAOHONGSHU
+  JIKE
+  TWITTER_X
+  WECHAT_MP
+  NEWSLETTER
+  LINKEDIN
+  INSTAGRAM
+}
+
+model PlatformDraft {
+  id            String          @id @default(cuid())
+  diffractionId String
+  diffraction   DiffractionTask @relation(fields: [diffractionId], references: [id], onDelete: Cascade)
+
+  platform      Platform
+  title         String?
+  content       String   @db.Text
+  hookLine      String?
+  ctaLine       String?
+  tone          String?
+  emojiStrategy String?
+  selectedImages Json?
+
+  version     Int     @default(1)
+  isPublished Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([diffractionId, platform])
+  @@map("platform_drafts")
+}
+
+// ============================================================
+// 对话系统
+// ============================================================
+
+enum PrismType {
+  KNOWLEDGE
+  CREATION
+  TRANSLATION
+  DIFFRACTION
+}
+
+enum MessageRole {
+  USER
+  ASSISTANT
+  SYSTEM
+}
+
+model ChatSession {
+  id        String    @id @default(cuid())
+  projectId String
+  project   Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  activePrism PrismType?
+  videoId     String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  messages ChatMessage[]
+
+  @@index([projectId, userId])
+  @@map("chat_sessions")
+}
+
+model ChatMessage {
+  id        String      @id @default(cuid())
+  sessionId String
+  session   ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  role         MessageRole
+  content      String      @db.Text
+  metadata     Json?
+  prismAction  String?
+  prismPayload Json?
+
+  createdAt DateTime @default(now())
+
+  @@index([sessionId, createdAt])
+  @@map("chat_messages")
+}
+
+// ============================================================
+// 任务队列记录
+// ============================================================
+
+model TaskRecord {
+  id          String     @id @default(cuid())
+  userId      String
+  type        String
+  payload     Json
+  status      TaskStatus @default(PENDING)
+  progress    Int        @default(0)
+  result      Json?
+  error       String?
+  startedAt   DateTime?
+  completedAt DateTime?
+  createdAt   DateTime   @default(now())
+
+  @@index([userId, status])
+  @@index([type, status])
+  @@map("task_records")
+}
