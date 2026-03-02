@@ -83,54 +83,79 @@ export class KeyframeService {
     userId: string,
   ) {
     const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'vp-keyframe-'));
-    const tempVideoPath = path.join(tempDir, `${video.id}.mp4`);
-    const downloaded = await this.storage.download(video.storagePath);
-    await fs.writeFile(tempVideoPath, downloaded);
+    try {
+      const tempVideoPath = path.join(tempDir, `${video.id}.mp4`);
+      const downloaded = await this.storage.download(video.storagePath);
+      await fs.writeFile(tempVideoPath, downloaded);
 
-    const meta = await this.ffmpeg.getVideoMetadata(tempVideoPath);
-    const duration = Math.max(20, Math.round(video.duration ?? meta.duration ?? 60));
-    const timestamps = this.pickTimestamps(duration);
+      const meta = await this.ffmpeg.getVideoMetadata(tempVideoPath);
+      const rawDuration = Number(video.duration ?? meta.duration ?? 0);
+      const safeDuration = rawDuration > 0 ? rawDuration : 60;
+      const timestamps = this.pickTimestamps(safeDuration);
 
-    const frameTypes = ['PPT', 'WHITEBOARD', 'CHART', 'SCENE_CHANGE', 'SPEAKER'] as const;
-    const created: any[] = [];
+      const frameTypes = ['PPT', 'WHITEBOARD', 'CHART', 'SCENE_CHANGE', 'SPEAKER'] as const;
+      const created: any[] = [];
 
-    for (let idx = 0; idx < timestamps.length; idx += 1) {
-      const ts = timestamps[idx];
-      const tempFramePath = path.join(tempDir, `frame-${idx + 1}.jpg`);
-      await this.ffmpeg.extractFrame(tempVideoPath, ts, tempFramePath);
+      for (let idx = 0; idx < timestamps.length; idx += 1) {
+        const ts = timestamps[idx];
+        const tempFramePath = path.join(tempDir, `frame-${idx + 1}.jpg`);
 
-      const frameBuffer = await fs.readFile(tempFramePath);
-      const storagePath = this.storage.generateStoragePath(
-        userId,
-        video.projectId,
-        'keyframes',
-        `${video.id}-kf-${idx + 1}.jpg`,
-      );
-      const publicUrl = await this.storage.upload(frameBuffer, storagePath, {
-        'Content-Type': 'image/jpeg',
-      });
+        try {
+          await this.ffmpeg.extractFrame(tempVideoPath, ts, tempFramePath);
+        } catch (error) {
+          this.logger.warn(`Skip keyframe at ${ts}s for ${video.id}: ${error.message}`);
+          continue;
+        }
 
-      const analysis = await this.describeAndClassifyFrame(publicUrl, userId, frameTypes[idx % frameTypes.length]);
+        const frameBuffer = await fs.readFile(tempFramePath);
+        const storagePath = this.storage.generateStoragePath(
+          userId,
+          video.projectId,
+          'keyframes',
+          `${video.id}-kf-${idx + 1}.jpg`,
+        );
+        const publicUrl = await this.storage.upload(frameBuffer, storagePath, {
+          'Content-Type': 'image/jpeg',
+        });
 
-      const record = await this.prisma.keyframe.create({
-        data: {
-          videoId: video.id,
-          timestamp: ts,
-          frameType: analysis.frameType,
-          storagePath: publicUrl,
-          description: analysis.description,
-          similarity: idx === 0 ? null : 0.72,
-        },
-      });
-      created.push(record);
+        const analysis = await this.describeAndClassifyFrame(
+          {
+            imageBase64: frameBuffer.toString('base64'),
+            imageUrl: publicUrl,
+          },
+          userId,
+          frameTypes[idx % frameTypes.length],
+        );
+
+        const record = await this.prisma.keyframe.create({
+          data: {
+            videoId: video.id,
+            timestamp: ts,
+            frameType: analysis.frameType,
+            storagePath: publicUrl,
+            description: analysis.description,
+            similarity: idx === 0 ? null : 0.72,
+          },
+        });
+        created.push(record);
+      }
+
+      if (created.length === 0) {
+        return this.createFallbackKeyframes({
+          id: video.id,
+          duration: Math.round(safeDuration),
+          thumbnailUrl: null,
+        });
+      }
+
+      return created;
+    } finally {
+      await fs.rm(tempDir, { recursive: true, force: true });
     }
-
-    await fs.rm(tempDir, { recursive: true, force: true });
-    return created;
   }
 
   private async describeAndClassifyFrame(
-    imageUrl: string,
+    image: { imageBase64: string; imageUrl?: string | null },
     userId: string,
     defaultFrameType: 'PPT' | 'WHITEBOARD' | 'CHART' | 'SCENE_CHANGE' | 'SPEAKER',
   ) {
@@ -140,7 +165,8 @@ export class KeyframeService {
         {
           prompt:
             '请识别这帧画面属于哪一类：PPT, WHITEBOARD, CHART, SCENE_CHANGE, SPEAKER。返回一行类别和一句中文描述。',
-          imageUrl,
+          image: image.imageBase64,
+          imageUrl: image.imageUrl ?? undefined,
         },
         userId,
       );
@@ -181,7 +207,7 @@ export class KeyframeService {
     duration: number | null;
     thumbnailUrl: string | null;
   }) {
-    const duration = Math.max(20, Math.round(video.duration ?? 60));
+    const duration = Math.max(6, Math.round(video.duration ?? 60));
     const timestamps = this.pickTimestamps(duration).slice(0, 4);
     const created: any[] = [];
 
@@ -206,8 +232,20 @@ export class KeyframeService {
   }
 
   private pickTimestamps(duration: number) {
-    const count = Math.max(4, Math.min(8, Math.ceil(duration / 45)));
-    const step = duration / (count + 1);
-    return Array.from({ length: count }, (_, i) => Number(((i + 1) * step).toFixed(2)));
+    const safeDuration = Math.max(1, duration);
+    const upperBound = Math.max(0.2, safeDuration - 0.2);
+
+    if (safeDuration <= 3) {
+      return [Number(Math.min(upperBound, safeDuration / 2).toFixed(2))];
+    }
+
+    const count = Math.max(3, Math.min(8, Math.ceil(safeDuration / 45)));
+    const step = safeDuration / (count + 1);
+    const raw = Array.from({ length: count }, (_, i) => (i + 1) * step);
+    const clamped = raw
+      .map((ts) => Number(Math.min(upperBound, ts).toFixed(2)))
+      .filter((ts) => ts > 0);
+
+    return Array.from(new Set(clamped));
   }
 }

@@ -3,6 +3,7 @@ import { MessageRole as DbMessageRole, PrismType as DbPrismType } from '../../..
 import { AITaskType } from '../../infrastructure/ai-router/ai-router.interface';
 import { AiRouterService } from '../../infrastructure/ai-router/ai-router.service';
 import { WsGateway } from '../../infrastructure/websocket/ws.gateway';
+import { VideoBehaviorService } from '../video-behavior/video-behavior.service';
 import { KnowledgeService } from '../prism-knowledge/knowledge.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
@@ -21,6 +22,7 @@ export class ChatService {
     private readonly prisma: PrismaService,
     private readonly wsGateway: WsGateway,
     private readonly knowledgeService: KnowledgeService,
+    private readonly videoBehaviorService: VideoBehaviorService,
     private readonly aiRouter: AiRouterService,
   ) {}
 
@@ -98,9 +100,13 @@ export class ChatService {
   ) {
     const session = await this.ensureSessionOwnership(userId, sessionId);
 
-    const resolvedPrism =
-      dto.activePrism ?? this.mapPrismFromDb(session.activePrism);
     const resolvedVideoId = dto.videoId ?? session.videoId ?? null;
+    const hasVideoSwitched =
+      dto.videoId !== undefined && (dto.videoId ?? null) !== (session.videoId ?? null);
+    const resolvedPrism =
+      dto.activePrism ??
+      this.mapPrismFromDb(session.activePrism) ??
+      (resolvedVideoId ? ChatPrismType.KNOWLEDGE : null);
 
     const sessionUpdateData: { activePrism?: DbPrismType; videoId?: string | null } = {};
     if (dto.activePrism !== undefined) {
@@ -132,7 +138,10 @@ export class ChatService {
         sessionId,
         role: DbMessageRole.USER,
         content: dto.content,
-        metadata: dto.metadata as any,
+        metadata: {
+          ...(dto.metadata ?? {}),
+          videoId: resolvedVideoId,
+        } as any,
       },
     });
 
@@ -144,14 +153,22 @@ export class ChatService {
       dto.metadata,
     );
 
-    const assistantContent = await this.buildAssistantReplyFromModel(
-      userId,
-      sessionId,
-      resolvedPrism,
-      resolvedVideoId,
-      dto.content,
-      prismAction,
-    );
+    const requiresVideoForAction =
+      prismAction === PrismActionType.GENERATE_SUMMARY ||
+      prismAction === PrismActionType.GENERATE_MINDMAP;
+
+    const assistantContent =
+      requiresVideoForAction && !resolvedVideoId
+        ? '要基于视频生成总结或思维导图，请先在左侧点击一个视频进行绑定。'
+        : await this.buildAssistantReplyFromModel(
+            userId,
+            sessionId,
+            resolvedPrism,
+            resolvedVideoId,
+            dto.content,
+            prismAction,
+            hasVideoSwitched,
+          );
 
     const assistantMessage = await this.prisma.chatMessage.create({
       data: {
@@ -164,17 +181,46 @@ export class ChatService {
       },
     });
 
-    if (
-      prismAction === PrismActionType.INJECT_QA_CARD &&
-      resolvedVideoId
-    ) {
-      await this.knowledgeService.injectQaCard({
-        userId,
-        videoId: resolvedVideoId,
-        question: dto.content,
-        answer: assistantMessage.content,
-        metadata: dto.metadata ?? null,
-      });
+    // 处理知识棱镜动作
+    if (resolvedPrism === ChatPrismType.KNOWLEDGE && resolvedVideoId) {
+      if (prismAction === PrismActionType.INJECT_QA_CARD) {
+        await this.knowledgeService.injectQaCard({
+          userId,
+          videoId: resolvedVideoId,
+          question: dto.content,
+          answer: assistantMessage.content,
+          metadata: dto.metadata ?? null,
+        });
+      }
+
+      if (prismAction === PrismActionType.GENERATE_MINDMAP) {
+        const prompt = this.stripCommand(dto.content);
+        await this.knowledgeService.generateMindmap(userId, resolvedVideoId, {
+          sessionId,
+          prompt,
+          maxDepth: 4,
+          maxNodes: 50,
+        });
+      }
+
+      if (prismAction === PrismActionType.GENERATE_SUMMARY) {
+        try {
+          await this.knowledgeService.analyze(userId, resolvedVideoId, {});
+        } catch {
+          // Ignore re-analyze errors and continue to card generation attempt.
+        }
+
+        try {
+          await this.knowledgeService.regenerateCrystalCards(userId, resolvedVideoId, {
+            types: ['CONCEPT', 'TIMELINE', 'INSIGHT', 'SUMMARY'],
+            maxCards: 12,
+            includeKeyframes: true,
+            difficulty: 2,
+          });
+        } catch {
+          // Keep chat flow responsive even when card generation fails.
+        }
+      }
     }
 
     this.wsGateway.emitChatMessage(updatedSession.projectId, {
@@ -331,14 +377,24 @@ export class ChatService {
     prism: ChatPrismType | null,
     content: string,
   ): PrismActionType {
-    const normalized = content.trim().toLowerCase();
+    const normalized = content.trim();
+    const normalizedLower = normalized.toLowerCase();
 
-    if (normalized.startsWith('/summarize')) {
+    if (normalizedLower.startsWith('/summarize')) {
       return PrismActionType.GENERATE_SUMMARY;
     }
 
-    if (normalized.startsWith('/mindmap')) {
+    if (normalizedLower.startsWith('/mindmap')) {
       return PrismActionType.GENERATE_MINDMAP;
+    }
+
+    // 自然语言触发，避免用户必须输入 slash 指令。
+    if (this.isMindmapIntent(normalized)) {
+      return PrismActionType.GENERATE_MINDMAP;
+    }
+
+    if (this.isSummaryIntent(normalized)) {
+      return PrismActionType.GENERATE_SUMMARY;
     }
 
     switch (prism) {
@@ -379,6 +435,16 @@ export class ChatService {
     return parts.length > 1 ? parts.slice(1).join(' ') : '';
   }
 
+  private isMindmapIntent(content: string) {
+    return /思维导图|脑图|mind\s*map|mindmap/i.test(content);
+  }
+
+  private isSummaryIntent(content: string) {
+    return /总结|概括|摘要|梳理|复盘|要点|文章|章节|学习卡片|晶体卡片/i.test(
+      content,
+    );
+  }
+
   private buildAssistantAck(
     action: PrismActionType,
     prism: ChatPrismType | null,
@@ -411,20 +477,42 @@ export class ChatService {
     videoId: string | null,
     userContent: string,
     action: PrismActionType,
+    ignoreHistory = false,
   ) {
+    let transcriptContext: string | null = null;
+    let behaviorContext: string | null = null;
+    let knowledgeAssetContext: string | null = null;
+
+    if (prism === ChatPrismType.KNOWLEDGE && videoId) {
+      [transcriptContext, behaviorContext, knowledgeAssetContext] = await Promise.all([
+        this.getKnowledgeTranscriptContext(videoId),
+        this.getBehaviorInsightContext(userId, videoId),
+        this.getKnowledgeAssetContext(videoId),
+      ]);
+
+      const hasTranscript = Boolean(transcriptContext?.trim());
+      const hasKnowledgeAsset = Boolean(knowledgeAssetContext?.trim());
+      if (!hasTranscript && !hasKnowledgeAsset) {
+        return '当前视频还没有可用的分析结果。请先点击“确认分析”，等待分析完成后再提问。';
+      }
+    }
+
     try {
-      const history = await this.prisma.chatMessage.findMany({
-        where: { sessionId },
-        orderBy: { createdAt: 'desc' },
-        take: 8,
-      });
+      const history = ignoreHistory
+        ? []
+        : await this.prisma.chatMessage.findMany({
+            where: { sessionId },
+            orderBy: { createdAt: 'desc' },
+            take: 8,
+          });
 
-      const transcriptContext =
-        prism === ChatPrismType.KNOWLEDGE && videoId
-          ? await this.getKnowledgeTranscriptContext(videoId)
-          : null;
-
-      const systemPrompt = this.buildSystemPrompt(prism, action, transcriptContext);
+      const systemPrompt = this.buildSystemPrompt(
+        prism,
+        action,
+        transcriptContext,
+        behaviorContext,
+        knowledgeAssetContext,
+      );
       const chatMessages = [
         { role: 'system', content: systemPrompt },
         ...history
@@ -452,6 +540,15 @@ export class ChatService {
       // fallback below
     }
 
+    if (prism === ChatPrismType.KNOWLEDGE) {
+      const contextualFallback = this.buildKnowledgeContextFallback(
+        userContent,
+        transcriptContext,
+        knowledgeAssetContext,
+      );
+      if (contextualFallback) return contextualFallback;
+    }
+
     return this.buildAssistantAck(action, prism);
   }
 
@@ -470,6 +567,8 @@ export class ChatService {
     prism: ChatPrismType | null,
     action: PrismActionType,
     transcriptContext: string | null,
+    behaviorContext: string | null,
+    knowledgeAssetContext: string | null,
   ) {
     const base =
       '你是 Viewpoint Prism Pro 的工作台助手。回答必须简洁、可执行，优先给结构化结论。';
@@ -480,6 +579,8 @@ export class ChatService {
         '当前处于知识棱镜，请给学习者可理解的解释，并尽量对应视频上下文。',
         `当前动作: ${action}`,
         transcriptContext ? `视频转写片段:\n${transcriptContext}` : '',
+        knowledgeAssetContext ? `知识资产摘要:\n${knowledgeAssetContext}` : '',
+        behaviorContext ? `用户观看行为线索:\n${behaviorContext}` : '',
       ]
         .filter(Boolean)
         .join('\n\n');
@@ -498,5 +599,120 @@ export class ChatService {
     }
 
     return base;
+  }
+
+  private async getKnowledgeAssetContext(videoId: string) {
+    const [asset, keyframes] = await Promise.all([
+      this.prisma.knowledgeAsset.findFirst({
+        where: { videoId },
+        orderBy: { updatedAt: 'desc' },
+        select: { outlineMarkdown: true, notesMarkdown: true },
+      }),
+      this.prisma.keyframe.findMany({
+        where: { videoId },
+        orderBy: { timestamp: 'asc' },
+        take: 5,
+        select: { timestamp: true, description: true },
+      }),
+    ]);
+
+    const outline = (asset?.outlineMarkdown ?? '').slice(0, 1200);
+    const notes = (asset?.notesMarkdown ?? '').slice(0, 600);
+    const keyframeText = keyframes
+      .map((kf) => `- ${Math.round(kf.timestamp)}s: ${kf.description ?? ''}`)
+      .join('\n');
+
+    const parts = [
+      outline ? `大纲:\n${outline}` : '',
+      notes ? `笔记:\n${notes}` : '',
+      keyframeText ? `关键帧:\n${keyframeText}` : '',
+    ].filter(Boolean);
+
+    return parts.length > 0 ? parts.join('\n\n') : null;
+  }
+
+  private buildKnowledgeContextFallback(
+    userContent: string,
+    transcriptContext: string | null,
+    knowledgeAssetContext: string | null,
+  ) {
+    const context =
+      [knowledgeAssetContext, transcriptContext]
+        .filter(Boolean)
+        .join('\n')
+        .trim() || '';
+
+    if (!context) return null;
+
+    const preview = context.split('\n').filter(Boolean).slice(0, 8).join('\n');
+    return [
+      '我已基于当前视频的已分析内容整理回答。',
+      `你的问题：${userContent}`,
+      '',
+      '相关内容摘录：',
+      preview,
+      '',
+      '如果你要更精确，我可以继续按“时间点 + 概念”方式展开。',
+    ].join('\n');
+  }
+
+  private async getBehaviorInsightContext(userId: string, videoId: string) {
+    try {
+      const [analytics, recentEvents] = await Promise.all([
+        this.videoBehaviorService.getVideoAnalytics(userId, videoId),
+        this.prisma.videoBehaviorEvent.findMany({
+          where: {
+            userId,
+            videoId,
+            eventType: { in: ['SEEK', 'PAUSE'] as any },
+          },
+          orderBy: { createdAt: 'desc' },
+          take: 120,
+          select: {
+            eventType: true,
+            previousTime: true,
+            currentTime: true,
+          },
+        }),
+      ]);
+
+      const hotspotBuckets = new Map<number, number>();
+      const skippedRanges: string[] = [];
+
+      for (const evt of recentEvents) {
+        if (evt.currentTime != null) {
+          const bucket = Math.floor(evt.currentTime / 30) * 30;
+          hotspotBuckets.set(bucket, (hotspotBuckets.get(bucket) ?? 0) + 1);
+        }
+
+        if (
+          evt.eventType === 'SEEK' &&
+          evt.previousTime != null &&
+          evt.currentTime != null &&
+          evt.currentTime - evt.previousTime > 20
+        ) {
+          skippedRanges.push(
+            `${Math.floor(evt.previousTime)}s -> ${Math.floor(evt.currentTime)}s`,
+          );
+        }
+      }
+
+      const hotspots = Array.from(hotspotBuckets.entries())
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 3)
+        .map(([bucket, count]) => `${bucket}-${bucket + 30}s(${count}次)`);
+
+      const lines = [
+        `观看覆盖率: ${analytics.averageCoverage.toFixed(1)}%`,
+        hotspots.length ? `高频关注片段: ${hotspots.join(', ')}` : '',
+        skippedRanges.length
+          ? `常见跳过片段: ${skippedRanges.slice(0, 3).join(', ')}`
+          : '',
+      ].filter(Boolean);
+
+      return lines.join('\n');
+    } catch {
+      return null;
+    }
   }
 }

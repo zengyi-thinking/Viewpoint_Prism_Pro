@@ -28,6 +28,7 @@ export class StorageService implements OnModuleInit {
       useSSL: this.useSSL,
       accessKey,
       secretKey,
+      region: 'us-east-1', // 添加 region 参数以避免签名问题
     });
 
     try {
@@ -74,7 +75,15 @@ export class StorageService implements OnModuleInit {
    */
   async upload(buffer: Buffer, key: string, metaData?: Record<string, string>): Promise<string> {
     try {
-      await this.client.putObject(this.bucketName, key, buffer, undefined, metaData);
+      const normalizedMetaData = this.normalizeMetaData(metaData);
+      // 修复：使用类型断言绕过 minio v8 的类型定义问题
+      // @types/minio@7.1.0 与 minio@8.0.7 的类型定义不匹配
+      await (this.client.putObject as any)(
+        this.bucketName,
+        key,
+        buffer,
+        normalizedMetaData,
+      );
       const url = await this.getPublicUrl(key);
       this.logger.log(`Uploaded file to ${key}`);
       return url;
@@ -99,7 +108,15 @@ export class StorageService implements OnModuleInit {
     metaData?: Record<string, string>,
   ): Promise<string> {
     try {
-      await this.client.putObject(this.bucketName, key, stream, size, metaData);
+      const normalizedMetaData = this.normalizeMetaData(metaData);
+      // 使用类型断言绕过 minio v8 的类型定义问题
+      await (this.client.putObject as any)(
+        this.bucketName,
+        key,
+        stream,
+        size,
+        normalizedMetaData,
+      );
       const url = await this.getPublicUrl(key);
       this.logger.log(`Uploaded stream to ${key}`);
       return url;
@@ -263,5 +280,21 @@ export class StorageService implements OnModuleInit {
     const baseName = filename.substring(0, filename.lastIndexOf('.')) || filename;
     const sanitizedName = baseName.replace(/[^a-zA-Z0-9._-]/g, '_');
     return `${userId}/${projectId}/${type}/${timestamp}-${sanitizedName}${ext}`;
+  }
+
+  /**
+   * Normalize metadata headers to avoid non-ASCII signature mismatch in S3/MinIO.
+   */
+  private normalizeMetaData(metaData?: Record<string, string>): Record<string, string> {
+    if (!metaData) return {};
+
+    const normalized: Record<string, string> = {};
+    for (const [key, value] of Object.entries(metaData)) {
+      if (value == null) continue;
+      const text = String(value);
+      normalized[key] = /[^\x20-\x7E]/.test(text) ? encodeURIComponent(text) : text;
+    }
+
+    return normalized;
   }
 }

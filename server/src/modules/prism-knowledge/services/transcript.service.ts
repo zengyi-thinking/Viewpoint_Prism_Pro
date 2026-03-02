@@ -103,7 +103,9 @@ export class TranscriptService {
 
       await fs.rm(tempDir, { recursive: true, force: true });
 
-      const rawSegments = Array.isArray(asrResult?.segments)
+      const hasSegments =
+        Array.isArray(asrResult?.segments) && asrResult.segments.length > 0;
+      const rawSegments = hasSegments
         ? asrResult.segments
         : this.wrapTextToSegments(asrResult?.text ?? '', video.duration ?? 120);
 

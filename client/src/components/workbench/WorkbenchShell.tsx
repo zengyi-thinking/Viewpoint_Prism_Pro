@@ -199,7 +199,7 @@ export function WorkbenchShell({ projectName, projectId }: { projectName?: strin
           {/* Separator between Player and Chat */}
           <div className="shrink-0 h-px bg-border-subtle" />
 
-          <ChatDock />
+          <ChatDock projectId={projectId} />
         </div>
 
         <div

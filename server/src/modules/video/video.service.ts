@@ -3,6 +3,8 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { StorageService } from '../../infrastructure/storage/storage.service';
 import { FfmpegService } from '../../infrastructure/media/ffmpeg.service';
 import { VideoSourceType } from './dto';
+import * as os from 'os';
+import * as path from 'path';
 
 @Injectable()
 export class VideoService {
@@ -111,9 +113,11 @@ export class VideoService {
     }
 
     // Upload to MinIO
+    const encodedOriginalName = Buffer.from(filename, 'utf8').toString('base64');
     const metaData = {
       'Content-Type': mimeType,
-      'X-Amz-Meta-Original-Filename': filename,
+      // Keep original filename for traceability, but encode to ASCII-safe value.
+      'x-amz-meta-original-filename-b64': encodedOriginalName,
     };
     const videoUrl = await this.storage.upload(fileBuffer, video.storagePath, metaData);
 
@@ -125,7 +129,7 @@ export class VideoService {
 
     try {
       // Save buffer to temp file for FFmpeg processing
-      const tempPath = `/tmp/${videoId}-${Date.now()}.mp4`;
+      const tempPath = path.join(os.tmpdir(), `${videoId}-${Date.now()}.mp4`);
       require('fs').writeFileSync(tempPath, fileBuffer);
 
       // Get metadata
@@ -412,7 +416,7 @@ export class VideoService {
       const videoBuffer = await this.storage.download(video.storagePath);
 
       // Save to temp file
-      const tempPath = `/tmp/${videoId}-${Date.now()}.mp4`;
+      const tempPath = path.join(os.tmpdir(), `${videoId}-${Date.now()}.mp4`);
       require('fs').writeFileSync(tempPath, videoBuffer);
 
       // Generate new thumbnail

@@ -60,3 +60,46 @@ export class GetChatMessagesQueryDto {
   @IsString()
   before?: string;
 }
+
+export interface QuickPrompt {
+  id: string;
+  type: 'mindmap' | 'summary' | 'crystal_card' | 'explain';
+  label: string;
+  icon: string;
+  promptTemplate: string;
+}
+
+export const QUICK_PROMPTS: QuickPrompt[] = [
+  {
+    id: 'mindmap',
+    type: 'mindmap',
+    label: '生成思维导图',
+    icon: '🧠',
+    promptTemplate:
+      '/mindmap 生成当前视频的结构化思维导图，包括主要概念和关系。',
+  },
+  {
+    id: 'summary',
+    type: 'summary',
+    label: '智能总结',
+    icon: '📝',
+    promptTemplate:
+      '/summarize 总结视频核心观点和结论，按重要程度排序。',
+  },
+  {
+    id: 'crystal_card',
+    type: 'crystal_card',
+    label: '生成晶体卡片',
+    icon: '💎',
+    promptTemplate:
+      '/summarize 生成可学习的晶体卡片，并给出章节化学习路径。',
+  },
+  {
+    id: 'explain',
+    type: 'explain',
+    label: '通俗解释',
+    icon: '💡',
+    promptTemplate:
+      '用最简单的语言解释当前概念，适合初学者理解，使用生活化的比喻。',
+  },
+];

@@ -3,6 +3,14 @@ import type { ChatMessage, ChatSession, PrismActionType } from '@/types/chat';
 
 export type ChatPrismType = 'knowledge' | 'creation' | 'translation' | 'diffraction';
 
+export interface QuickPrompt {
+  id: string;
+  type: 'mindmap' | 'summary' | 'crystal_card' | 'explain';
+  label: string;
+  icon: string;
+  promptTemplate: string;
+}
+
 export interface CreateChatSessionPayload {
   projectId: string;
   videoId?: string;
@@ -39,6 +47,10 @@ export interface SendChatMessageResponse {
   status: 'completed';
 }
 
+export interface GetQuickPromptsResponse {
+  prompts: QuickPrompt[];
+}
+
 export const chatApi = {
   createSession: (payload: CreateChatSessionPayload) =>
     apiFetch<CreateChatSessionResponse>('/api/chat/sessions', {
@@ -61,4 +73,7 @@ export const chatApi = {
       method: 'POST',
       body: JSON.stringify(payload),
     }),
+
+  getQuickPrompts: () =>
+    apiFetch<GetQuickPromptsResponse>('/api/chat/quick-prompts'),
 };

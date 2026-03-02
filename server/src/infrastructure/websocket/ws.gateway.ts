@@ -61,6 +61,41 @@ interface ChatMessagePayload {
   timestamp: string;
 }
 
+// Video Behavior Tracking Payloads
+interface VideoEventPayload {
+  videoId: string;
+  userId: string;
+  eventType: string;
+  currentTime: number;
+  sessionId?: string;
+  context?: string;
+  timestamp: string;
+}
+
+interface VideoBookmarkPayload {
+  videoId: string;
+  userId: string;
+  bookmarkId: string;
+  action: 'created' | 'updated' | 'deleted';
+  timestamp: string;
+}
+
+interface VideoNotePayload {
+  videoId: string;
+  userId: string;
+  noteId: string;
+  action: 'created' | 'updated' | 'deleted';
+  timestamp: string;
+}
+
+interface VideoHighlightPayload {
+  videoId: string;
+  userId: string;
+  highlightId: string;
+  action: 'created' | 'updated' | 'deleted' | 'shared';
+  timestamp: string;
+}
+
 @WebSocketGateway({
   cors: {
     origin: '*',
@@ -262,6 +297,42 @@ export class WsGateway implements OnGatewayInit, OnGatewayConnection, OnGatewayD
   // Send chat message event
   emitChatMessage(projectId: string, payload: ChatMessagePayload) {
     this.emitToProject(projectId, 'chat:message', payload);
+  }
+
+  // ============================================================
+  // Video Behavior Events
+  // ============================================================
+
+  // Send video behavior event (real-time sync across devices)
+  emitVideoEvent(userId: string, payload: VideoEventPayload) {
+    this.emitToUser(userId, 'video:event', payload);
+  }
+
+  // Send bookmark event
+  emitVideoBookmark(userId: string, payload: VideoBookmarkPayload) {
+    this.emitToUser(userId, 'video:bookmark', payload);
+  }
+
+  // Send note event
+  emitVideoNote(userId: string, payload: VideoNotePayload) {
+    this.emitToUser(userId, 'video:note', payload);
+  }
+
+  // Send highlight event
+  emitVideoHighlight(userId: string, payload: VideoHighlightPayload) {
+    this.emitToUser(userId, 'video:highlight', payload);
+  }
+
+  // Broadcast session update to project room
+  emitSessionUpdate(projectId: string, payload: {
+    videoId: string;
+    sessionId: string;
+    userId: string;
+    isActive: boolean;
+    currentTime?: number;
+    timestamp: string;
+  }) {
+    this.emitToProject(projectId, 'video:session-update', payload);
   }
 
   // Helper: Extract JWT token from socket

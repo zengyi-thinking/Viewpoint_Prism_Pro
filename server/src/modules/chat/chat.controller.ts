@@ -2,7 +2,7 @@ import { Body, Controller, Get, Param, Post, Query, UseGuards } from '@nestjs/co
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { ChatService } from './chat.service';
-import { CreateChatSessionDto, GetChatMessagesQueryDto, SendChatMessageDto } from './dto';
+import { CreateChatSessionDto, GetChatMessagesQueryDto, QUICK_PROMPTS, SendChatMessageDto } from './dto';
 
 @UseGuards(JwtAuthGuard)
 @Controller('api/chat')
@@ -35,5 +35,10 @@ export class ChatController {
     @Body() dto: SendChatMessageDto,
   ) {
     return this.chatService.sendMessage(userId, sessionId, dto);
+  }
+
+  @Get('quick-prompts')
+  getQuickPrompts() {
+    return { prompts: QUICK_PROMPTS };
   }
 }

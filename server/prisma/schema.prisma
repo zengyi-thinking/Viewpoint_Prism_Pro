@@ -122,6 +122,12 @@ model VideoSource {
   translationTasks  TranslationTask[]
   diffractionTasks  DiffractionTask[]
 
+  behaviorEvents VideoBehaviorEvent[]
+  sessions       VideoSession[]
+  bookmarks      VideoBookmark[]
+  notes          VideoNote[]
+  highlights     VideoHighlight[]
+
   @@index([projectId])
   @@map("video_sources")
 }
@@ -189,6 +195,7 @@ model KnowledgeAsset {
   updatedAt DateTime @updatedAt
 
   flashcards Flashcard[]
+  crystalCards CrystalCard[]
 
   @@index([videoId])
   @@map("knowledge_assets")
@@ -209,6 +216,67 @@ model Flashcard {
 
   @@index([assetId])
   @@map("flashcards")
+}
+
+enum CrystalCardType {
+  CONCEPT
+  TIMELINE
+  COMPARISON
+  INSIGHT
+  QUOTE
+  KEYFRAME
+  QA
+  SUMMARY
+}
+
+model CrystalCard {
+  id          String         @id @default(cuid())
+  assetId     String
+  asset       KnowledgeAsset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  type        CrystalCardType @default(CONCEPT)
+  title       String
+  content     String         @db.Text
+  summary     String?
+
+  // 时间戳相关
+  timestamp   Float?
+  videoTime   String?
+
+  // 视觉元素
+  imageUrl    String?
+  keyframeId  String?
+
+  // 关联内容
+  sourceText  String?        @db.Text
+  sourceType  String?
+
+  // 元数据
+  tags        String[]       @default([])
+  difficulty  Int            @default(1)
+  importance  Int            @default(3)
+
+  // AI 生成相关
+  aiModel     String?
+  aiPrompt    String?
+
+  // 状态
+  isFeatured  Boolean        @default(false)
+  isVerified  Boolean        @default(false)
+
+  // 排序和分组
+  orderIndex  Int            @default(0)
+  category    String?
+
+  // 扩展数据
+  metadata    Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([assetId, type])
+  @@index([assetId, orderIndex])
+  @@map("crystal_cards")
 }
 
 // PLACEHOLDER_PRISMFLOW
@@ -447,4 +515,194 @@ model TaskRecord {
   @@index([userId, status])
   @@index([type, status])
   @@map("task_records")
+}
+
+// ============================================================
+// 视频行为追踪
+// ============================================================
+
+enum VideoEventType {
+  PLAY
+  PAUSE
+  SEEK
+  SPEED_CHANGE
+  VOLUME_CHANGE
+  FULLSCREEN
+  PICTURE_IN_PICTURE
+  END
+  BUFFER
+  ERROR
+  CHAPTER_CHANGE
+  BOOKMARK_ADD
+  BOOKMARK_REMOVE
+  NOTE_ADD
+  HIGHLIGHT_ADD
+  REGION_REPEAT
+  REGION_SHARE
+}
+
+enum VideoActionContext {
+  NORMAL
+  KNOWLEDGE_PRISM
+  CREATION_PRISM
+  TRANSLATION_PRISM
+  DIFFRACTION_PRISM
+}
+
+model VideoBehaviorEvent {
+  id         String             @id @default(cuid())
+  userId     String
+  videoId    String
+  video      VideoSource        @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  session    VideoSession?     @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  eventType      VideoEventType
+  context        VideoActionContext @default(NORMAL)
+  sessionId      String? @unique
+
+  // Event-specific data
+  previousTime   Float?
+  currentTime    Float
+  playbackRate   Float    @default(1.0)
+  volume         Float    @default(1.0)
+
+  // Additional metadata
+  metadata       Json?
+  deviceId       String?
+  userAgent      String?
+
+  // Computed engagement metrics
+  watchDuration  Float?   // Duration since last event (for session calculation)
+  totalWatchTime  Float?   // Cumulative watch time (computed)
+  engagementScore Float?   // Engagement score based on interaction pattern
+
+  createdAt DateTime @default(now())
+
+  @@index([userId, videoId, createdAt])
+  @@index([videoId, eventType])
+  @@index([sessionId])
+  @@map("video_behavior_events")
+}
+
+model VideoSession {
+  id          String   @id @default(cuid())
+  userId      String
+  videoId     String
+  video       VideoSource @relation(fields: [videoId], references: [id], onDelete: Cascade)
+
+  sessionId   String   @unique
+  startTime   DateTime @default(now())
+  endTime     DateTime?
+
+  // Session metrics
+  totalWatchTime    Float @default(0)
+  activeWatchTime   Float @default(0) // Time video was actually playing
+  pauseCount        Int @default(0)
+  seekCount         Int @default(0)
+  bufferCount       Int @default(0)
+
+  // Coverage analysis
+  watchedSegments   Json // Array of [start, end] pairs showing watched portions
+  coveragePercent   Float @default(0) // Percentage of video watched
+
+  // Completion status
+  isCompleted       Boolean @default(false)
+  completionTime    DateTime?
+
+  // Context
+  context           VideoActionContext @default(NORMAL)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  events VideoBehaviorEvent[]
+
+  @@index([userId, videoId])
+  @@index([sessionId])
+  @@map("video_sessions")
+}
+
+model VideoBookmark {
+  id          String   @id @default(cuid())
+  userId      String
+  videoId     String
+  video       VideoSource @relation(fields: [videoId], references: [id], onDelete: Cascade)
+
+  timestamp   Float
+  title       String
+  description String?  @db.Text
+  thumbnailUrl String?
+
+  // Color coding for organization
+  color       String?  @default("#3b82f6")
+
+  // Tags for categorization
+  tags        String[] @default([])
+
+  // Context
+  context     VideoActionContext @default(NORMAL)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, videoId, timestamp])
+  @@map("video_bookmarks")
+}
+
+model VideoNote {
+  id          String   @id @default(cuid())
+  userId      String
+  videoId     String
+  video       VideoSource @relation(fields: [videoId], references: [id], onDelete: Cascade)
+
+  timestamp   Float
+  content     String   @db.Text
+  timeRange   Json?    // [start, end] for notes covering a time range
+
+  // Rich formatting support
+  isMarkdown  Boolean  @default(true)
+  attachments Json?    // Array of attachment references
+
+  // Organization
+  tags        String[] @default([])
+  color       String?  @default("#10b981")
+
+  // Linked assets
+  linkedKnowledgeAssetId String?
+  linkedFlashcardId      String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, videoId, timestamp])
+  @@map("video_notes")
+}
+
+model VideoHighlight {
+  id          String   @id @default(cuid())
+  userId      String
+  videoId     String
+  video       VideoSource @relation(fields: [videoId], references: [id], onDelete: Cascade)
+
+  startTime   Float
+  endTime     Float
+  title       String
+  description String?  @db.Text
+
+  // Color and style
+  color       String   @default("#f59e0b")
+  label       String?  // Short label shown on timeline
+
+  // Type of highlight
+  highlightType String @default("CUSTOM") // CUSTOM, KEY_POINT, QUOTE, SCENE, SPEAKER
+
+  // Sharing
+  isShared    Boolean  @default(false)
+  shareToken  String?  @unique
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, videoId, startTime])
+  @@map("video_highlights")
 }

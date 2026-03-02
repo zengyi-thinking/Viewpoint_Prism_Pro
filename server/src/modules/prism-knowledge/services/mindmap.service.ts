@@ -1,0 +1,804 @@
+import { Injectable, Logger } from '@nestjs/common';
+import { AITaskType } from '../../../infrastructure/ai-router/ai-router.interface';
+import { AiRouterService } from '../../../infrastructure/ai-router/ai-router.service';
+import { PrismaService } from '../../../prisma/prisma.service';
+
+/**
+ * 思维导图节点结构
+ */
+export interface MindmapNode {
+  id: string;
+  content: string;
+  level: number;
+  children?: MindmapNode[];
+  metadata?: {
+    timestamp?: number;
+    keyframeUrl?: string;
+    transcriptSegment?: string;
+  };
+}
+
+/**
+ * 思维导图生成结果
+ */
+export interface MindmapResult {
+  json: MindmapNode;
+  markdown: string;
+  mermaid: string;
+  nodeCount: number;
+}
+
+/**
+ * 思维导图生成服务
+ * 基于视频转写内容和关键帧生成结构化的思维导图
+ */
+@Injectable()
+export class MindmapService {
+  private readonly logger = new Logger(MindmapService.name);
+
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly aiRouter: AiRouterService,
+  ) {}
+
+  /**
+   * 为视频生成思维导图
+   */
+  async generateMindmap(params: {
+    userId: string;
+    videoId: string;
+    videoTitle: string;
+    transcriptSegments: Array<{ start: number; end: number; text: string }>;
+    keyframes: Array<{ timestamp: number; storagePath: string; description?: string | null }>;
+    maxDepth?: number;
+    maxNodes?: number;
+  }): Promise<MindmapResult> {
+    const {
+      userId,
+      videoId,
+      videoTitle,
+      transcriptSegments,
+      keyframes,
+      maxDepth = 4,
+      maxNodes = 50,
+    } = params;
+
+    this.logger.log(`生成思维导图: videoId=${videoId}, maxDepth=${maxDepth}, maxNodes=${maxNodes}`);
+
+    // 1. 获取现有知识资产的大纲作为上下文
+    const existingAsset = await this.prisma.knowledgeAsset.findFirst({
+      where: { videoId },
+      orderBy: { updatedAt: 'desc' },
+      select: { outlineMarkdown: true },
+    });
+
+    const outlineContext = existingAsset?.outlineMarkdown ?? null;
+
+    // 2. 使用 AI 生成思维导图结构
+    const mindmapResult = await this.generateMindmapWithAI(
+      userId,
+      videoTitle,
+      transcriptSegments,
+      keyframes,
+      outlineContext,
+      maxDepth,
+      maxNodes,
+    );
+
+    // 3. 将思维导图存储到知识资产的 notesMarkdown 中
+    await this.saveMindmapToAsset(videoId, mindmapResult);
+
+    this.logger.log(`思维导图生成完成: videoId=${videoId}, nodes=${mindmapResult.nodeCount}`);
+
+    return mindmapResult;
+  }
+
+  /**
+   * 从对话消息生成思维导图
+   */
+  async generateMindmapFromChat(params: {
+    userId: string;
+    videoId: string;
+    sessionId: string;
+    prompt: string;
+  }): Promise<MindmapResult> {
+    const { userId, videoId, sessionId, prompt } = params;
+
+    this.logger.log(`从对话生成思维导图: videoId=${videoId}, sessionId=${sessionId}`);
+
+    // 1. 获取视频相关信息
+    const video = await this.prisma.videoSource.findUnique({
+      where: { id: videoId },
+      select: { title: true, id: true },
+    });
+
+    if (!video) {
+      throw new Error('视频不存在');
+    }
+
+    // 2. 获取对话历史
+    const messages = await this.prisma.chatMessage.findMany({
+      where: { sessionId },
+      orderBy: { createdAt: 'asc' },
+      take: 20,
+    });
+
+    const conversationContext = messages
+      .map((m) => `${m.role === 'USER' ? '用户' : '助手'}: ${m.content}`)
+      .join('\n');
+
+    // 3. 获取转写内容
+    const transcript = await this.prisma.transcript.findFirst({
+      where: { videoId },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    const transcriptSegments = (transcript?.segments as Array<{ text: string }> | undefined) ?? [];
+
+    // 4. 获取关键帧
+    const keyframes = await this.prisma.keyframe.findMany({
+      where: { videoId },
+      orderBy: { timestamp: 'asc' },
+      take: 10,
+    });
+
+    // 5. 生成思维导图
+    const mindmapResult = await this.generateMindmapWithAI(
+      userId,
+      video.title,
+      transcriptSegments.map((s) => ({ start: 0, end: 0, text: s.text })),
+      keyframes.map((k) => ({
+        timestamp: k.timestamp,
+        storagePath: k.storagePath,
+        description: k.description,
+      })),
+      null,
+      4,
+      30,
+      prompt,
+      conversationContext,
+    );
+
+    await this.saveMindmapToAsset(videoId, mindmapResult);
+
+    return mindmapResult;
+  }
+
+  /**
+   * 获取视频的思维导图
+   */
+  async getMindmap(videoId: string): Promise<MindmapResult | null> {
+    const asset = await this.prisma.knowledgeAsset.findFirst({
+      where: { videoId },
+      orderBy: { updatedAt: 'desc' },
+      select: { notesMarkdown: true },
+    });
+
+    if (!asset?.notesMarkdown) {
+      return null;
+    }
+
+    try {
+      // 从 notesMarkdown 中提取思维导图数据
+      const data = JSON.parse(asset.notesMarkdown);
+      return data as MindmapResult;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * 导出思维导图为不同格式
+   */
+  async exportMindmap(params: {
+    videoId: string;
+    format: 'json' | 'markdown' | 'mermaid' | 'xmind' | 'freemind';
+  }): Promise<string> {
+    const mindmap = await this.getMindmap(params.videoId);
+
+    if (!mindmap) {
+      throw new Error('思维导图不存在');
+    }
+
+    switch (params.format) {
+      case 'json':
+        return JSON.stringify(mindmap.json, null, 2);
+      case 'markdown':
+        return mindmap.markdown;
+      case 'mermaid':
+        return mindmap.mermaid;
+      case 'xmind':
+        return this.convertToXMind(mindmap.json);
+      case 'freemind':
+        return this.convertToFreeMind(mindmap.json);
+      default:
+        throw new Error(`不支持的导出格式: ${params.format}`);
+    }
+  }
+
+  /**
+   * 使用 AI 生成思维导图
+   */
+  private async generateMindmapWithAI(
+    userId: string,
+    videoTitle: string,
+    transcriptSegments: Array<{ start: number; end: number; text: string }>,
+    keyframes: Array<{ timestamp: number; storagePath: string; description?: string | null }>,
+    outlineContext: string | null,
+    maxDepth: number,
+    maxNodes: number,
+    customPrompt?: string,
+    conversationContext?: string,
+  ): Promise<MindmapResult> {
+    try {
+      // 构建输入数据
+      const inputData = this.buildInputData(
+        videoTitle,
+        transcriptSegments,
+        keyframes,
+        outlineContext,
+      );
+
+      const systemPrompt = this.buildSystemPrompt(maxDepth, maxNodes, customPrompt);
+
+      const userPrompt = this.buildUserPrompt(inputData, conversationContext);
+
+      // 调用 LLM 生成思维导图
+      const llm = await this.aiRouter.execute(
+        AITaskType.LLM_CHAT,
+        {
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userPrompt },
+          ],
+          temperature: 0.3,
+          maxTokens: 4000,
+          responseFormat: { type: 'json_object' },
+        },
+        userId,
+      );
+
+      const text = String(llm?.text ?? '').trim();
+      if (!text) {
+        throw new Error('AI 返回空内容');
+      }
+
+      // 容错解析 AI 返回的 JSON（支持 ```json 包裹和前后噪声文本）
+      const aiResult = this.parseJsonFromLlmText(text);
+
+      // 构建思维导图结果
+      return this.buildMindmapResult(aiResult, videoTitle);
+    } catch (error) {
+      this.logger.error(`AI 生成思维导图失败: ${error.message}`, error.stack);
+
+      // 降级：使用规则生成基础思维导图
+      return this.generateFallbackMindmap(
+        videoTitle,
+        transcriptSegments,
+        keyframes,
+        maxDepth,
+        maxNodes,
+      );
+    }
+  }
+
+  /**
+   * 从 LLM 文本中提取并解析 JSON。
+   * 常见容错场景：
+   * 1) ```json ... ``` 代码块包裹
+   * 2) JSON 前后带解释性文本
+   */
+  private parseJsonFromLlmText(text: string): any {
+    const raw = text.trim();
+
+    const directCandidates = [
+      raw,
+      raw
+        .replace(/^```(?:json)?\s*/i, '')
+        .replace(/\s*```$/, '')
+        .trim(),
+      raw
+        .replace(/```json/gi, '')
+        .replace(/```/g, '')
+        .trim(),
+    ];
+
+    for (const candidate of directCandidates) {
+      if (!candidate) continue;
+      try {
+        return JSON.parse(candidate);
+      } catch {
+        // try next candidate
+      }
+    }
+
+    const extracted =
+      this.extractFirstJsonObject(raw) ||
+      this.extractFirstJsonObject(
+        raw
+          .replace(/```json/gi, '')
+          .replace(/```/g, '')
+          .trim(),
+      );
+
+    if (extracted) {
+      return JSON.parse(extracted);
+    }
+
+    throw new Error(
+      `无法解析思维导图 JSON，返回内容片段: ${raw.slice(0, 180)}`,
+    );
+  }
+
+  /**
+   * 提取文本中首个完整 JSON 对象（忽略字符串内部的大括号）。
+   */
+  private extractFirstJsonObject(text: string): string | null {
+    const start = text.indexOf('{');
+    if (start < 0) return null;
+
+    let depth = 0;
+    let inString = false;
+    let escaped = false;
+
+    for (let i = start; i < text.length; i++) {
+      const ch = text[i];
+
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+
+      if (ch === '\\') {
+        escaped = true;
+        continue;
+      }
+
+      if (ch === '"') {
+        inString = !inString;
+        continue;
+      }
+
+      if (inString) continue;
+
+      if (ch === '{') depth++;
+      if (ch === '}') {
+        depth--;
+        if (depth === 0) {
+          return text.slice(start, i + 1);
+        }
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * 构建系统提示词
+   */
+  private buildSystemPrompt(maxDepth: number, maxNodes: number, customPrompt?: string): string {
+    const basePrompt = `你是 Viewpoint Prism Pro 的思维导图生成专家。
+
+你的任务是将视频内容转换为结构化的思维导图。
+
+要求：
+1. 返回严格的 JSON 格式，包含以下字段：
+   - nodes: 节点数组，每个节点包含 id, content, level, parentId, metadata
+   - structure: 树形结构的节点对象
+2. 节点层级从 0（根节点）到 ${maxDepth - 1}
+3. 总节点数不超过 ${maxNodes}
+4. 节点内容应简洁、明确，每个节点不超过 15 字
+5. 根节点是视频标题
+6. 子节点按照逻辑层次组织
+7. 在 metadata 中可以包含 timestamp, keyframeUrl 等信息
+
+返回的 JSON 结构示例：
+{
+  "nodes": [
+    { "id": "root", "content": "视频标题", "level": 0, "parentId": null },
+    { "id": "n1", "content": "第一章", "level": 1, "parentId": "root", "metadata": { "timestamp": 10 } }
+  ],
+  "structure": {
+    "id": "root",
+    "content": "视频标题",
+    "level": 0,
+    "children": [
+      {
+        "id": "n1",
+        "content": "第一章",
+        "level": 1,
+        "children": []
+      }
+    ]
+  }
+}`;
+
+    if (customPrompt) {
+      return `${basePrompt}\n\n用户自定义要求：\n${customPrompt}`;
+    }
+
+    return basePrompt;
+  }
+
+  /**
+   * 构建用户提示词
+   */
+  private buildUserPrompt(
+    inputData: {
+      title: string;
+      transcriptSummary: string;
+      keyframes: Array<{ timestamp: number; description: string }>;
+      outlineContext: string;
+    },
+    conversationContext?: string,
+  ): string {
+    let prompt = `请为以下视频内容生成思维导图：
+
+# 视频标题
+${inputData.title}
+
+# 转写内容摘要
+${inputData.transcriptSummary}
+
+# 关键帧信息
+${inputData.keyframes.map((k) => `[${k.timestamp}s] ${k.description}`).join('\n')}
+`;
+
+    if (inputData.outlineContext) {
+      prompt += `\n# 现有大纲参考\n${inputData.outlineContext}\n`;
+    }
+
+    if (conversationContext) {
+      prompt += `\n# 对话上下文\n${conversationContext}\n`;
+    }
+
+    return prompt;
+  }
+
+  /**
+   * 构建输入数据
+   */
+  private buildInputData(
+    videoTitle: string,
+    transcriptSegments: Array<{ start: number; end: number; text: string }>,
+    keyframes: Array<{ timestamp: number; storagePath: string; description?: string | null }>,
+    outlineContext: string | null,
+  ) {
+    // 摘要转写内容（取前 15 段）
+    const transcriptSummary = transcriptSegments
+      .slice(0, 15)
+      .map((s) => `[${s.start.toFixed(1)}s] ${s.text}`)
+      .join('\n');
+
+    // 整理关键帧信息
+    const keyframeInfo = keyframes.slice(0, 8).map((k) => ({
+      timestamp: k.timestamp,
+      description: k.description || '关键画面',
+    }));
+
+    return {
+      title: videoTitle,
+      transcriptSummary,
+      keyframes: keyframeInfo,
+      outlineContext: outlineContext || '',
+    };
+  }
+
+  /**
+   * 构建思维导图结果
+   */
+  private buildMindmapResult(aiResult: any, videoTitle: string): MindmapResult {
+    const structure = aiResult.structure || this.buildDefaultStructure(videoTitle);
+    const nodes = aiResult.nodes || [];
+
+    // 转换为标准格式
+    const jsonNode = this.normalizeNode(structure);
+    const markdown = this.convertToMarkdown(jsonNode);
+    const mermaid = this.convertToMermaid(jsonNode);
+    const nodeCount = this.countNodes(jsonNode);
+
+    return {
+      json: jsonNode,
+      markdown,
+      mermaid,
+      nodeCount,
+    };
+  }
+
+  /**
+   * 转换为标准节点格式
+   */
+  private normalizeNode(node: any): MindmapNode {
+    const normalized: MindmapNode = {
+      id: node.id || `node-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      content: node.content || '未命名节点',
+      level: node.level || 0,
+      metadata: node.metadata || {},
+    };
+
+    if (node.children && Array.isArray(node.children)) {
+      normalized.children = node.children.map((child: any) => this.normalizeNode(child));
+    }
+
+    return normalized;
+  }
+
+  /**
+   * 构建默认结构
+   */
+  private buildDefaultStructure(videoTitle: string): MindmapNode {
+    return {
+      id: 'root',
+      content: videoTitle,
+      level: 0,
+      children: [],
+    };
+  }
+
+  /**
+   * 转换为 Markdown 格式
+   */
+  private convertToMarkdown(node: MindmapNode, indent = 0): string {
+    const prefix = '  '.repeat(indent);
+    const marker = indent === 0 ? '#' : '-'.repeat(Math.min(indent + 1, 3));
+    const lines: string[] = [];
+
+    lines.push(`${prefix}${marker} ${node.content}`);
+
+    if (node.children) {
+      node.children.forEach((child) => {
+        lines.push(this.convertToMarkdown(child, indent + 1));
+      });
+    }
+
+    return lines.join('\n');
+  }
+
+  /**
+   * 转换为 Mermaid 格式
+   */
+  private convertToMermaid(node: MindmapNode): string {
+    const lines: string[] = ['mindmap'];
+    lines.push('  root((${node.content}))');
+
+    const addChildren = (parentNode: MindmapNode, prefix: string) => {
+      if (!parentNode.children) return;
+
+      parentNode.children.forEach((child, index) => {
+        const nodeId = `${parentNode.id}-${index}`;
+        const content = child.content.replace(/[()]/g, '');
+        lines.push(`${prefix} ${child.id}(${content})`);
+
+        if (child.children && child.children.length > 0) {
+          addChildren(child, `${prefix} ${child.id}`);
+        }
+      });
+    };
+
+    addChildren(node, '  ');
+
+    return lines.join('\n');
+  }
+
+  /**
+   * 统计节点数量
+   */
+  private countNodes(node: MindmapNode): number {
+    let count = 1;
+    if (node.children) {
+      node.children.forEach((child) => {
+        count += this.countNodes(child);
+      });
+    }
+    return count;
+  }
+
+  /**
+   * 生成降级思维导图（当 AI 失败时）
+   */
+  private generateFallbackMindmap(
+    videoTitle: string,
+    transcriptSegments: Array<{ start: number; end: number; text: string }>,
+    keyframes: Array<{ timestamp: number; storagePath: string; description?: string | null }>,
+    maxDepth: number,
+    maxNodes: number,
+  ): MindmapResult {
+    const rootNode: MindmapNode = {
+      id: 'root',
+      content: videoTitle,
+      level: 0,
+      children: [],
+    };
+
+    let nodeCount = 1;
+    const segmentGroups = this.groupSegments(transcriptSegments, 5);
+
+    segmentGroups.forEach((group, groupIndex) => {
+      if (nodeCount >= maxNodes) return;
+
+      const groupNode: MindmapNode = {
+        id: `group-${groupIndex}`,
+        content: this.extractTopicFromSegments(group),
+        level: 1,
+        children: [],
+        metadata: {
+          timestamp: group[0]?.start,
+        },
+      };
+
+      nodeCount++;
+      rootNode.children!.push(groupNode);
+
+      group.slice(0, 3).forEach((segment, segIndex) => {
+        if (nodeCount >= maxNodes) return;
+
+        const segNode: MindmapNode = {
+          id: `seg-${groupIndex}-${segIndex}`,
+          content: this.truncateText(segment.text, 12),
+          level: 2,
+          metadata: {
+            timestamp: segment.start,
+          },
+        };
+
+        nodeCount++;
+        groupNode.children!.push(segNode);
+      });
+    });
+
+    const markdown = this.convertToMarkdown(rootNode);
+    const mermaid = this.convertToMermaid(rootNode);
+
+    return {
+      json: rootNode,
+      markdown,
+      mermaid,
+      nodeCount,
+    };
+  }
+
+  /**
+   * 分组转写片段
+   */
+  private groupSegments(
+    segments: Array<{ start: number; end: number; text: string }>,
+    groupSize: number,
+  ) {
+    const groups: typeof segments[] = [];
+    for (let i = 0; i < segments.length; i += groupSize) {
+      groups.push(segments.slice(i, i + groupSize));
+    }
+    return groups;
+  }
+
+  /**
+   * 从片段中提取主题
+   */
+  private extractTopicFromSegments(segments: Array<{ start: number; end: number; text: string }>): string {
+    if (!segments.length) return '未命名主题';
+    const firstText = segments[0].text;
+    return this.truncateText(firstText, 15);
+  }
+
+  /**
+   * 截断文本
+   */
+  private truncateText(text: string, maxLength: number): string {
+    const clean = text.trim().replace(/\s+/g, ' ');
+    return clean.length > maxLength ? clean.substring(0, maxLength) + '...' : clean;
+  }
+
+  /**
+   * 保存思维导图到知识资产
+   */
+  private async saveMindmapToAsset(videoId: string, mindmap: MindmapResult): Promise<void> {
+    const existing = await this.prisma.knowledgeAsset.findFirst({
+      where: { videoId },
+      orderBy: { updatedAt: 'desc' },
+    });
+
+    const mindmapJson = JSON.stringify(mindmap);
+
+    if (existing) {
+      await this.prisma.knowledgeAsset.update({
+        where: { id: existing.id },
+        data: {
+          notesMarkdown: mindmapJson,
+          status: 'COMPLETED',
+        },
+      });
+    } else {
+      await this.prisma.knowledgeAsset.create({
+        data: {
+          videoId,
+          outlineMarkdown: '# 知识大纲\n\n（待生成）',
+          notesMarkdown: mindmapJson,
+          status: 'COMPLETED',
+        },
+      });
+    }
+  }
+
+  /**
+   * 转换为 XMind 格式
+   */
+  private convertToXMind(node: MindmapNode): string {
+    // 简化的 XMind 格式
+    const xmindData = {
+      workbook: {
+        sheets: [
+          {
+            id: 'sheet-1',
+            title: node.content,
+            rootTopic: this.convertNodeToXMindTopic(node),
+          },
+        ],
+      },
+    };
+    return JSON.stringify(xmindData, null, 2);
+  }
+
+  /**
+   * 转换节点为 XMind 主题
+   */
+  private convertNodeToXMindTopic(node: MindmapNode): any {
+    const topic: any = {
+      id: node.id,
+      title: node.content,
+    };
+
+    if (node.metadata?.timestamp !== undefined) {
+      topic.timestamp = node.metadata.timestamp;
+    }
+
+    if (node.children && node.children.length > 0) {
+      topic.children = {
+        attached: node.children.map((child) => this.convertNodeToXMindTopic(child)),
+      };
+    }
+
+    return topic;
+  }
+
+  /**
+   * 转换为 FreeMind 格式
+   */
+  private convertToFreeMind(node: MindmapNode): string {
+    const lines: string[] = ['<map version="1.0.1">'];
+    this.convertNodeToFreeMindXML(node, lines, 0);
+    lines.push('</map>');
+    return lines.join('\n');
+  }
+
+  /**
+   * 转换节点为 FreeMind XML
+   */
+  private convertNodeToFreeMindXML(node: MindmapNode, lines: string[], level: number): void {
+    const indent = '  '.repeat(level);
+    const attribs = [`ID="${node.id}"`, `TEXT="${this.escapeXML(node.content)}"`];
+
+    if (node.metadata?.timestamp !== undefined) {
+      attribs.push(`TIMESTAMP="${node.metadata.timestamp}"`);
+    }
+
+    if (node.children && node.children.length > 0) {
+      lines.push(`${indent}<node ${attribs.join(' ')}>`);
+      node.children.forEach((child) => this.convertNodeToFreeMindXML(child, lines, level + 1));
+      lines.push(`${indent}</node>`);
+    } else {
+      lines.push(`${indent}<node ${attribs.join(' ')}/>`);
+    }
+  }
+
+  /**
+   * 转义 XML 特殊字符
+   */
+  private escapeXML(text: string): string {
+    return text
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&apos;');
+  }
+}

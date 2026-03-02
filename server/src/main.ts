@@ -12,7 +12,18 @@ async function bootstrap() {
   app.useGlobalFilters(new HttpExceptionFilter());
   app.useGlobalInterceptors(new ResponseInterceptor());
 
-  await app.listen(3001);
-  console.log('Server running on http://localhost:3001');
+  const port = Number(process.env.PORT || 3001);
+
+  try {
+    await app.listen(port);
+    console.log(`Server running on http://localhost:${port}`);
+  } catch (error: any) {
+    if (error?.code === 'EADDRINUSE') {
+      console.error(
+        `Port ${port} is already in use. Stop the existing process or set a different PORT in your .env.`,
+      );
+    }
+    throw error;
+  }
 }
 bootstrap();

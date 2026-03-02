@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { videoApi, VideoSource } from '@/services/video.api';
+import { knowledgeApi } from '@/services/knowledge.api';
 import { UploadVideoModal } from './UploadVideoModal';
 import { useWorkbenchStore } from '@/stores/workbench.store';
 
@@ -21,6 +22,7 @@ export function VideoSourcePanel({
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [deleteConfirmVideo, setDeleteConfirmVideo] = useState<VideoSource | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
   const queryClient = useQueryClient();
 
   // WorkbenchStore state
@@ -62,22 +64,39 @@ export function VideoSourcePanel({
     setCurrentVideo(video);
   };
 
-  // Handle confirm import (analyze selected videos)
+  // Handle confirm analyze (analyze selected videos one-by-one on backend)
   const handleConfirmImport = async () => {
-    if (selectedVideoIds.length === 0) return;
+    if (selectedVideoIds.length === 0 || isAnalyzing) return;
 
+    const firstSelectedVideo =
+      filtered.find((video) => selectedVideoIds.includes(video.id)) ??
+      videos.find((video) => selectedVideoIds.includes(video.id)) ??
+      null;
+
+    setIsAnalyzing(true);
     try {
-      // TODO: 调用后端分析API
-      // await videoApi.analyze(selectedVideoIds);
+      const batchResult = await knowledgeApi.analyzeBatch({
+        videoIds: selectedVideoIds,
+        regenerateTranscript: false,
+        regenerateKeyframes: false,
+      });
 
-      console.log('Starting analysis for videos:', selectedVideoIds);
+      await queryClient.invalidateQueries({ queryKey: ['videos', projectId] });
 
-      // 显示成功提示（可以使用 toast）
-      alert(`已选择 ${selectedVideoIds.length} 个视频进行分析`);
+      // 勾选导入后自动绑定一个当前视频，避免聊天没有视频上下文。
+      if (!currentVideo && firstSelectedVideo) {
+        setCurrentVideo(firstSelectedVideo);
+      }
+
+      alert(
+        `分析完成：成功 ${batchResult.completed} 个，失败 ${batchResult.failed} 个。`,
+      );
       clearVideoSelection();
     } catch (error) {
       console.error('Failed to analyze videos:', error);
       alert('分析启动失败，请重试');
+    } finally {
+      setIsAnalyzing(false);
     }
   };
 
@@ -333,14 +352,15 @@ export function VideoSourcePanel({
           )}
         </div>
 
-        {/* Confirm Import Button (show when videos are selected) */}
+        {/* Confirm Analyze Button (show when videos are selected) */}
         {selectedVideoIds.length > 0 && (
           <div className="border-t border-border-subtle p-3">
             <button
               onClick={handleConfirmImport}
+              disabled={isAnalyzing}
               className="w-full rounded-xl bg-accent-primary py-2.5 text-sm font-medium text-text-inverse transition hover:opacity-90"
             >
-              确认导入 ({selectedVideoIds.length})
+              {isAnalyzing ? '分析中...' : `确认分析 (${selectedVideoIds.length})`}
             </button>
           </div>
         )}

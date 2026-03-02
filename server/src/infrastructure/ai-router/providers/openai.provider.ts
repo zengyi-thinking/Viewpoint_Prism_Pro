@@ -95,7 +95,8 @@ export class OpenAIProvider extends BaseProvider {
     ];
 
     // Add image if provided (base64 or URL)
-    const finalImage = imageUrl || image;
+    // Prefer base64 image payload; localhost URLs are unreachable from cloud providers.
+    const finalImage = image || imageUrl;
     if (finalImage) {
       if (finalImage.startsWith('http')) {
         content.push({ type: 'image_url', image_url: { url: finalImage } });

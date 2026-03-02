@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { useWorkbenchStore } from '@/stores/workbench.store';
 import { getToken } from '@/services/api';
+import { useVideoBehaviorTracking } from '@/hooks/useVideoBehaviorTracking';
+import { VideoEventType, VideoActionContext } from '@/types/video-behavior';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
@@ -13,6 +15,11 @@ const MAX_PLAYER_HEIGHT = 600;
 
 export function PlayerCenter() {
   const { currentVideo } = useWorkbenchStore();
+  const tracking = useVideoBehaviorTracking({
+    videoId: currentVideo?.id ?? '',
+    enabled: !!currentVideo?.id,
+    context: VideoActionContext.NORMAL,
+  });
   const videoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -41,9 +48,13 @@ export function PlayerCenter() {
     const relativePath = video.videoUrl || video.storagePath || '';
     if (!relativePath) return '';
 
+    // 确保正确拼接 URL（添加斜杠）
+    const baseUrl = API_BASE.endsWith('/') ? API_BASE : `${API_BASE}/`;
+    const path = relativePath.startsWith('/') ? relativePath.slice(1) : relativePath;
+
     const token = getToken();
-    const separator = relativePath.includes('?') ? '&' : '?';
-    return `${API_BASE}${relativePath}${separator}token=${encodeURIComponent(token || '')}`;
+    const separator = path.includes('?') ? '&' : '?';
+    return `${baseUrl}${path}${separator}token=${encodeURIComponent(token || '')}`;
   };
 
   // Reset state when video changes
@@ -92,7 +103,6 @@ export function PlayerCenter() {
       } else {
         videoRef.current.play();
       }
-      setIsPlaying(!isPlaying);
     }
   };
 
@@ -115,8 +125,13 @@ export function PlayerCenter() {
   const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
     const time = parseFloat(e.target.value);
     if (videoRef.current) {
+      const previousTime = videoRef.current.currentTime;
       videoRef.current.currentTime = time;
       setCurrentTime(time);
+      tracking.trackEvent(VideoEventType.SEEK, {
+        previousTime,
+        currentTime: time,
+      });
     }
   };
 
@@ -126,6 +141,10 @@ export function PlayerCenter() {
     if (videoRef.current) {
       videoRef.current.volume = vol;
       setVolume(vol);
+      tracking.trackEvent(VideoEventType.VOLUME_CHANGE, {
+        currentTime: videoRef.current.currentTime,
+        volume: vol,
+      });
     }
   };
 
@@ -151,6 +170,11 @@ export function PlayerCenter() {
   useEffect(() => {
     const handleFullscreenChange = () => {
       setIsFullscreen(!!document.fullscreenElement);
+      if (document.fullscreenElement) {
+        tracking.trackEvent(VideoEventType.FULLSCREEN, {
+          currentTime: videoRef.current?.currentTime ?? 0,
+        });
+      }
     };
     document.addEventListener('fullscreenchange', handleFullscreenChange);
     return () => {
@@ -251,8 +275,24 @@ export function PlayerCenter() {
               onTimeUpdate={handleTimeUpdate}
               onLoadedMetadata={handleLoadedMetadata}
               onError={handleVideoError}
-              onPlay={() => setIsPlaying(true)}
-              onPause={() => setIsPlaying(false)}
+              onPlay={() => {
+                setIsPlaying(true);
+                tracking.trackEvent(VideoEventType.PLAY, {
+                  currentTime: videoRef.current?.currentTime ?? 0,
+                });
+              }}
+              onPause={() => {
+                setIsPlaying(false);
+                tracking.trackEvent(VideoEventType.PAUSE, {
+                  currentTime: videoRef.current?.currentTime ?? 0,
+                });
+              }}
+              onEnded={() => {
+                tracking.trackEvent(VideoEventType.END, {
+                  currentTime: videoRef.current?.duration ?? 0,
+                });
+                tracking.endSession(videoRef.current?.duration ?? 0);
+              }}
               controls={false}
               playsInline
               crossOrigin="anonymous"

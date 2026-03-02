@@ -1,6 +1,7 @@
 'use client';
 
 import { useWorkbenchStore, PrismType } from '@/stores/workbench.store';
+import { KnowledgeBoard } from '@/components/prisms/knowledge';
 
 const prisms: { type: PrismType; label: string; subtitle: string; color: string; icon: React.ReactNode }[] = [
   {
@@ -163,7 +164,7 @@ export function PrismSwitcher({ collapsed = false, onToggle }: PrismSwitcherProp
 }
 
 function PrismActivePanel() {
-  const { activePrism } = useWorkbenchStore();
+  const { activePrism, currentVideo } = useWorkbenchStore();
 
   const config: Record<string, { title: string; color: string; desc: string }> = {
     knowledge: { title: '知识棱镜', color: '#F59E0B', desc: '实时捕获关键帧，生成结构化大纲与学习笔记' },
@@ -174,6 +175,31 @@ function PrismActivePanel() {
 
   if (!activePrism) return null;
   const c = config[activePrism];
+
+  if (activePrism === 'knowledge') {
+    if (!currentVideo) {
+      return (
+        <div className="panel flex h-full flex-col rounded-none border-t border-l-0 border-r-0 border-b-0">
+          <div className="px-4 py-3">
+            <div className="flex items-center gap-2">
+              <span className="status-dot" style={{ background: c.color }} />
+              <span className="text-xs font-medium text-text-secondary">{c.title}</span>
+            </div>
+            <p className="mt-1 text-[10px] text-text-tertiary">{c.desc}</p>
+          </div>
+          <div className="flex flex-1 items-center justify-center px-4">
+            <p className="text-center text-[10px] text-text-tertiary">请先选择视频开始分析</p>
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div className="panel flex h-full flex-col rounded-none border-t border-l-0 border-r-0 border-b-0">
+        <KnowledgeBoard videoId={currentVideo.id} />
+      </div>
+    );
+  }
 
   return (
     <div className="panel flex h-full flex-col rounded-none border-t border-l-0 border-r-0 border-b-0">

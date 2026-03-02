@@ -11,6 +11,7 @@ import { AuthModule } from './modules/auth/auth.module';
 import { UserModule } from './modules/user/user.module';
 import { ProjectModule } from './modules/project/project.module';
 import { VideoModule } from './modules/video/video.module';
+import { VideoBehaviorModule } from './modules/video-behavior/video-behavior.module';
 import { ChatModule } from './modules/chat/chat.module';
 import { KnowledgeModule } from './modules/prism-knowledge/knowledge.module';
 import { CreationModule } from './modules/prism-creation/creation.module';
@@ -34,6 +35,7 @@ import { SettingsModule } from './modules/settings/settings.module';
     UserModule,
     ProjectModule,
     VideoModule,
+    VideoBehaviorModule,
     ChatModule,
     SettingsModule,
     // Prism modules
