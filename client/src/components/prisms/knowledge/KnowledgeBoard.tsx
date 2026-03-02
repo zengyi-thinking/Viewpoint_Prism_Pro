@@ -4,6 +4,8 @@ import { useEffect, useState } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { MindmapViewer } from './MindmapViewer';
 import { CrystalCardViewer } from './CrystalCardViewer';
+import { OutlinePanel } from './OutlinePanel';
+import { FlashcardsPanel } from './FlashcardsPanel';
 import { knowledgeApi } from '@/services/knowledge.api';
 import type { MindmapResult } from '@/types/mindmap';
 import { Loader2 } from 'lucide-react';
@@ -42,8 +44,8 @@ export function KnowledgeBoard({ videoId, onTimeClick }: KnowledgeBoardProps) {
     try {
       setIsGenerating(true);
       await knowledgeApi.generateMindmap(videoId, {
-        maxDepth: 4,
-        maxNodes: 50,
+        maxDepth: 5,
+        maxNodes: 90,
       });
       await loadMindmap();
     } catch (error) {
@@ -107,21 +109,18 @@ export function KnowledgeBoard({ videoId, onTimeClick }: KnowledgeBoardProps) {
               onGenerate={handleGenerateMindmap}
               isGenerating={isGenerating}
               videoId={videoId}
+              onTimeClick={onTimeClick}
               onExport={handleExportMindmap}
             />
           )}
         </TabsContent>
 
-        <TabsContent value="outline" className="flex-1 m-0 p-4 overflow-auto">
-          <div className="text-sm text-muted-foreground">
-            知识大纲功能开发中...
-          </div>
+        <TabsContent value="outline" className="flex-1 m-0 p-0 overflow-hidden">
+          <OutlinePanel videoId={videoId} onTimeClick={onTimeClick} />
         </TabsContent>
 
-        <TabsContent value="flashcards" className="flex-1 m-0 p-4 overflow-auto">
-          <div className="text-sm text-muted-foreground">
-            学习卡片功能开发中...
-          </div>
+        <TabsContent value="flashcards" className="flex-1 m-0 p-0 overflow-hidden">
+          <FlashcardsPanel videoId={videoId} onTimeClick={onTimeClick} />
         </TabsContent>
       </Tabs>
     </div>

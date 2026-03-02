@@ -5,6 +5,7 @@ import { FfmpegService } from '../../infrastructure/media/ffmpeg.service';
 import { VideoSourceType } from './dto';
 import * as os from 'os';
 import * as path from 'path';
+import { decodeMojibakeUtf8, resolveVideoExtension } from './video-filename.util';
 
 @Injectable()
 export class VideoService {
@@ -31,6 +32,7 @@ export class VideoService {
     title: string,
     sourceType: VideoSourceType,
     sourceUrl?: string,
+    originalFilename?: string,
   ) {
     // Verify project ownership
     const project = await this.prisma.project.findUnique({
@@ -46,17 +48,23 @@ export class VideoService {
     }
 
     // Generate storage path
+    const safeTitle = decodeMojibakeUtf8(title) || `video-${Date.now()}`;
+    const filenameForStorage =
+      sourceType === VideoSourceType.LOCAL_UPLOAD
+        ? decodeMojibakeUtf8(originalFilename || `${safeTitle}.mp4`)
+        : `${safeTitle}.mp4`;
+
     const storagePath = this.storage.generateStoragePath(
       userId,
       projectId,
       'videos',
-      `${title}.${sourceType === VideoSourceType.LOCAL_UPLOAD ? 'mp4' : 'mp4'}`,
+      filenameForStorage,
     );
 
     // Store URL in metadata for non-local uploads
     const createData: any = {
       projectId,
-      title,
+      title: safeTitle,
       sourceType,
       sourceUrl,
       storagePath,
@@ -113,7 +121,8 @@ export class VideoService {
     }
 
     // Upload to MinIO
-    const encodedOriginalName = Buffer.from(filename, 'utf8').toString('base64');
+    const normalizedFilename = decodeMojibakeUtf8(filename) || filename;
+    const encodedOriginalName = Buffer.from(normalizedFilename, 'utf8').toString('base64');
     const metaData = {
       'Content-Type': mimeType,
       // Keep original filename for traceability, but encode to ASCII-safe value.
@@ -129,7 +138,8 @@ export class VideoService {
 
     try {
       // Save buffer to temp file for FFmpeg processing
-      const tempPath = path.join(os.tmpdir(), `${videoId}-${Date.now()}.mp4`);
+      const ext = resolveVideoExtension(normalizedFilename, mimeType);
+      const tempPath = path.join(os.tmpdir(), `${videoId}-${Date.now()}${ext}`);
       require('fs').writeFileSync(tempPath, fileBuffer);
 
       // Get metadata

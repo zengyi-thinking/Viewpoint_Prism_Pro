@@ -7,6 +7,7 @@ import { ChatDock } from './ChatDock';
 import { PrismSwitcher } from './PrismSwitcher';
 import { ThemeSelector } from '@/components/theme';
 import Link from 'next/link';
+import { useWorkbenchStore } from '@/stores/workbench.store';
 
 const LEFT_MIN_WIDTH = 220;
 const RIGHT_MIN_WIDTH = 260;
@@ -16,6 +17,7 @@ const COLLAPSED_WIDTH = 48;
 type DragTarget = 'left' | 'right' | null;
 
 export function WorkbenchShell({ projectName, projectId }: { projectName?: string; projectId?: string }) {
+  const requestSeekTo = useWorkbenchStore((s) => s.requestSeekTo);
   const containerRef = useRef<HTMLDivElement>(null);
   const [leftWidth, setLeftWidth] = useState(280);
   const [rightWidth, setRightWidth] = useState(320);
@@ -222,7 +224,11 @@ export function WorkbenchShell({ projectName, projectId }: { projectName?: strin
           }`}
           style={{ width: rightCollapsed ? `${COLLAPSED_WIDTH}px` : `${rightWidth}px` }}
         >
-          <PrismSwitcher collapsed={rightCollapsed} onToggle={() => setRightCollapsed(!rightCollapsed)} />
+          <PrismSwitcher
+            collapsed={rightCollapsed}
+            onToggle={() => setRightCollapsed(!rightCollapsed)}
+            onTimeClick={requestSeekTo}
+          />
         </div>
       </div>
     </div>

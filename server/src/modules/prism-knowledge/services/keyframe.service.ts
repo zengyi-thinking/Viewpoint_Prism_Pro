@@ -84,7 +84,8 @@ export class KeyframeService {
   ) {
     const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'vp-keyframe-'));
     try {
-      const tempVideoPath = path.join(tempDir, `${video.id}.mp4`);
+      const videoExt = await this.inferExtForTempVideo(video.storagePath);
+      const tempVideoPath = path.join(tempDir, `${video.id}${videoExt}`);
       const downloaded = await this.storage.download(video.storagePath);
       await fs.writeFile(tempVideoPath, downloaded);
 
@@ -247,5 +248,41 @@ export class KeyframeService {
       .filter((ts) => ts > 0);
 
     return Array.from(new Set(clamped));
+  }
+
+  private inferExtFromStoragePath(storagePath: string): string {
+    const ext = path.extname(storagePath || '').toLowerCase();
+    if (!ext) return '.mp4';
+    if (ext.length > 10 || /[^a-z0-9.]/i.test(ext)) return '.mp4';
+    return ext;
+  }
+
+  private async inferExtForTempVideo(storagePath: string): Promise<string> {
+    const extFromMeta = await this.readExtFromObjectMetadata(storagePath);
+    if (extFromMeta) return extFromMeta;
+    return this.inferExtFromStoragePath(storagePath);
+  }
+
+  private async readExtFromObjectMetadata(storagePath: string): Promise<string | null> {
+    try {
+      const stat = (await this.storage.getMetadata(storagePath)) as any;
+      const meta = (stat?.metaData ?? {}) as Record<string, string>;
+      const encoded =
+        meta['x-amz-meta-original-filename-b64'] ??
+        meta['X-Amz-Meta-Original-Filename-B64'] ??
+        meta['original-filename-b64'];
+      if (!encoded) return null;
+
+      const originalName = Buffer.from(
+        decodeURIComponent(String(encoded)),
+        'base64',
+      ).toString('utf8');
+
+      const ext = path.extname(originalName || '').toLowerCase();
+      if (!ext || ext.length > 10 || /[^a-z0-9.]/i.test(ext)) return null;
+      return ext;
+    } catch {
+      return null;
+    }
   }
 }

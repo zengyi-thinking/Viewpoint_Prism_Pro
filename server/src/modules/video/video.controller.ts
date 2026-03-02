@@ -26,6 +26,10 @@ import {
   VideoResponseDto,
   VideoSourceType,
 } from './dto';
+import {
+  decodeMojibakeUtf8,
+  stripFileExtension,
+} from './video-filename.util';
 
 @Controller('api/videos')
 @UseGuards(JwtAuthGuard)
@@ -56,19 +60,22 @@ export class VideoController {
     )
     file: Express.Multer.File,
   ) {
-    const title = file.originalname.replace(/\.[^/.]+$/, ''); // Remove extension
+    const normalizedOriginalName = decodeMojibakeUtf8(file.originalname);
+    const title = stripFileExtension(normalizedOriginalName) || `video-${Date.now()}`;
     const video = await this.videoService.create(
       projectId,
       userId,
       title,
       VideoSourceType.LOCAL_UPLOAD,
+      undefined,
+      normalizedOriginalName,
     );
 
     const updated = await this.videoService.uploadFile(
       video.id,
       userId,
       file.buffer,
-      file.originalname,
+      normalizedOriginalName,
       file.mimetype,
     );
 
@@ -215,7 +222,7 @@ export class VideoController {
     return {
       id: video.id,
       projectId: video.projectId,
-      title: video.title,
+      title: decodeMojibakeUtf8(video.title),
       sourceType: video.sourceType as VideoSourceType,
       sourceUrl: video.sourceUrl,
       storagePath: video.storagePath,

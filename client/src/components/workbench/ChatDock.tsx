@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { chatApi, type QuickPrompt } from '@/services/chat.api';
+import { getToken } from '@/services/api';
 import { useWorkbenchStore } from '@/stores/workbench.store';
 
 interface Message {
@@ -14,6 +15,37 @@ interface ChatDockProps {
   projectId?: string;
   height?: number; // Keep for compatibility but unused
 }
+
+const DEFAULT_QUICK_PROMPTS: QuickPrompt[] = [
+  {
+    id: 'mindmap',
+    type: 'mindmap',
+    label: '生成思维导图',
+    icon: '🧠',
+    promptTemplate: '/mindmap 生成当前视频的结构化思维导图，包括主线、分支和关键结论。',
+  },
+  {
+    id: 'summary',
+    type: 'summary',
+    label: '智能总结',
+    icon: '📝',
+    promptTemplate: '/summarize 总结当前视频核心观点和关键结论。',
+  },
+  {
+    id: 'crystal_card',
+    type: 'crystal_card',
+    label: '生成晶体卡片',
+    icon: '💎',
+    promptTemplate: '/summarize 生成可学习的晶体卡片并给出复习路径。',
+  },
+  {
+    id: 'explain',
+    type: 'explain',
+    label: '通俗解释',
+    icon: '💡',
+    promptTemplate: '请用通俗易懂的方式解释当前视频内容，并给一个生活化例子。',
+  },
+];
 
 export function ChatDock({ projectId, height }: ChatDockProps) {
   const { activePrism, currentVideo, setActivePrism } = useWorkbenchStore();
@@ -32,12 +64,18 @@ export function ChatDock({ projectId, height }: ChatDockProps) {
 
   useEffect(() => {
     const fetchQuickPrompts = async () => {
+      if (!getToken()) {
+        setQuickPrompts(DEFAULT_QUICK_PROMPTS);
+        return;
+      }
+
       setIsLoadingPrompts(true);
       try {
         const data = await chatApi.getQuickPrompts();
-        setQuickPrompts(data.prompts || []);
+        setQuickPrompts(data.prompts?.length ? data.prompts : DEFAULT_QUICK_PROMPTS);
       } catch (error) {
-        console.error('Failed to fetch quick prompts:', error);
+        console.warn('Failed to fetch quick prompts, use local fallback.', error);
+        setQuickPrompts(DEFAULT_QUICK_PROMPTS);
       } finally {
         setIsLoadingPrompts(false);
       }
@@ -92,6 +130,14 @@ export function ChatDock({ projectId, height }: ChatDockProps) {
         return;
       }
 
+      if (!getToken()) {
+        setSessionId(null);
+        setSessionVideoId(null);
+        setSessionPrism(null);
+        setMessages([]);
+        return;
+      }
+
       const cachedMessages = messagesByContextRef.current[contextKey];
       setMessages(cachedMessages ?? []);
 
@@ -112,14 +158,14 @@ export function ChatDock({ projectId, height }: ChatDockProps) {
           messagesByContextRef.current[contextKey] = mapped;
           return;
         } catch (error) {
-          console.error('Failed to load cached session history:', error);
+          console.warn('Failed to load cached session history:', error);
         }
       }
 
       try {
         await createSessionForContext();
       } catch (error) {
-        console.error('Failed to initialize chat session:', error);
+        console.warn('Failed to initialize chat session:', error);
       }
     };
 
@@ -155,6 +201,17 @@ export function ChatDock({ projectId, height }: ChatDockProps) {
   const handleSend = async (content: string) => {
     const messageContent = content || input;
     if (!messageContent.trim() || isSending) return;
+    if (!getToken()) {
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: Date.now().toString(),
+          role: 'assistant',
+          content: '登录状态已失效，请重新登录后再使用对话功能。',
+        },
+      ]);
+      return;
+    }
 
     const normalized = messageContent.trim().toLowerCase();
     const isMindmapIntent =
@@ -213,12 +270,13 @@ export function ChatDock({ projectId, height }: ChatDockProps) {
         return next;
       });
     } catch (error) {
-      console.error('Failed to send message:', error);
+      const errorText = error instanceof Error ? error.message : '未知错误';
+      console.warn('Failed to send message:', error);
       setMessages((prev) => {
         const errorMsg: Message = {
           id: (Date.now() + 1).toString(),
           role: 'assistant',
-          content: '消息发送失败，请检查后端服务与登录状态。',
+          content: `消息发送失败：${errorText}`,
         };
         const next = [
           ...prev,

@@ -198,8 +198,8 @@ export class ChatService {
         await this.knowledgeService.generateMindmap(userId, resolvedVideoId, {
           sessionId,
           prompt,
-          maxDepth: 4,
-          maxNodes: 50,
+          maxDepth: 5,
+          maxNodes: 90,
         });
       }
 

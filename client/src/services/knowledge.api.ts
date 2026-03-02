@@ -25,6 +25,34 @@ export interface ExportKnowledgePayload {
   target?: 'markdown' | 'notion' | 'feishu';
 }
 
+export interface KnowledgeOutlineResponse {
+  userId: string;
+  videoId: string;
+  status: 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED';
+  assetId?: string | null;
+  outlineMarkdown: string;
+  notesMarkdown?: string;
+}
+
+export interface FlashcardItem {
+  id: string;
+  front: string;
+  back: string;
+  chapter?: string | null;
+  difficulty: number;
+  createdAt: string;
+}
+
+export interface KnowledgeFlashcardsResponse {
+  userId: string;
+  videoId: string;
+  status: 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED';
+  assetId?: string | null;
+  items: FlashcardItem[];
+  count: number;
+  flashcards?: FlashcardItem[];
+}
+
 export const knowledgeApi = {
   analyze: (videoId: string, payload: AnalyzeKnowledgePayload = {}) =>
     apiFetch(`/api/prism/knowledge/videos/${videoId}/analyze`, {
@@ -54,10 +82,32 @@ export const knowledgeApi = {
     apiFetch(`/api/prism/knowledge/videos/${videoId}/transcript`),
 
   getOutline: (videoId: string) =>
-    apiFetch(`/api/prism/knowledge/videos/${videoId}/outline`),
+    apiFetch<KnowledgeOutlineResponse>(`/api/prism/knowledge/videos/${videoId}/outline`),
+
+  regenerateOutline: (videoId: string) =>
+    apiFetch<{
+      taskId: string;
+      status: 'completed';
+      outlineMarkdown: string;
+      assetId: string;
+    }>(`/api/prism/knowledge/videos/${videoId}/outline/regenerate`, {
+      method: 'POST',
+      body: JSON.stringify({}),
+    }),
 
   getFlashcards: (videoId: string) =>
-    apiFetch(`/api/prism/knowledge/videos/${videoId}/flashcards`),
+    apiFetch<KnowledgeFlashcardsResponse>(`/api/prism/knowledge/videos/${videoId}/flashcards`),
+
+  regenerateFlashcards: (videoId: string, payload: { maxCards?: number } = {}) =>
+    apiFetch<{
+      taskId: string;
+      status: 'completed';
+      count: number;
+      items: any[];
+    }>(`/api/prism/knowledge/videos/${videoId}/flashcards/regenerate`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
 
   export: (videoId: string, payload: ExportKnowledgePayload = {}) =>
     apiFetch(`/api/prism/knowledge/videos/${videoId}/export`, {

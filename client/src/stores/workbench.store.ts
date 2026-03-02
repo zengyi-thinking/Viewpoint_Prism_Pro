@@ -15,6 +15,7 @@ interface WorkbenchStore {
 
   // New: Current playing video object (for PlayerCenter)
   currentVideo: VideoSource | null;
+  seekRequest: { timestamp: number; nonce: number } | null;
 
   // Original setters
   setState: (state: WorkbenchState) => void;
@@ -28,6 +29,8 @@ interface WorkbenchStore {
 
   // New: Current video player actions
   setCurrentVideo: (video: VideoSource | null) => void;
+  requestSeekTo: (timestamp: number) => void;
+  clearSeekRequest: () => void;
 }
 
 export const useWorkbenchStore = create<WorkbenchStore>((set) => ({
@@ -39,6 +42,7 @@ export const useWorkbenchStore = create<WorkbenchStore>((set) => ({
   // New initial state
   selectedVideoIds: [],
   currentVideo: null,
+  seekRequest: null,
 
   // Original setters
   setState: (state) => set({ state }),
@@ -69,4 +73,14 @@ export const useWorkbenchStore = create<WorkbenchStore>((set) => ({
       currentVideoId: currentVideo?.id ?? null,
       state: currentVideo ? 'videoReady' : 'idle',
     }),
+
+  requestSeekTo: (timestamp) =>
+    set((state) => ({
+      seekRequest: {
+        timestamp,
+        nonce: (state.seekRequest?.nonce ?? 0) + 1,
+      },
+    })),
+
+  clearSeekRequest: () => set({ seekRequest: null }),
 }));

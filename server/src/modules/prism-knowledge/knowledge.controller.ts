@@ -7,6 +7,7 @@ import {
   BatchAnalyzeKnowledgeDto,
   ExportKnowledgeDto,
   GenerateMindmapDto,
+  RegenerateFlashcardsDto,
 } from './dto';
 import { MindmapResult } from './services/mindmap.service';
 
@@ -51,6 +52,15 @@ export class KnowledgeController {
     return this.knowledgeService.getOutline(userId, videoId);
   }
 
+  @Post('videos/:videoId/outline/regenerate')
+  @Post(':videoId/outline/regenerate')
+  regenerateOutline(
+    @CurrentUser() userId: string,
+    @Param('videoId') videoId: string,
+  ) {
+    return this.knowledgeService.regenerateOutline(userId, videoId);
+  }
+
   @Get('videos/:videoId/flashcards')
   @Get(':videoId/flashcards')
   getFlashcards(
@@ -58,6 +68,16 @@ export class KnowledgeController {
     @Param('videoId') videoId: string,
   ) {
     return this.knowledgeService.getFlashcards(userId, videoId);
+  }
+
+  @Post('videos/:videoId/flashcards/regenerate')
+  @Post(':videoId/flashcards/regenerate')
+  regenerateFlashcards(
+    @CurrentUser() userId: string,
+    @Param('videoId') videoId: string,
+    @Body() dto: RegenerateFlashcardsDto,
+  ) {
+    return this.knowledgeService.regenerateFlashcards(userId, videoId, dto);
   }
 
   @Post('videos/:videoId/export')

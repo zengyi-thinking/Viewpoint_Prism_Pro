@@ -62,11 +62,19 @@ export class GenerateMindmapDto {
   @IsInt()
   @Min(2)
   @Max(6)
-  maxDepth?: number = 4;
+  maxDepth?: number = 5;
 
   @IsOptional()
   @IsInt()
   @Min(10)
-  @Max(100)
-  maxNodes?: number = 50;
+  @Max(120)
+  maxNodes?: number = 90;
+}
+
+export class RegenerateFlashcardsDto {
+  @IsOptional()
+  @IsInt()
+  @Min(4)
+  @Max(30)
+  maxCards?: number = 12;
 }

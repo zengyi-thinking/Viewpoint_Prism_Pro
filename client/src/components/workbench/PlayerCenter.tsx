@@ -14,13 +14,14 @@ const MIN_PLAYER_HEIGHT = 200;
 const MAX_PLAYER_HEIGHT = 600;
 
 export function PlayerCenter() {
-  const { currentVideo } = useWorkbenchStore();
+  const { currentVideo, seekRequest, clearSeekRequest } = useWorkbenchStore();
   const tracking = useVideoBehaviorTracking({
     videoId: currentVideo?.id ?? '',
     enabled: !!currentVideo?.id,
     context: VideoActionContext.NORMAL,
   });
   const videoRef = useRef<HTMLVideoElement>(null);
+  const pendingSeekRef = useRef<number | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -118,6 +119,27 @@ export function PlayerCenter() {
     if (videoRef.current) {
       setDuration(videoRef.current.duration);
       setError(null);
+
+      // Apply deferred seek if node jump happened before metadata was ready.
+      if (pendingSeekRef.current !== null) {
+        const target = Math.max(
+          0,
+          Math.min(
+            pendingSeekRef.current,
+            Number.isFinite(videoRef.current.duration)
+              ? videoRef.current.duration
+              : pendingSeekRef.current,
+          ),
+        );
+        const previousTime = videoRef.current.currentTime;
+        videoRef.current.currentTime = target;
+        setCurrentTime(target);
+        tracking.trackEvent(VideoEventType.SEEK, {
+          previousTime,
+          currentTime: target,
+        });
+        pendingSeekRef.current = null;
+      }
     }
   };
 
@@ -134,6 +156,35 @@ export function PlayerCenter() {
       });
     }
   };
+
+  // External seek requests from prism panel (mindmap/crystal cards).
+  useEffect(() => {
+    if (!seekRequest) return;
+
+    const player = videoRef.current;
+    if (!player) {
+      pendingSeekRef.current = seekRequest.timestamp;
+      clearSeekRequest();
+      return;
+    }
+
+    const hasMeta = Number.isFinite(player.duration) && player.duration > 0;
+    if (!hasMeta) {
+      pendingSeekRef.current = seekRequest.timestamp;
+      clearSeekRequest();
+      return;
+    }
+
+    const target = Math.max(0, Math.min(seekRequest.timestamp, player.duration));
+    const previousTime = player.currentTime;
+    player.currentTime = target;
+    setCurrentTime(target);
+    tracking.trackEvent(VideoEventType.SEEK, {
+      previousTime,
+      currentTime: target,
+    });
+    clearSeekRequest();
+  }, [seekRequest, clearSeekRequest, tracking]);
 
   // Handle volume change
   const handleVolumeChange = (e: React.ChangeEvent<HTMLInputElement>) => {

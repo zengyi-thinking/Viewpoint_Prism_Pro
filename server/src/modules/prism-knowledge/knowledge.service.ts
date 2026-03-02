@@ -5,6 +5,7 @@ import {
   BatchAnalyzeKnowledgeDto,
   ExportKnowledgeDto,
   GenerateMindmapDto,
+  RegenerateFlashcardsDto,
 } from './dto';
 import { CrystalCardService } from './services/crystal-card.service';
 import { FlashcardService } from './services/flashcard.service';
@@ -79,7 +80,11 @@ export class KnowledgeService {
 
     const flashcards = await this.flashcardService.generateFlashcards({
       assetId: asset.id,
-      transcriptSegments: transcriptSegments.map((seg) => ({ text: seg.text })),
+      transcriptSegments,
+      userId,
+      videoTitle: video.title,
+      outlineMarkdown: asset.outlineMarkdown ?? '',
+      maxCards: 12,
     });
 
     return {
@@ -197,6 +202,103 @@ export class KnowledgeService {
     };
   }
 
+  async regenerateOutline(userId: string, videoId: string) {
+    const video = await this.getOwnedVideo(userId, videoId);
+
+    const transcript = await this.prisma.transcript.findFirst({
+      where: { videoId },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    if (!transcript) {
+      throw new NotFoundException('请先生成转写内容');
+    }
+
+    const keyframes = await this.prisma.keyframe.findMany({
+      where: { videoId },
+      orderBy: { timestamp: 'asc' },
+    });
+
+    const transcriptSegments = (transcript.segments as Array<{
+      start: number;
+      end: number;
+      text: string;
+    }>) ?? [];
+
+    const asset = await this.outlineService.buildOutline({
+      userId,
+      videoId,
+      videoTitle: video.title,
+      transcriptSegments,
+      keyframes: keyframes.map((kf) => ({
+        timestamp: kf.timestamp,
+        storagePath: kf.storagePath,
+        description: kf.description,
+      })),
+    });
+
+    return {
+      taskId: `outline_${Date.now()}`,
+      userId,
+      videoId,
+      status: 'completed',
+      assetId: asset.id,
+      outlineMarkdown: asset.outlineMarkdown,
+    };
+  }
+
+  async regenerateFlashcards(userId: string, videoId: string, dto: RegenerateFlashcardsDto = {}) {
+    const video = await this.getOwnedVideo(userId, videoId);
+
+    const transcript = await this.prisma.transcript.findFirst({
+      where: { videoId },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    if (!transcript) {
+      throw new NotFoundException('请先生成转写内容');
+    }
+
+    let asset = await this.prisma.knowledgeAsset.findFirst({
+      where: { videoId },
+      orderBy: { updatedAt: 'desc' },
+    });
+
+    if (!asset) {
+      asset = await this.outlineService.buildOutline({
+        userId,
+        videoId,
+        videoTitle: video.title,
+        transcriptSegments: (transcript.segments as Array<{ start: number; end: number; text: string }>) ?? [],
+        keyframes: [],
+      });
+    }
+
+    const transcriptSegments = (transcript.segments as Array<{
+      start: number;
+      end: number;
+      text: string;
+    }>) ?? [];
+
+    const cards = await this.flashcardService.generateFlashcards({
+      assetId: asset.id,
+      transcriptSegments,
+      userId,
+      videoTitle: video.title,
+      outlineMarkdown: asset.outlineMarkdown ?? '',
+      maxCards: dto.maxCards ?? 12,
+    });
+
+    return {
+      taskId: `flashcards_${Date.now()}`,
+      userId,
+      videoId,
+      status: 'completed',
+      count: cards.length,
+      items: cards,
+    };
+  }
+
   async export(userId: string, videoId: string, dto: ExportKnowledgeDto) {
     // TODO: enqueue export/sync task
     return {
@@ -311,8 +413,8 @@ export class KnowledgeService {
           storagePath: kf.storagePath,
           description: kf.description,
         })),
-        maxDepth: dto.maxDepth ?? 4,
-        maxNodes: dto.maxNodes ?? 50,
+        maxDepth: dto.maxDepth ?? 5,
+        maxNodes: dto.maxNodes ?? 90,
       });
     }
 

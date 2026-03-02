@@ -57,9 +57,10 @@ const prisms: { type: PrismType; label: string; subtitle: string; color: string;
 interface PrismSwitcherProps {
   collapsed?: boolean;
   onToggle?: () => void;
+  onTimeClick?: (timestamp: number) => void;
 }
 
-export function PrismSwitcher({ collapsed = false, onToggle }: PrismSwitcherProps) {
+export function PrismSwitcher({ collapsed = false, onToggle, onTimeClick }: PrismSwitcherProps) {
   const { activePrism, setActivePrism } = useWorkbenchStore();
 
   // 收起状态：只显示图标
@@ -152,7 +153,7 @@ export function PrismSwitcher({ collapsed = false, onToggle }: PrismSwitcherProp
       {/* Active prism panel area */}
       <div className="flex-1 overflow-hidden">
         {activePrism ? (
-          <PrismActivePanel />
+          <PrismActivePanel onTimeClick={onTimeClick} />
         ) : (
           <div className="flex h-full items-center justify-center px-4">
             <p className="text-center text-[10px] text-text-tertiary">选择棱镜开始工作</p>
@@ -163,7 +164,7 @@ export function PrismSwitcher({ collapsed = false, onToggle }: PrismSwitcherProp
   );
 }
 
-function PrismActivePanel() {
+function PrismActivePanel({ onTimeClick }: { onTimeClick?: (timestamp: number) => void }) {
   const { activePrism, currentVideo } = useWorkbenchStore();
 
   const config: Record<string, { title: string; color: string; desc: string }> = {
@@ -196,7 +197,7 @@ function PrismActivePanel() {
 
     return (
       <div className="panel flex h-full flex-col rounded-none border-t border-l-0 border-r-0 border-b-0">
-        <KnowledgeBoard videoId={currentVideo.id} />
+        <KnowledgeBoard videoId={currentVideo.id} onTimeClick={onTimeClick} />
       </div>
     );
   }

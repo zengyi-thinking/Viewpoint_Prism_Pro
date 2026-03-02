@@ -59,8 +59,8 @@ export class MindmapService {
       videoTitle,
       transcriptSegments,
       keyframes,
-      maxDepth = 4,
-      maxNodes = 50,
+      maxDepth = 5,
+      maxNodes = 90,
     } = params;
 
     this.logger.log(`生成思维导图: videoId=${videoId}, maxDepth=${maxDepth}, maxNodes=${maxNodes}`);
@@ -139,7 +139,7 @@ export class MindmapService {
     const keyframes = await this.prisma.keyframe.findMany({
       where: { videoId },
       orderBy: { timestamp: 'asc' },
-      take: 10,
+      take: 16,
     });
 
     // 5. 生成思维导图
@@ -153,8 +153,8 @@ export class MindmapService {
         description: k.description,
       })),
       null,
-      4,
-      30,
+      5,
+      90,
       prompt,
       conversationContext,
     );
@@ -267,7 +267,22 @@ export class MindmapService {
       const aiResult = this.parseJsonFromLlmText(text);
 
       // 构建思维导图结果
-      return this.buildMindmapResult(aiResult, videoTitle);
+      const result = this.buildMindmapResult(aiResult, videoTitle);
+      const minNodeThreshold = Math.min(Math.max(12, Math.floor(maxNodes * 0.3)), 24);
+      if (result.nodeCount < minNodeThreshold && transcriptSegments.length >= 12) {
+        this.logger.warn(
+          `AI 思维导图节点过少(${result.nodeCount})，回退到规则增强生成: video=${videoTitle}`,
+        );
+        return this.generateFallbackMindmap(
+          videoTitle,
+          transcriptSegments,
+          keyframes,
+          maxDepth,
+          maxNodes,
+        );
+      }
+
+      return result;
     } catch (error) {
       this.logger.error(`AI 生成思维导图失败: ${error.message}`, error.stack);
 
@@ -379,18 +394,30 @@ export class MindmapService {
   private buildSystemPrompt(maxDepth: number, maxNodes: number, customPrompt?: string): string {
     const basePrompt = `你是 Viewpoint Prism Pro 的思维导图生成专家。
 
-你的任务是将视频内容转换为结构化的思维导图。
+你的任务是将视频内容转换为“细节充分”的结构化思维导图。
 
-要求：
-1. 返回严格的 JSON 格式，包含以下字段：
-   - nodes: 节点数组，每个节点包含 id, content, level, parentId, metadata
-   - structure: 树形结构的节点对象
-2. 节点层级从 0（根节点）到 ${maxDepth - 1}
-3. 总节点数不超过 ${maxNodes}
-4. 节点内容应简洁、明确，每个节点不超过 15 字
-5. 根节点是视频标题
-6. 子节点按照逻辑层次组织
-7. 在 metadata 中可以包含 timestamp, keyframeUrl 等信息
+硬性要求：
+1. 只返回严格 JSON，不要 Markdown、不要代码块、不要解释文字。
+2. JSON 必须包含：
+   - nodes: 扁平节点数组，每个节点含 id, content, level, parentId, metadata
+   - structure: 树形结构节点（根节点 + children）
+3. 节点层级从 0（根节点）到 ${maxDepth - 1}，且在信息足够时必须达到至少 3 层（0/1/2）。
+4. 总节点数不超过 ${maxNodes}，但应尽量覆盖核心细节，建议不少于 ${Math.max(
+      14,
+      Math.floor(maxNodes * 0.35),
+    )} 个节点（若输入信息不足可少于该值）。
+5. 根节点必须是视频标题，一级节点应表示章节/主题；二级及以下节点必须落到“事实细节”：
+   - 关键概念定义
+   - 关键步骤/方法
+   - 结论与注意事项
+   - 例子或场景
+6. 优先使用输入中的时间信息，在 metadata.timestamp 写入秒数；若来自关键帧可写 metadata.keyframeUrl。
+7. 节点内容要信息密集且可读，避免空泛词（如“介绍”“内容”“总结”单独成节点）。
+
+质量要求：
+- 同一分支下避免重复节点；
+- 每个一级主题尽量有 2-4 个子节点；
+- 对可定位到时间点的细节尽量附 timestamp。 
 
 返回的 JSON 结构示例：
 {
@@ -452,6 +479,13 @@ ${inputData.keyframes.map((k) => `[${k.timestamp}s] ${k.description}`).join('\n'
       prompt += `\n# 对话上下文\n${conversationContext}\n`;
     }
 
+    prompt += `
+# 生成要求补充
+1. 不是只给标题，要把每个主题的关键细节拆出来。
+2. 尽量覆盖“讲了什么 + 怎么做 + 为什么 + 注意什么”。
+3. 可引用时间点的信息务必写入 metadata.timestamp。
+4. 输出必须是 JSON 对象，且只输出 JSON 对象。`;
+
     return prompt;
   }
 
@@ -464,21 +498,21 @@ ${inputData.keyframes.map((k) => `[${k.timestamp}s] ${k.description}`).join('\n'
     keyframes: Array<{ timestamp: number; storagePath: string; description?: string | null }>,
     outlineContext: string | null,
   ) {
-    // 摘要转写内容（取前 15 段）
+    // 摘要转写内容（扩大采样，保证导图细节）
     const transcriptSummary = transcriptSegments
-      .slice(0, 15)
-      .map((s) => `[${s.start.toFixed(1)}s] ${s.text}`)
+      .slice(0, 40)
+      .map((s) => `[${s.start.toFixed(1)}-${s.end.toFixed(1)}s] ${this.truncateText(s.text, 140)}`)
       .join('\n');
 
     // 整理关键帧信息
-    const keyframeInfo = keyframes.slice(0, 8).map((k) => ({
+    const keyframeInfo = keyframes.slice(0, 16).map((k) => ({
       timestamp: k.timestamp,
       description: k.description || '关键画面',
     }));
 
     return {
       title: videoTitle,
-      transcriptSummary,
+      transcriptSummary: transcriptSummary || '暂无转写内容',
       keyframes: keyframeInfo,
       outlineContext: outlineContext || '',
     };
