@@ -51,6 +51,34 @@ interface ChatMessageEvent {
   timestamp: string;
 }
 
+interface KnowledgeStateEvent {
+  projectId: string;
+  videoId: string;
+  taskId?: string;
+  state: 'idle' | 'analyzing' | 'streaming' | 'ready' | 'syncing' | 'synced' | 'failed';
+  message?: string;
+  stats?: Record<string, unknown>;
+  timestamp: string;
+}
+
+interface KnowledgeTimelineEvent {
+  projectId: string;
+  videoId: string;
+  taskId?: string;
+  item: {
+    id: string;
+    type: 'KEYFRAME_CARD' | 'OUTLINE_BLOCK' | 'QA_CARD' | 'FLASHCARD' | 'REVIEW_PLAN';
+    timestampSec?: number;
+    title: string;
+    summary?: string;
+    content?: string;
+    imageUrl?: string;
+    metadata?: Record<string, unknown>;
+    createdAt: string;
+  };
+  timestamp: string;
+}
+
 interface UseWebSocketOptions {
   projectId?: string;
   onTaskProgress?: (event: TaskProgressEvent) => void;
@@ -58,6 +86,8 @@ interface UseWebSocketOptions {
   onTaskComplete?: (event: TaskCompleteEvent) => void;
   onPrismAction?: (event: PrismActionEvent) => void;
   onChatMessage?: (event: ChatMessageEvent) => void;
+  onKnowledgeState?: (event: KnowledgeStateEvent) => void;
+  onKnowledgeTimeline?: (event: KnowledgeTimelineEvent) => void;
   onConnected?: () => void;
   onDisconnected?: () => void;
   onError?: (error: Error) => void;
@@ -89,6 +119,8 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
     onTaskComplete,
     onPrismAction,
     onChatMessage,
+    onKnowledgeState,
+    onKnowledgeTimeline,
     onConnected,
     onDisconnected,
     onError,
@@ -173,6 +205,14 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
       onChatMessage?.(event);
     });
 
+    socket.on('knowledge:state', (event: KnowledgeStateEvent) => {
+      onKnowledgeState?.(event);
+    });
+
+    socket.on('knowledge:timeline', (event: KnowledgeTimelineEvent) => {
+      onKnowledgeTimeline?.(event);
+    });
+
     // Join/Leave confirmation
     socket.on('joined:project', (data) => {
       console.log('Joined project room:', data.projectId);
@@ -187,7 +227,7 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
       socket.disconnect();
       socketRef.current = null;
     };
-  }, [wsUrl, onConnected, onDisconnected, onError, onTaskProgress, onTaskError, onTaskComplete, onPrismAction, onChatMessage]);
+  }, [wsUrl, onConnected, onDisconnected, onError, onTaskProgress, onTaskError, onTaskComplete, onPrismAction, onChatMessage, onKnowledgeState, onKnowledgeTimeline]);
 
   // Join a project room
   const joinProject = useCallback((projectId: string) => {

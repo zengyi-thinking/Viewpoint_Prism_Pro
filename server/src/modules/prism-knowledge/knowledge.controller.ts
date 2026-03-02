@@ -8,6 +8,7 @@ import {
   ExportKnowledgeDto,
   GenerateMindmapDto,
   RegenerateFlashcardsDto,
+  SettleKnowledgeDto,
 } from './dto';
 import { MindmapResult } from './services/mindmap.service';
 
@@ -41,6 +42,15 @@ export class KnowledgeController {
     @Param('videoId') videoId: string,
   ) {
     return this.knowledgeService.getTranscript(userId, videoId);
+  }
+
+  @Get('videos/:videoId/board')
+  @Get(':videoId/board')
+  getBoardSnapshot(
+    @CurrentUser() userId: string,
+    @Param('videoId') videoId: string,
+  ) {
+    return this.knowledgeService.getBoardSnapshot(userId, videoId);
   }
 
   @Get('videos/:videoId/outline')
@@ -88,6 +98,16 @@ export class KnowledgeController {
     @Body() dto: ExportKnowledgeDto,
   ) {
     return this.knowledgeService.export(userId, videoId, dto);
+  }
+
+  @Post('videos/:videoId/settle')
+  @Post(':videoId/settle')
+  settleKnowledge(
+    @CurrentUser() userId: string,
+    @Param('videoId') videoId: string,
+    @Body() dto: SettleKnowledgeDto,
+  ) {
+    return this.knowledgeService.settle(userId, videoId, dto);
   }
 
   /**

@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { createHash } from 'crypto';
 import { promises as fs } from 'fs';
 import * as os from 'os';
 import * as path from 'path';
@@ -29,7 +30,29 @@ export class KeyframeService {
       thumbnailUrl: string | null;
     },
     userId: string,
-    options: { regenerate?: boolean } = {},
+    options: {
+      regenerate?: boolean;
+      onFrame?: (
+        frame: {
+          id: string;
+          videoId: string;
+          timestamp: number;
+          frameType: 'PPT' | 'WHITEBOARD' | 'CHART' | 'SCENE_CHANGE' | 'SPEAKER';
+          storagePath: string;
+          description?: string | null;
+          similarity?: number | null;
+        },
+        index: number,
+        total: number,
+      ) => Promise<void> | void;
+      onProgress?: (
+        progress: { current: number; total: number; message?: string },
+      ) => Promise<void> | void;
+      onStatus?: (
+        status: 'processing' | 'completed' | 'failed',
+        metadata?: Record<string, unknown>,
+      ) => Promise<void> | void;
+    } = {},
   ) {
     const shouldRegenerate = options.regenerate ?? false;
 
@@ -45,6 +68,7 @@ export class KeyframeService {
       where: { id: video.id },
       data: { keyframeStatus: 'PROCESSING' },
     });
+    await options.onStatus?.('processing');
 
     if (shouldRegenerate) {
       await this.prisma.keyframe.deleteMany({ where: { videoId: video.id } });
@@ -53,7 +77,7 @@ export class KeyframeService {
     let created: any[] = [];
     try {
       if (video.sourceType === 'LOCAL_UPLOAD' && video.storagePath) {
-        created = await this.extractFromLocalUpload(video, userId);
+        created = await this.extractFromLocalUpload(video, userId, options);
       } else {
         created = await this.createFallbackKeyframes(video);
       }
@@ -62,6 +86,7 @@ export class KeyframeService {
         where: { id: video.id },
         data: { keyframeStatus: 'COMPLETED' },
       });
+      await options.onStatus?.('completed', { keyframeCount: created.length });
       return created;
     } catch (error) {
       this.logger.error(`Keyframe extraction failed for ${video.id}: ${error.message}`);
@@ -69,6 +94,7 @@ export class KeyframeService {
         where: { id: video.id },
         data: { keyframeStatus: 'FAILED' },
       });
+      await options.onStatus?.('failed', { error: error.message });
       return [];
     }
   }
@@ -81,6 +107,24 @@ export class KeyframeService {
       duration: number | null;
     },
     userId: string,
+    options: {
+      onFrame?: (
+        frame: {
+          id: string;
+          videoId: string;
+          timestamp: number;
+          frameType: 'PPT' | 'WHITEBOARD' | 'CHART' | 'SCENE_CHANGE' | 'SPEAKER';
+          storagePath: string;
+          description?: string | null;
+          similarity?: number | null;
+        },
+        index: number,
+        total: number,
+      ) => Promise<void> | void;
+      onProgress?: (
+        progress: { current: number; total: number; message?: string },
+      ) => Promise<void> | void;
+    },
   ) {
     const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'vp-keyframe-'));
     try {
@@ -96,10 +140,17 @@ export class KeyframeService {
 
       const frameTypes = ['PPT', 'WHITEBOARD', 'CHART', 'SCENE_CHANGE', 'SPEAKER'] as const;
       const created: any[] = [];
+      let previousFingerprint: string | null = null;
+      const similarityThreshold = 0.94;
 
       for (let idx = 0; idx < timestamps.length; idx += 1) {
         const ts = timestamps[idx];
         const tempFramePath = path.join(tempDir, `frame-${idx + 1}.jpg`);
+        await options.onProgress?.({
+          current: idx + 1,
+          total: timestamps.length,
+          message: `extracting frame @${ts}s`,
+        });
 
         try {
           await this.ffmpeg.extractFrame(tempVideoPath, ts, tempFramePath);
@@ -109,6 +160,21 @@ export class KeyframeService {
         }
 
         const frameBuffer = await fs.readFile(tempFramePath);
+        const currentFingerprint = this.computeFrameFingerprint(frameBuffer);
+        if (previousFingerprint) {
+          const similarity = this.compareFingerprintSimilarity(
+            previousFingerprint,
+            currentFingerprint,
+          );
+          if (similarity >= similarityThreshold) {
+            this.logger.debug(
+              `Dedup similar frame skipped at ${ts}s, similarity=${similarity.toFixed(3)}`,
+            );
+            continue;
+          }
+        }
+        previousFingerprint = currentFingerprint;
+
         const storagePath = this.storage.generateStoragePath(
           userId,
           video.projectId,
@@ -139,6 +205,19 @@ export class KeyframeService {
           },
         });
         created.push(record);
+        await options.onFrame?.(
+          {
+            id: record.id,
+            videoId: record.videoId,
+            timestamp: record.timestamp,
+            frameType: record.frameType,
+            storagePath: record.storagePath,
+            description: record.description,
+            similarity: record.similarity,
+          },
+          created.length - 1,
+          timestamps.length,
+        );
       }
 
       if (created.length === 0) {
@@ -153,6 +232,27 @@ export class KeyframeService {
     } finally {
       await fs.rm(tempDir, { recursive: true, force: true });
     }
+  }
+
+  private computeFrameFingerprint(buffer: Buffer) {
+    const sampleSize = 256;
+    if (buffer.length === 0) return '';
+    const step = Math.max(1, Math.floor(buffer.length / sampleSize));
+    const bytes: number[] = [];
+    for (let i = 0; i < buffer.length && bytes.length < sampleSize; i += step) {
+      bytes.push(buffer[i]);
+    }
+    return createHash('sha1').update(Buffer.from(bytes)).digest('hex');
+  }
+
+  private compareFingerprintSimilarity(a: string, b: string) {
+    const len = Math.min(a.length, b.length);
+    if (len === 0) return 0;
+    let same = 0;
+    for (let i = 0; i < len; i += 1) {
+      if (a[i] === b[i]) same += 1;
+    }
+    return same / len;
   }
 
   private async describeAndClassifyFrame(

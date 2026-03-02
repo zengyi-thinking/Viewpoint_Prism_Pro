@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { videoApi, VideoSource } from '@/services/video.api';
 import { knowledgeApi } from '@/services/knowledge.api';
@@ -40,6 +40,15 @@ export function VideoSourcePanel({
     queryFn: () => videoApi.list(projectId!),
     enabled: !!projectId,
   });
+
+  // 自动绑定首个视频，避免右侧知识面板空白无上下文。
+  useEffect(() => {
+    if (!projectId) return;
+    if (isLoading) return;
+    if (currentVideo?.id) return;
+    if (videos.length === 0) return;
+    setCurrentVideo(videos[0]);
+  }, [projectId, isLoading, videos, currentVideo, setCurrentVideo]);
 
   // 上传成功后失效缓存，触发重新获取
   const handleUploadSuccess = () => {

@@ -31,6 +31,18 @@ export class UpdateSettingsDto {
 
   @IsOptional()
   @IsString()
+  notionToken?: string;
+
+  @IsOptional()
+  @IsString()
+  feishuAppId?: string;
+
+  @IsOptional()
+  @IsString()
+  feishuAppSecret?: string;
+
+  @IsOptional()
+  @IsString()
   preferredAsr?: string;
 
   @IsOptional()

@@ -1,5 +1,9 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { MessageRole as DbMessageRole, PrismType as DbPrismType } from '../../../generated/prisma/enums';
+import {
+  CrystalCardType as DbCrystalCardType,
+  MessageRole as DbMessageRole,
+  PrismType as DbPrismType,
+} from '../../../generated/prisma/enums';
 import { AITaskType } from '../../infrastructure/ai-router/ai-router.interface';
 import { AiRouterService } from '../../infrastructure/ai-router/ai-router.service';
 import { WsGateway } from '../../infrastructure/websocket/ws.gateway';
@@ -36,12 +40,16 @@ export class ChatService {
       throw new NotFoundException('工程不存在或无访问权限');
     }
 
+    const resolvedPrism = dto.videoId
+      ? ChatPrismType.KNOWLEDGE
+      : dto.activePrism;
+
     const session = await this.prisma.chatSession.create({
       data: {
         userId,
         projectId: dto.projectId,
         videoId: dto.videoId ?? null,
-        activePrism: this.mapPrismToDb(dto.activePrism),
+        activePrism: this.mapPrismToDb(resolvedPrism),
       },
       select: {
         id: true,
@@ -101,19 +109,25 @@ export class ChatService {
     const session = await this.ensureSessionOwnership(userId, sessionId);
 
     const resolvedVideoId = dto.videoId ?? session.videoId ?? null;
-    const hasVideoSwitched =
-      dto.videoId !== undefined && (dto.videoId ?? null) !== (session.videoId ?? null);
-    const resolvedPrism =
-      dto.activePrism ??
-      this.mapPrismFromDb(session.activePrism) ??
-      (resolvedVideoId ? ChatPrismType.KNOWLEDGE : null);
+    const hasVideoSwitched = resolvedVideoId !== (session.videoId ?? null);
+    // 强制绑定：只要会话绑定了视频，就固定使用知识棱镜上下文。
+    const resolvedPrism = resolvedVideoId
+      ? ChatPrismType.KNOWLEDGE
+      : dto.activePrism ?? this.mapPrismFromDb(session.activePrism) ?? null;
 
     const sessionUpdateData: { activePrism?: DbPrismType; videoId?: string | null } = {};
-    if (dto.activePrism !== undefined) {
-      sessionUpdateData.activePrism = this.mapPrismToDb(dto.activePrism);
-    }
-    if (dto.videoId !== undefined) {
-      sessionUpdateData.videoId = dto.videoId ?? null;
+    if (resolvedVideoId) {
+      sessionUpdateData.activePrism = this.mapPrismToDb(ChatPrismType.KNOWLEDGE);
+      if (session.videoId !== resolvedVideoId) {
+        sessionUpdateData.videoId = resolvedVideoId;
+      }
+    } else {
+      if (dto.activePrism !== undefined) {
+        sessionUpdateData.activePrism = this.mapPrismToDb(dto.activePrism);
+      }
+      if (dto.videoId !== undefined) {
+        sessionUpdateData.videoId = dto.videoId ?? null;
+      }
     }
 
     const updatedSession =
@@ -482,17 +496,22 @@ export class ChatService {
     let transcriptContext: string | null = null;
     let behaviorContext: string | null = null;
     let knowledgeAssetContext: string | null = null;
+    let qaContext: string | null = null;
+    let userProfileContext: string | null = null;
 
     if (prism === ChatPrismType.KNOWLEDGE && videoId) {
-      [transcriptContext, behaviorContext, knowledgeAssetContext] = await Promise.all([
+      [transcriptContext, behaviorContext, knowledgeAssetContext, qaContext, userProfileContext] = await Promise.all([
         this.getKnowledgeTranscriptContext(videoId),
         this.getBehaviorInsightContext(userId, videoId),
         this.getKnowledgeAssetContext(videoId),
+        this.getKnowledgeQaContext(videoId),
+        this.getUserProfileContext(userId),
       ]);
 
       const hasTranscript = Boolean(transcriptContext?.trim());
       const hasKnowledgeAsset = Boolean(knowledgeAssetContext?.trim());
-      if (!hasTranscript && !hasKnowledgeAsset) {
+      const hasQa = Boolean(qaContext?.trim());
+      if (!hasTranscript && !hasKnowledgeAsset && !hasQa) {
         return '当前视频还没有可用的分析结果。请先点击“确认分析”，等待分析完成后再提问。';
       }
     }
@@ -512,6 +531,8 @@ export class ChatService {
         transcriptContext,
         behaviorContext,
         knowledgeAssetContext,
+        qaContext,
+        userProfileContext,
       );
       const chatMessages = [
         { role: 'system', content: systemPrompt },
@@ -545,6 +566,7 @@ export class ChatService {
         userContent,
         transcriptContext,
         knowledgeAssetContext,
+        qaContext,
       );
       if (contextualFallback) return contextualFallback;
     }
@@ -569,6 +591,8 @@ export class ChatService {
     transcriptContext: string | null,
     behaviorContext: string | null,
     knowledgeAssetContext: string | null,
+    qaContext: string | null,
+    userProfileContext: string | null,
   ) {
     const base =
       '你是 Viewpoint Prism Pro 的工作台助手。回答必须简洁、可执行，优先给结构化结论。';
@@ -580,6 +604,8 @@ export class ChatService {
         `当前动作: ${action}`,
         transcriptContext ? `视频转写片段:\n${transcriptContext}` : '',
         knowledgeAssetContext ? `知识资产摘要:\n${knowledgeAssetContext}` : '',
+        qaContext ? `历史Q&A补充:\n${qaContext}` : '',
+        userProfileContext ? `用户画像:\n${userProfileContext}` : '',
         behaviorContext ? `用户观看行为线索:\n${behaviorContext}` : '',
       ]
         .filter(Boolean)
@@ -631,13 +657,65 @@ export class ChatService {
     return parts.length > 0 ? parts.join('\n\n') : null;
   }
 
+  private async getKnowledgeQaContext(videoId: string) {
+    const qaCards = await this.prisma.crystalCard.findMany({
+      where: {
+        asset: { videoId },
+        type: DbCrystalCardType.QA,
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 8,
+      select: {
+        title: true,
+        summary: true,
+        content: true,
+        timestamp: true,
+        videoTime: true,
+      },
+    });
+
+    if (qaCards.length === 0) return null;
+
+    return qaCards
+      .map((card, idx) => {
+        const time = card.videoTime || (card.timestamp != null ? `${Math.round(card.timestamp)}s` : '');
+        const summary = card.summary || this.takeFirstLine(card.content);
+        return `${idx + 1}. [${time || '无时间锚点'}] ${summary}`;
+      })
+      .join('\n');
+  }
+
+  private async getUserProfileContext(userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { profile: true, name: true, email: true },
+    });
+    if (!user) return null;
+
+    const segments: string[] = [];
+    if (user.name) segments.push(`姓名: ${user.name}`);
+    if (user.email) segments.push(`邮箱: ${user.email}`);
+
+    if (user.profile) {
+      if (typeof user.profile === 'string') {
+        segments.push(`画像: ${user.profile}`);
+      } else {
+        const profileText = JSON.stringify(user.profile);
+        segments.push(`画像: ${profileText}`);
+      }
+    }
+
+    return segments.length > 0 ? segments.join('\n') : null;
+  }
+
   private buildKnowledgeContextFallback(
     userContent: string,
     transcriptContext: string | null,
     knowledgeAssetContext: string | null,
+    qaContext: string | null,
   ) {
     const context =
-      [knowledgeAssetContext, transcriptContext]
+      [knowledgeAssetContext, qaContext, transcriptContext]
         .filter(Boolean)
         .join('\n')
         .trim() || '';
@@ -714,5 +792,15 @@ export class ChatService {
     } catch {
       return null;
     }
+  }
+
+  private takeFirstLine(text?: string | null) {
+    if (!text) return '';
+    return (
+      text
+        .split('\n')
+        .map((line) => line.trim())
+        .find((line) => line.length > 0) ?? ''
+    );
   }
 }

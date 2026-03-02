@@ -62,6 +62,7 @@ interface PrismSwitcherProps {
 
 export function PrismSwitcher({ collapsed = false, onToggle, onTimeClick }: PrismSwitcherProps) {
   const { activePrism, setActivePrism } = useWorkbenchStore();
+  const hasActivePrism = Boolean(activePrism);
 
   // 收起状态：只显示图标
   if (collapsed) {
@@ -81,7 +82,7 @@ export function PrismSwitcher({ collapsed = false, onToggle, onTimeClick }: Pris
   }
 
   return (
-    <div className="flex h-full w-full flex-col">
+    <div className="flex h-full w-full flex-col min-h-0">
       {/* Studio header */}
       <div className="border-b border-border-subtle px-4 py-3">
         <div className="flex items-center justify-between">
@@ -98,20 +99,39 @@ export function PrismSwitcher({ collapsed = false, onToggle, onTimeClick }: Pris
             </svg>
             <span className="text-xs font-semibold text-text-tertiary">Studio</span>
           </div>
-          <button
-            onClick={onToggle}
-            className="rounded-lg p-1 text-text-tertiary transition hover:bg-bg-panel-secondary hover:text-text-secondary"
-            title="收起面板"
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M13 5l7 7-7 7M5 5l7 7-7 7" />
-            </svg>
-          </button>
+          <div className="flex items-center gap-1">
+            {hasActivePrism ? (
+              <button
+                onClick={() => setActivePrism(null)}
+                className="rounded-lg px-2 py-1 text-[10px] text-text-tertiary transition hover:bg-bg-panel-secondary hover:text-text-secondary"
+                title="返回棱镜选择"
+              >
+                返回
+              </button>
+            ) : null}
+            <button
+              onClick={onToggle}
+              className="rounded-lg p-1 text-text-tertiary transition hover:bg-bg-panel-secondary hover:text-text-secondary"
+              title="收起面板"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M13 5l7 7-7 7M5 5l7 7-7 7" />
+              </svg>
+            </button>
+          </div>
         </div>
       </div>
 
       {/* 2x2 Prism card grid */}
-      <div className="grid grid-cols-2 gap-2.5 p-3">
+      <div
+        className={[
+          'overflow-hidden transition-all duration-300 ease-out',
+          hasActivePrism
+            ? 'max-h-0 opacity-0 -translate-y-1 pointer-events-none'
+            : 'max-h-[260px] opacity-100 translate-y-0',
+        ].join(' ')}
+      >
+        <div className="grid grid-cols-2 gap-2.5 p-3">
         {prisms.map((p) => {
           const isActive = activePrism === p.type;
           return (
@@ -148,12 +168,22 @@ export function PrismSwitcher({ collapsed = false, onToggle, onTimeClick }: Pris
             </button>
           );
         })}
+        </div>
       </div>
 
       {/* Active prism panel area */}
-      <div className="flex-1 overflow-hidden">
-        {activePrism ? (
-          <PrismActivePanel onTimeClick={onTimeClick} />
+      <div
+        className={[
+          'min-h-0 flex-1 overflow-hidden transition-all duration-300 ease-out',
+          hasActivePrism
+            ? 'opacity-100 translate-y-0'
+            : 'opacity-100 translate-y-0',
+        ].join(' ')}
+      >
+        {hasActivePrism ? (
+          <div className="h-full animate-[kb-card-fly-in_260ms_ease-out]">
+            <PrismActivePanel onTimeClick={onTimeClick} />
+          </div>
         ) : (
           <div className="flex h-full items-center justify-center px-4">
             <p className="text-center text-[10px] text-text-tertiary">选择棱镜开始工作</p>
@@ -189,7 +219,12 @@ function PrismActivePanel({ onTimeClick }: { onTimeClick?: (timestamp: number) =
             <p className="mt-1 text-[10px] text-text-tertiary">{c.desc}</p>
           </div>
           <div className="flex flex-1 items-center justify-center px-4">
-            <p className="text-center text-[10px] text-text-tertiary">请先选择视频开始分析</p>
+            <div className="w-full rounded-xl border border-border-subtle bg-bg-panel-secondary p-3">
+              <p className="text-center text-xs text-text-secondary">当前没有已绑定视频</p>
+              <p className="mt-1 text-center text-[10px] text-text-tertiary">
+                请在左侧点击一个视频卡片，随后这里会显示知识看板按钮与同步操作。
+              </p>
+            </div>
           </div>
         </div>
       );

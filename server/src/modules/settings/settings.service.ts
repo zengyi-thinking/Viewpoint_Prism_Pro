@@ -56,6 +56,9 @@ export class SettingsService {
       hasMidjourneyKey: Boolean(settings.midjourneyKey),
       hasSeedanceKey: Boolean(settings.seedanceKey),
       hasElevenlabsKey: Boolean(settings.elevenlabsKey),
+      hasNotionToken: Boolean(settings.notionToken),
+      hasFeishuAppId: Boolean(settings.feishuAppId),
+      hasFeishuAppSecret: Boolean(settings.feishuAppSecret),
       updatedAt: settings.updatedAt,
     };
   }

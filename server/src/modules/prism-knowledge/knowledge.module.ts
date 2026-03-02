@@ -1,4 +1,6 @@
 import { Module } from '@nestjs/common';
+import { SyncModule } from '../../infrastructure/sync/sync.module';
+import { WsModule } from '../../infrastructure/websocket/ws.module';
 import { KnowledgeController } from './knowledge.controller';
 import { KnowledgeService } from './knowledge.service';
 import { TranscriptService } from './services/transcript.service';
@@ -10,6 +12,7 @@ import { MindmapService } from './services/mindmap.service';
 import { ExportService } from './services/export.service';
 
 @Module({
+  imports: [WsModule, SyncModule],
   controllers: [KnowledgeController],
   providers: [
     KnowledgeService,

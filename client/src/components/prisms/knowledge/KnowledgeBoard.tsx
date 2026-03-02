@@ -6,9 +6,12 @@ import { MindmapViewer } from './MindmapViewer';
 import { CrystalCardViewer } from './CrystalCardViewer';
 import { OutlinePanel } from './OutlinePanel';
 import { FlashcardsPanel } from './FlashcardsPanel';
+import { RealtimeKnowledgeBoard } from './RealtimeKnowledgeBoard';
 import { knowledgeApi } from '@/services/knowledge.api';
 import type { MindmapResult } from '@/types/mindmap';
 import { Loader2 } from 'lucide-react';
+import { useWorkbenchStore } from '@/stores/workbench.store';
+import type { KnowledgeSettlementResponse } from '@/services/knowledge.api';
 
 interface KnowledgeBoardProps {
   videoId: string;
@@ -19,13 +22,23 @@ interface KnowledgeBoardProps {
  * 知识棱镜控制面板
  */
 export function KnowledgeBoard({ videoId, onTimeClick }: KnowledgeBoardProps) {
+  const currentVideo = useWorkbenchStore((s) => s.currentVideo);
+  const projectId =
+    currentVideo && currentVideo.id === videoId ? currentVideo.projectId : undefined;
   const [mindmap, setMindmap] = useState<MindmapResult | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isSyncingTarget, setIsSyncingTarget] = useState<'notion' | 'feishu' | null>(null);
+  const [isSettling, setIsSettling] = useState(false);
+  const [isAnalyzingCurrent, setIsAnalyzingCurrent] = useState(false);
+  const [settlement, setSettlement] = useState<KnowledgeSettlementResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'mindmap' | 'crystal-cards' | 'outline' | 'flashcards'>('crystal-cards');
+  const [settleHint, setSettleHint] = useState<string>('');
+  const [activeTab, setActiveTab] = useState<'realtime' | 'mindmap' | 'crystal-cards' | 'outline' | 'flashcards'>('realtime');
 
   useEffect(() => {
     loadMindmap();
+    setSettlement(null);
+    setSettleHint('');
   }, [videoId]);
 
   const loadMindmap = async () => {
@@ -74,25 +87,170 @@ export function KnowledgeBoard({ videoId, onTimeClick }: KnowledgeBoardProps) {
     }
   };
 
+  const handleSync = async (target: 'notion' | 'feishu') => {
+    try {
+      setIsSyncingTarget(target);
+      const result = await knowledgeApi.export(videoId, { target });
+      setSettlement(result);
+      if (result.sync[target]?.success) {
+        const mode = result.sync[target]?.mode;
+        setSettleHint(mode === 'dry-run' ? `${target} 已生成同步模板（dry-run）` : `${target} 同步完成`);
+      } else {
+        setSettleHint(`${target} 同步失败：${result.sync[target]?.reason || 'unknown error'}`);
+      }
+    } catch (error) {
+      console.error(`同步到 ${target} 失败:`, error);
+      setSettleHint(`${target} 同步失败`);
+    } finally {
+      setIsSyncingTarget(null);
+    }
+  };
+
+  const handleAnalyzeCurrent = async () => {
+    try {
+      setIsAnalyzingCurrent(true);
+      setSettleHint('已提交当前视频分析任务，正在处理...');
+      await knowledgeApi.analyze(videoId, {});
+      setSettleHint('当前视频分析完成，可继续生成结算产物。');
+    } catch (error: any) {
+      console.error('分析当前视频失败:', error);
+      setSettleHint(`分析失败：${error?.message || 'unknown error'}`);
+    } finally {
+      setIsAnalyzingCurrent(false);
+    }
+  };
+
+  const handleSettle = async () => {
+    try {
+      setIsSettling(true);
+      const result = await knowledgeApi.settle(videoId, {});
+      setSettlement(result);
+      setSettleHint(`结算完成：闪卡 ${result.output.flashcards.length}，关键帧 ${result.output.keyframes.length}`);
+    } catch (error) {
+      console.error('一键结算失败:', error);
+      setSettleHint('一键结算失败');
+    } finally {
+      setIsSettling(false);
+    }
+  };
+
+  const downloadText = (content: string, fileName: string, mime = 'text/plain;charset=utf-8') => {
+    const blob = new Blob([content], { type: mime });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = fileName;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <div className="flex flex-col h-full">
       <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)} className="flex flex-col h-full">
         <div className="border-b">
-          <TabsList className="w-full justify-start rounded-none h-12 px-4">
-            <TabsTrigger value="crystal-cards" className="data-[state=active]:bg-background">
+          <div className="flex items-center justify-between gap-2 px-3">
+            <TabsList className="w-full justify-start rounded-none h-12 px-1">
+              <TabsTrigger value="realtime" className="data-[state=active]:bg-background">
+                实时看板
+              </TabsTrigger>
+              <TabsTrigger value="crystal-cards" className="data-[state=active]:bg-background">
               晶体卡片
-            </TabsTrigger>
-            <TabsTrigger value="mindmap" className="data-[state=active]:bg-background">
+              </TabsTrigger>
+              <TabsTrigger value="mindmap" className="data-[state=active]:bg-background">
               思维导图
-            </TabsTrigger>
-            <TabsTrigger value="outline" className="data-[state=active]:bg-background">
+              </TabsTrigger>
+              <TabsTrigger value="outline" className="data-[state=active]:bg-background">
               知识大纲
-            </TabsTrigger>
-            <TabsTrigger value="flashcards" className="data-[state=active]:bg-background">
+              </TabsTrigger>
+              <TabsTrigger value="flashcards" className="data-[state=active]:bg-background">
               学习卡片
-            </TabsTrigger>
-          </TabsList>
+              </TabsTrigger>
+            </TabsList>
+            <div className="flex shrink-0 items-center gap-1.5">
+              <button
+                onClick={() => void handleSettle()}
+                disabled={isSettling || isSyncingTarget !== null || isAnalyzingCurrent}
+                className="rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-1 text-[10px] text-amber-300 transition hover:bg-amber-500/20 disabled:opacity-50"
+                title="一键结算（生成三大产物）"
+              >
+                {isSettling ? '结算中...' : '一键结算'}
+              </button>
+              <button
+                onClick={() => void handleAnalyzeCurrent()}
+                disabled={isSettling || isSyncingTarget !== null || isAnalyzingCurrent}
+                className="rounded-md border border-border-subtle px-2 py-1 text-[10px] text-text-tertiary transition hover:text-text-secondary disabled:opacity-50"
+                title="分析当前视频"
+              >
+                {isAnalyzingCurrent ? '分析中...' : '分析当前视频'}
+              </button>
+              <button
+                onClick={() => void handleSync('notion')}
+                disabled={isSyncingTarget !== null || isSettling}
+                className="rounded-md border border-border-subtle px-2 py-1 text-[10px] text-text-tertiary transition hover:text-text-secondary disabled:opacity-50"
+                title="Sync to Notion"
+              >
+                {isSyncingTarget === 'notion' ? 'Syncing...' : 'Sync to Notion'}
+              </button>
+              <button
+                onClick={() => void handleSync('feishu')}
+                disabled={isSyncingTarget !== null || isSettling}
+                className="rounded-md border border-border-subtle px-2 py-1 text-[10px] text-text-tertiary transition hover:text-text-secondary disabled:opacity-50"
+                title="Sync to 飞书"
+              >
+                {isSyncingTarget === 'feishu' ? 'Syncing...' : 'Sync to 飞书'}
+              </button>
+            </div>
+          </div>
         </div>
+        {(settleHint || settlement) ? (
+          <div className="border-b px-3 py-1.5">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-[10px] text-text-tertiary truncate">
+                {settleHint || '结算产物已准备完成'}
+              </p>
+              {settlement ? (
+                <div className="flex items-center gap-1.5">
+                  <button
+                    onClick={() =>
+                      downloadText(
+                        settlement.output.markdownPackage.content,
+                        settlement.output.markdownPackage.fileName,
+                        'text/markdown;charset=utf-8',
+                      )
+                    }
+                    className="rounded border border-border-subtle px-1.5 py-0.5 text-[10px] text-text-tertiary transition hover:text-text-secondary"
+                  >
+                    下载结算包
+                  </button>
+                  <button
+                    onClick={() =>
+                      downloadText(
+                        settlement.output.notesMarkdown,
+                        `notes-${videoId}.md`,
+                        'text/markdown;charset=utf-8',
+                      )
+                    }
+                    className="rounded border border-border-subtle px-1.5 py-0.5 text-[10px] text-text-tertiary transition hover:text-text-secondary"
+                  >
+                    下载笔记
+                  </button>
+                </div>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
+
+        <TabsContent value="realtime" className="flex-1 m-0 p-0 overflow-hidden">
+          <RealtimeKnowledgeBoard
+            projectId={projectId}
+            videoId={videoId}
+            onTimeClick={onTimeClick}
+            onAnalyzeCurrent={handleAnalyzeCurrent}
+            isAnalyzingCurrent={isAnalyzingCurrent}
+          />
+        </TabsContent>
 
         <TabsContent value="crystal-cards" className="flex-1 m-0 p-0 overflow-hidden">
           <CrystalCardViewer videoId={videoId} onTimeClick={onTimeClick} />

@@ -576,3 +576,51 @@ html {
 ::-webkit-scrollbar-thumb:hover {
   background: var(--border);
 }
+
+/* ============================================
+   Knowledge Board realtime animations
+   ============================================ */
+@keyframes kb-card-fly-in {
+  0% {
+    opacity: 0;
+    transform: translateX(14px) scale(0.98);
+  }
+  100% {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+}
+
+@keyframes kb-card-glow {
+  0% { box-shadow: 0 0 0 rgba(233,30,140,0); }
+  40% { box-shadow: 0 0 28px rgba(233,30,140,0.24); }
+  100% { box-shadow: 0 0 0 rgba(233,30,140,0); }
+}
+
+@keyframes kb-caret-blink {
+  0%, 40% { opacity: 1; }
+  50%, 100% { opacity: 0; }
+}
+
+.vp-kb-card {
+  transition: border-color 0.2s ease, background-color 0.2s ease, transform 0.2s ease;
+}
+
+.vp-kb-card-live {
+  animation: kb-card-fly-in 260ms ease-out, kb-card-glow 1800ms ease-out;
+}
+
+.vp-kb-card-qa {
+  border-color: rgba(217, 70, 239, 0.45);
+  background-image: linear-gradient(135deg, rgba(217, 70, 239, 0.14), rgba(30, 41, 59, 0.16));
+}
+
+.vp-kb-caret {
+  display: inline-block;
+  width: 6px;
+  height: 1em;
+  margin-left: 1px;
+  vertical-align: text-bottom;
+  background: var(--text-tertiary);
+  animation: kb-caret-blink 1s steps(1, end) infinite;
+}

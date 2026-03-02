@@ -1,9 +1,10 @@
 import {
   ArrayMaxSize,
   ArrayMinSize,
-  IsArray,
   IsBoolean,
+  IsArray,
   IsEnum,
+  IsIn,
   IsInt,
   IsOptional,
   IsString,
@@ -47,6 +48,26 @@ export class ExportKnowledgeDto {
   @IsOptional()
   @IsEnum(KnowledgeExportTarget)
   target?: KnowledgeExportTarget = KnowledgeExportTarget.MARKDOWN;
+
+  @IsOptional()
+  @IsArray()
+  @IsIn(['notion', 'feishu'], { each: true })
+  syncTargets?: Array<'notion' | 'feishu'>;
+
+  @IsOptional()
+  @IsBoolean()
+  forceRegenerate?: boolean;
+}
+
+export class SettleKnowledgeDto {
+  @IsOptional()
+  @IsArray()
+  @IsIn(['notion', 'feishu'], { each: true })
+  syncTargets?: Array<'notion' | 'feishu'>;
+
+  @IsOptional()
+  @IsBoolean()
+  forceRegenerate?: boolean;
 }
 
 export class GenerateMindmapDto {

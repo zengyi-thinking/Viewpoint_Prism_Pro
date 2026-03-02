@@ -61,6 +61,46 @@ interface ChatMessagePayload {
   timestamp: string;
 }
 
+interface KnowledgeBoardStatePayload {
+  projectId: string;
+  videoId: string;
+  state:
+    | 'idle'
+    | 'analyzing'
+    | 'streaming'
+    | 'ready'
+    | 'syncing'
+    | 'synced'
+    | 'failed';
+  taskId?: string;
+  message?: string;
+  stats?: Record<string, unknown>;
+  timestamp: string;
+}
+
+interface KnowledgeTimelinePayload {
+  projectId: string;
+  videoId: string;
+  taskId?: string;
+  item: {
+    id: string;
+    type:
+      | 'KEYFRAME_CARD'
+      | 'OUTLINE_BLOCK'
+      | 'QA_CARD'
+      | 'FLASHCARD'
+      | 'REVIEW_PLAN';
+    timestampSec?: number;
+    title: string;
+    summary?: string;
+    content?: string;
+    imageUrl?: string;
+    metadata?: Record<string, unknown>;
+    createdAt: string;
+  };
+  timestamp: string;
+}
+
 // Video Behavior Tracking Payloads
 interface VideoEventPayload {
   videoId: string;
@@ -297,6 +337,16 @@ export class WsGateway implements OnGatewayInit, OnGatewayConnection, OnGatewayD
   // Send chat message event
   emitChatMessage(projectId: string, payload: ChatMessagePayload) {
     this.emitToProject(projectId, 'chat:message', payload);
+  }
+
+  // Send knowledge board state event
+  emitKnowledgeState(projectId: string, payload: KnowledgeBoardStatePayload) {
+    this.emitToProject(projectId, 'knowledge:state', payload);
+  }
+
+  // Send incremental knowledge timeline item event
+  emitKnowledgeTimeline(projectId: string, payload: KnowledgeTimelinePayload) {
+    this.emitToProject(projectId, 'knowledge:timeline', payload);
   }
 
   // ============================================================

@@ -29,7 +29,18 @@ export class TranscriptService {
       duration: number | null;
     },
     userId: string,
-    options: { regenerate?: boolean } = {},
+    options: {
+      regenerate?: boolean;
+      onSegment?: (
+        segment: { start: number; end: number; text: string; confidence?: number },
+        index: number,
+        total: number,
+      ) => Promise<void> | void;
+      onStatus?: (
+        status: 'processing' | 'streaming' | 'completed' | 'failed',
+        metadata?: Record<string, unknown>,
+      ) => Promise<void> | void;
+    } = {},
   ) {
     const shouldRegenerate = options.regenerate ?? false;
 
@@ -47,8 +58,15 @@ export class TranscriptService {
       where: { id: video.id },
       data: { transcriptStatus: 'PROCESSING' },
     });
+    await options.onStatus?.('processing');
 
     const segments = await this.tryAsrOrFallback(video, userId);
+    const segmentItems = (segments as Array<{
+      start: number;
+      end: number;
+      text: string;
+      confidence?: number;
+    }>) ?? [];
 
     const transcript = await this.prisma.transcript.create({
       data: {
@@ -63,6 +81,13 @@ export class TranscriptService {
       where: { id: video.id },
       data: { transcriptStatus: 'COMPLETED' },
     });
+    await options.onStatus?.('streaming', { segmentCount: segmentItems.length });
+
+    const streamLimit = Math.min(segmentItems.length, 40);
+    for (let i = 0; i < streamLimit; i += 1) {
+      await options.onSegment?.(segmentItems[i], i, streamLimit);
+    }
+    await options.onStatus?.('completed', { segmentCount: segmentItems.length });
 
     return transcript;
   }

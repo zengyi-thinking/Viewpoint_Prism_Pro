@@ -67,6 +67,8 @@ Base: `/api/prism/knowledge`
   - body:
     - `regenerateTranscript?: boolean`
     - `regenerateKeyframes?: boolean`
+- `GET /videos/:videoId/board`
+  - 返回知识看板状态机快照（`idle/analyzing/streaming/ready/syncing/synced/failed`）与统一 timeline 数据结构
 - `GET /videos/:videoId/transcript`
 - `GET /videos/:videoId/outline`
 - `GET /videos/:videoId/flashcards`

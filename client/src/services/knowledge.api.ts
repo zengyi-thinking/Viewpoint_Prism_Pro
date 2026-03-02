@@ -23,6 +23,60 @@ export interface BatchAnalyzeKnowledgePayload extends AnalyzeKnowledgePayload {
 
 export interface ExportKnowledgePayload {
   target?: 'markdown' | 'notion' | 'feishu';
+  syncTargets?: Array<'notion' | 'feishu'>;
+  forceRegenerate?: boolean;
+}
+
+export interface SettleKnowledgePayload {
+  syncTargets?: Array<'notion' | 'feishu'>;
+  forceRegenerate?: boolean;
+}
+
+export interface KnowledgeSettlementResponse {
+  taskId: string;
+  userId: string;
+  videoId: string;
+  status: 'completed';
+  boardState: KnowledgeBoardState;
+  output: {
+    title: string;
+    outlineMarkdown: string;
+    notesMarkdown: string;
+    reviewPlanMarkdown: string;
+    markdownPackage: {
+      fileName: string;
+      content: string;
+      size: number;
+    };
+    flashcards: Array<{
+      id: string;
+      front: string;
+      back: string;
+      chapter?: string | null;
+      difficulty: number;
+      nextReview?: string | null;
+    }>;
+    keyframes: Array<{
+      id: string;
+      timestamp: number;
+      url: string;
+      description?: string | null;
+      frameType: string;
+    }>;
+  };
+  sync: Partial<
+    Record<
+      'notion' | 'feishu',
+      {
+        success: boolean;
+        mode: 'api' | 'dry-run';
+        url?: string;
+        id?: string;
+        reason?: string;
+      }
+    >
+  >;
+  syncedTargets: Array<'notion' | 'feishu'>;
 }
 
 export interface KnowledgeOutlineResponse {
@@ -53,6 +107,51 @@ export interface KnowledgeFlashcardsResponse {
   flashcards?: FlashcardItem[];
 }
 
+export type KnowledgeBoardState =
+  | 'idle'
+  | 'analyzing'
+  | 'streaming'
+  | 'ready'
+  | 'syncing'
+  | 'synced'
+  | 'failed';
+
+export type KnowledgeTimelineItemType =
+  | 'KEYFRAME_CARD'
+  | 'OUTLINE_BLOCK'
+  | 'QA_CARD'
+  | 'FLASHCARD'
+  | 'REVIEW_PLAN';
+
+export interface KnowledgeTimelineItem {
+  id: string;
+  type: KnowledgeTimelineItemType;
+  videoId: string;
+  assetId?: string | null;
+  timestampSec?: number;
+  title: string;
+  summary?: string;
+  content?: string;
+  imageUrl?: string;
+  metadata?: Record<string, unknown>;
+  createdAt: string;
+}
+
+export interface KnowledgeBoardSnapshotResponse {
+  videoId: string;
+  projectId: string;
+  state: KnowledgeBoardState;
+  timeline: KnowledgeTimelineItem[];
+  stats: {
+    transcriptSegments: number;
+    keyframes: number;
+    flashcards: number;
+    qaCards: number;
+    outlineBlocks: number;
+  };
+  updatedAt: string;
+}
+
 export const knowledgeApi = {
   analyze: (videoId: string, payload: AnalyzeKnowledgePayload = {}) =>
     apiFetch(`/api/prism/knowledge/videos/${videoId}/analyze`, {
@@ -80,6 +179,11 @@ export const knowledgeApi = {
 
   getTranscript: (videoId: string) =>
     apiFetch(`/api/prism/knowledge/videos/${videoId}/transcript`),
+
+  getBoardSnapshot: (videoId: string) =>
+    apiFetch<KnowledgeBoardSnapshotResponse>(
+      `/api/prism/knowledge/videos/${videoId}/board`,
+    ),
 
   getOutline: (videoId: string) =>
     apiFetch<KnowledgeOutlineResponse>(`/api/prism/knowledge/videos/${videoId}/outline`),
@@ -109,8 +213,17 @@ export const knowledgeApi = {
       body: JSON.stringify(payload),
     }),
 
+  settle: (videoId: string, payload: SettleKnowledgePayload = {}) =>
+    apiFetch<KnowledgeSettlementResponse>(
+      `/api/prism/knowledge/videos/${videoId}/settle`,
+      {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      },
+    ),
+
   export: (videoId: string, payload: ExportKnowledgePayload = {}) =>
-    apiFetch(`/api/prism/knowledge/videos/${videoId}/export`, {
+    apiFetch<KnowledgeSettlementResponse>(`/api/prism/knowledge/videos/${videoId}/export`, {
       method: 'POST',
       body: JSON.stringify(payload),
     }),
