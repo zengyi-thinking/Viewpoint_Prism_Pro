@@ -109,7 +109,9 @@ export const useCreationStore = create<CreationStore>((set, get) => ({
       const response = await creationApi.getNodes(videoId) as any[];
 
       // Transform API response to React Flow nodes
-      const flowNodes: FlowNode[] = response.map((node: any) => ({
+      // 确保 response 是数组，如果不是则使用空数组
+      const responseData = Array.isArray(response) ? response : [];
+      const flowNodes: FlowNode[] = responseData.map((node: any) => ({
         id: node.id,
         type: 'flowNodeCard',
         position: {
