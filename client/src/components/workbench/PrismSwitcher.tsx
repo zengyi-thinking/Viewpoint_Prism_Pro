@@ -2,6 +2,7 @@
 
 import { useWorkbenchStore, PrismType } from '@/stores/workbench.store';
 import { KnowledgeBoard } from '@/components/prisms/knowledge';
+import { CreationCanvas } from '@/components/prisms/creation/CreationCanvas';
 
 const prisms: { type: PrismType; label: string; subtitle: string; color: string; icon: React.ReactNode }[] = [
   {
@@ -233,6 +234,37 @@ function PrismActivePanel({ onTimeClick }: { onTimeClick?: (timestamp: number) =
     return (
       <div className="panel flex h-full flex-col rounded-none border-t border-l-0 border-r-0 border-b-0">
         <KnowledgeBoard videoId={currentVideo.id} onTimeClick={onTimeClick} />
+      </div>
+    );
+  }
+
+  // 创作棱镜 - PrismFlow 画布
+  if (activePrism === 'creation') {
+    if (!currentVideo) {
+      return (
+        <div className="panel flex h-full flex-col rounded-none border-t border-l-0 border-r-0 border-b-0">
+          <div className="px-4 py-3">
+            <div className="flex items-center gap-2">
+              <span className="status-dot" style={{ background: c.color }} />
+              <span className="text-xs font-medium text-text-secondary">{c.title}</span>
+            </div>
+            <p className="mt-1 text-[10px] text-text-tertiary">{c.desc}</p>
+          </div>
+          <div className="flex flex-1 items-center justify-center px-4">
+            <div className="w-full rounded-xl border border-border-subtle bg-bg-panel-secondary p-3">
+              <p className="text-center text-xs text-text-secondary">当前没有已绑定视频</p>
+              <p className="mt-1 text-center text-[10px] text-text-tertiary">
+                请在左侧点击一个视频卡片，随后这里会显示 PrismFlow 节点画布。
+              </p>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div className="panel flex h-full flex-col rounded-none border-t border-l-0 border-r-0 border-b-0">
+        <CreationCanvas videoId={currentVideo.id} onTimeClick={onTimeClick} />
       </div>
     );
   }

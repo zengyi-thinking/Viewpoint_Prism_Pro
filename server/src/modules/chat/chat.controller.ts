@@ -2,7 +2,15 @@ import { Body, Controller, Get, Param, Post, Query, UseGuards } from '@nestjs/co
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { ChatService } from './chat.service';
-import { CreateChatSessionDto, GetChatMessagesQueryDto, QUICK_PROMPTS, SendChatMessageDto } from './dto';
+import {
+  ChatPrismType,
+  CreateChatSessionDto,
+  GetChatMessagesQueryDto,
+  GetQuickPromptsQueryDto,
+  QUICK_PROMPTS,
+  QUICK_PROMPTS_BY_PRISM,
+  SendChatMessageDto,
+} from './dto';
 
 @UseGuards(JwtAuthGuard)
 @Controller('api/chat')
@@ -38,7 +46,8 @@ export class ChatController {
   }
 
   @Get('quick-prompts')
-  getQuickPrompts() {
-    return { prompts: QUICK_PROMPTS };
+  getQuickPrompts(@Query() query: GetQuickPromptsQueryDto) {
+    const prism = query.prism ?? ChatPrismType.KNOWLEDGE;
+    return { prompts: QUICK_PROMPTS_BY_PRISM[prism] ?? QUICK_PROMPTS };
   }
 }

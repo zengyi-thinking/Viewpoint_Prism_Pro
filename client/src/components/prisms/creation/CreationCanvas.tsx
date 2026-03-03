@@ -1,5 +1,263 @@
 'use client';
 
-export function CreationCanvas() {
-  return <div>{/* TODO: React Flow canvas */}</div>;
+import React, { useCallback, useEffect, useState } from 'react';
+import {
+  ReactFlow,
+  Background,
+  Controls,
+  MiniMap,
+  BackgroundVariant,
+  useNodesState,
+  useEdgesState,
+  addEdge,
+  Connection,
+  NodeMouseHandler,
+  NodeChange,
+  applyNodeChanges,
+} from '@xyflow/react';
+import '@xyflow/react/dist/style.css';
+import { useCreationStore, FlowNode, FlowEdge } from '@/stores/creation.store';
+import { FlowNodeCard } from './FlowNodeCard';
+import { ScriptInput } from './ScriptInput';
+import { StitchPanel } from './StitchPanel';
+import { Plus, Loader2, AlertTriangle, Sparkles, Film, Download } from 'lucide-react';
+
+// 定义自定义节点类型
+const nodeTypes: any = {
+  flowNodeCard: FlowNodeCard,
+};
+
+interface CreationCanvasProps {
+  videoId: string;
+  onTimeClick?: (timestamp: number) => void;
+}
+
+export function CreationCanvas({ videoId, onTimeClick }: CreationCanvasProps) {
+  const [showScriptInput, setShowScriptInput] = useState(false);
+  const [showStitchPanel, setShowStitchPanel] = useState(false);
+
+  const {
+    nodes: storeNodes,
+    edges: storeEdges,
+    selectedNodeId,
+    isLoading,
+    error,
+    loadNodes,
+    createNode,
+    updateNode,
+    deleteNode,
+    selectNode,
+    updateNodePosition,
+    clear,
+  } = useCreationStore();
+
+  // 本地状态用于 React Flow
+  const [nodes, setNodes, onNodesChangeStore] = useNodesState<FlowNode>(storeNodes as FlowNode[]);
+  const [edges, setEdges, onEdgesChange] = useEdgesState<FlowEdge>(storeEdges as FlowEdge[]);
+
+  // 当 store 中的节点变化时，同步到本地状态
+  useEffect(() => {
+    setNodes(storeNodes);
+  }, [storeNodes, setNodes]);
+
+  useEffect(() => {
+    setEdges(storeEdges);
+  }, [storeEdges, setEdges]);
+
+  // 加载节点数据
+  useEffect(() => {
+    if (videoId) {
+      loadNodes(videoId);
+    }
+
+    return () => {
+      clear();
+    };
+  }, [videoId, loadNodes, clear]);
+
+  // 处理节点位置变化（拖拽）
+  const onNodesChange = useCallback(
+    (changes: NodeChange<FlowNode>[]) => {
+      // 应用本地变更
+      setNodes((nds) => applyNodeChanges(changes, nds as any) as FlowNode[]);
+
+      // 处理拖拽结束的位置更新
+      changes.forEach((change) => {
+        if (change.type === 'position' && 'position' in change && change.position && change.dragging === false) {
+          updateNodePosition(change.id, change.position);
+          // 异步保存到后端
+          updateNode(change.id, { positionX: change.position.x, positionY: change.position.y });
+        }
+      });
+    },
+    [setNodes, updateNodePosition, updateNode]
+  );
+
+  // 处理连接
+  const onConnect = useCallback(
+    (connection: Connection) => {
+      setEdges((eds) => addEdge({ ...connection, animated: true, style: { stroke: '#E91E8C' } }, eds));
+    },
+    [setEdges]
+  );
+
+  // 处理节点点击
+  const onNodeClick: NodeMouseHandler = useCallback(
+    (_event, node) => {
+      selectNode(node.id);
+    },
+    [selectNode]
+  );
+
+  // 处理节点双击（打开编辑器）
+  const onNodeDoubleClick: NodeMouseHandler = useCallback(
+    (_event, node) => {
+      selectNode(node.id);
+      // TODO: 打开节点编辑器面板
+    },
+    [selectNode]
+  );
+
+  // 处理背景点击（取消选择）
+  const onPaneClick = useCallback(() => {
+    selectNode(null);
+  }, [selectNode]);
+
+  // 添加新节点
+  const handleAddNode = useCallback(() => {
+    createNode({
+      orderIndex: storeNodes.length,
+      prompt: '',
+      scriptSegment: '',
+      positionX: 100 + Math.random() * 200,
+      positionY: 100 + Math.random() * 200,
+    });
+  }, [createNode, storeNodes.length]);
+
+  // 加载状态
+  if (isLoading && storeNodes.length === 0) {
+    return (
+      <div className="flex h-full w-full items-center justify-center bg-[#121218]">
+        <div className="flex flex-col items-center gap-3">
+          <Loader2 className="h-8 w-8 animate-spin text-[#E91E8C]" />
+          <span className="text-sm text-[#9CA3AF]">加载节点中...</span>
+        </div>
+      </div>
+    );
+  }
+
+  // 错误状态
+  if (error && storeNodes.length === 0) {
+    return (
+      <div className="flex h-full w-full items-center justify-center bg-[#121218]">
+        <div className="flex flex-col items-center gap-3">
+          <AlertTriangle className="h-8 w-8 text-[#EF4444]" />
+          <span className="text-sm text-[#EF4444]">{error}</span>
+          <button
+            onClick={() => loadNodes(videoId)}
+            className="mt-2 rounded-lg bg-[#E91E8C] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#D11B7A]"
+          >
+            重试
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="relative h-full w-full">
+      {/* React Flow 画布 */}
+      <ReactFlow
+        nodes={nodes}
+        edges={edges}
+        onNodesChange={onNodesChange}
+        onEdgesChange={onEdgesChange}
+        onConnect={onConnect}
+        onNodeClick={onNodeClick}
+        onNodeDoubleClick={onNodeDoubleClick}
+        onPaneClick={onPaneClick}
+        nodeTypes={nodeTypes}
+        fitView
+        snapToGrid
+        snapGrid={[15, 15]}
+        defaultEdgeOptions={{
+          animated: true,
+          style: { stroke: '#E91E8C', strokeWidth: 2 },
+        }}
+        // 深色主题
+        style={{ backgroundColor: '#121218' }}
+      >
+        {/* 网格背景 */}
+        <Background
+          variant={BackgroundVariant.Dots}
+          gap={20}
+          color="#2D2D3A"
+        />
+
+        {/* 缩放控件 */}
+        <Controls
+          className="bg-[#1E1E24] border-[#2D2D3A] rounded-lg shadow-lg"
+          showZoom
+          showFitView
+          showInteractive={false}
+        />
+
+        {/* 小地图 */}
+        <MiniMap
+          className="bg-[#1E1E24] border-[#2D2D3A] rounded-lg"
+          nodeColor="#E91E8C"
+          maskColor="rgba(30, 30, 36, 0.8)"
+        />
+      </ReactFlow>
+
+      {/* 底部工具栏 */}
+      <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-2">
+        <button
+          onClick={() => setShowScriptInput(true)}
+          className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-[#E91E8C] to-[#9C27B0] px-4 py-2 text-sm font-medium text-white shadow-lg shadow-[#E91E8C]/30 transition hover:opacity-90"
+        >
+          <Sparkles className="h-4 w-4" />
+          AI 文案拆分
+        </button>
+        <button
+          onClick={handleAddNode}
+          className="flex items-center gap-2 rounded-xl bg-[#1E1E24] border border-[#2D2D3A] px-4 py-2 text-sm font-medium text-white shadow-lg transition hover:bg-[#2D2D3A]"
+        >
+          <Plus className="h-4 w-4" />
+          添加节点
+        </button>
+        <button
+          onClick={() => setShowStitchPanel(true)}
+          className="flex items-center gap-2 rounded-xl bg-[#1E1E24] border border-[#2D2D3A] px-4 py-2 text-sm font-medium text-white shadow-lg transition hover:bg-[#2D2D3A]"
+        >
+          <Film className="h-4 w-4" />
+          串联导出
+        </button>
+      </div>
+
+      {/* Script Input Modal */}
+      <ScriptInput
+        videoId={videoId}
+        isOpen={showScriptInput}
+        onClose={() => setShowScriptInput(false)}
+      />
+
+      {/* Stitch Panel */}
+      <StitchPanel
+        videoId={videoId}
+        isOpen={showStitchPanel}
+        onClose={() => setShowStitchPanel(false)}
+      />
+
+      {/* 节点计数 */}
+      <div className="absolute top-4 left-4 rounded-lg bg-[#1E1E24]/80 px-3 py-1.5 text-xs text-[#9CA3AF] backdrop-blur-sm">
+        节点: {storeNodes.length}
+      </div>
+
+      {/* 快捷操作提示 */}
+      <div className="absolute top-4 right-4 rounded-lg bg-[#1E1E24]/80 px-3 py-1.5 text-[10px] text-[#6B7280] backdrop-blur-sm">
+        双击节点编辑 | 拖拽调整位置
+      </div>
+    </div>
+  );
 }

@@ -61,15 +61,21 @@ export class GetChatMessagesQueryDto {
   before?: string;
 }
 
+export class GetQuickPromptsQueryDto {
+  @IsOptional()
+  @IsEnum(ChatPrismType)
+  prism?: ChatPrismType;
+}
+
 export interface QuickPrompt {
   id: string;
-  type: 'mindmap' | 'summary' | 'crystal_card' | 'explain';
+  type: string;
   label: string;
   icon: string;
   promptTemplate: string;
 }
 
-export const QUICK_PROMPTS: QuickPrompt[] = [
+export const KNOWLEDGE_QUICK_PROMPTS: QuickPrompt[] = [
   {
     id: 'mindmap',
     type: 'mindmap',
@@ -103,3 +109,78 @@ export const QUICK_PROMPTS: QuickPrompt[] = [
       '用最简单的语言解释当前概念，适合初学者理解，使用生活化的比喻。',
   },
 ];
+
+export const CREATION_QUICK_PROMPTS: QuickPrompt[] = [
+  {
+    id: 'creation_split_script',
+    type: 'creation_script_split',
+    label: '拆分产品脚本',
+    icon: '✂️',
+    promptTemplate:
+      '请把这段产品脚本按镜头拆分，并给出每段可执行的画面提示词。',
+  },
+  {
+    id: 'creation_refine_prompt',
+    type: 'creation_prompt_refine',
+    label: '优化生成提示词',
+    icon: '🎬',
+    promptTemplate:
+      '请把当前产品创意改写成更适合视频生成的提示词，强调镜头、动作、风格。',
+  },
+  {
+    id: 'creation_storyboard',
+    type: 'creation_storyboard',
+    label: '生成分镜结构',
+    icon: '🧩',
+    promptTemplate:
+      '请输出一个 5 段式产品短视频分镜结构，每段包含目标、画面、台词和节奏。',
+  },
+];
+
+export const TRANSLATION_QUICK_PROMPTS: QuickPrompt[] = [
+  {
+    id: 'translation_tone_refine',
+    type: 'translation_refine',
+    label: '润色字幕语气',
+    icon: '🌐',
+    promptTemplate:
+      '请润色当前字幕，使语气更自然并保持术语一致。',
+  },
+  {
+    id: 'translation_glossary',
+    type: 'translation_glossary',
+    label: '术语一致性检查',
+    icon: '📘',
+    promptTemplate:
+      '请提取当前字幕的核心术语并给出统一翻译建议。',
+  },
+];
+
+export const DIFFRACTION_QUICK_PROMPTS: QuickPrompt[] = [
+  {
+    id: 'diffraction_xhs',
+    type: 'diffraction_rewrite',
+    label: '生成小红书文案',
+    icon: '📱',
+    promptTemplate:
+      '请把当前内容改写成小红书风格文案，包含标题、正文和标签建议。',
+  },
+  {
+    id: 'diffraction_twitter',
+    type: 'diffraction_thread',
+    label: '生成 X Thread',
+    icon: '🧵',
+    promptTemplate:
+      '请把当前内容改写成 6 条 Thread，第一条是强 Hook。',
+  },
+];
+
+export const QUICK_PROMPTS_BY_PRISM: Record<ChatPrismType, QuickPrompt[]> = {
+  [ChatPrismType.KNOWLEDGE]: KNOWLEDGE_QUICK_PROMPTS,
+  [ChatPrismType.CREATION]: CREATION_QUICK_PROMPTS,
+  [ChatPrismType.TRANSLATION]: TRANSLATION_QUICK_PROMPTS,
+  [ChatPrismType.DIFFRACTION]: DIFFRACTION_QUICK_PROMPTS,
+};
+
+// Backward-compatible default
+export const QUICK_PROMPTS: QuickPrompt[] = KNOWLEDGE_QUICK_PROMPTS;

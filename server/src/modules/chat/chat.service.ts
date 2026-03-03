@@ -40,9 +40,8 @@ export class ChatService {
       throw new NotFoundException('工程不存在或无访问权限');
     }
 
-    const resolvedPrism = dto.videoId
-      ? ChatPrismType.KNOWLEDGE
-      : dto.activePrism;
+    const resolvedPrism =
+      dto.activePrism ?? (dto.videoId ? ChatPrismType.KNOWLEDGE : undefined);
 
     const session = await this.prisma.chatSession.create({
       data: {
@@ -110,24 +109,18 @@ export class ChatService {
 
     const resolvedVideoId = dto.videoId ?? session.videoId ?? null;
     const hasVideoSwitched = resolvedVideoId !== (session.videoId ?? null);
-    // 强制绑定：只要会话绑定了视频，就固定使用知识棱镜上下文。
-    const resolvedPrism = resolvedVideoId
-      ? ChatPrismType.KNOWLEDGE
-      : dto.activePrism ?? this.mapPrismFromDb(session.activePrism) ?? null;
+    const requestedPrism =
+      dto.activePrism ?? this.mapPrismFromDb(session.activePrism) ?? null;
+    // 默认策略：仅在未显式指定棱镜但绑定视频时，回退到知识棱镜。
+    const resolvedPrism =
+      requestedPrism ?? (resolvedVideoId ? ChatPrismType.KNOWLEDGE : null);
 
     const sessionUpdateData: { activePrism?: DbPrismType; videoId?: string | null } = {};
-    if (resolvedVideoId) {
-      sessionUpdateData.activePrism = this.mapPrismToDb(ChatPrismType.KNOWLEDGE);
-      if (session.videoId !== resolvedVideoId) {
-        sessionUpdateData.videoId = resolvedVideoId;
-      }
-    } else {
-      if (dto.activePrism !== undefined) {
-        sessionUpdateData.activePrism = this.mapPrismToDb(dto.activePrism);
-      }
-      if (dto.videoId !== undefined) {
-        sessionUpdateData.videoId = dto.videoId ?? null;
-      }
+    if (resolvedPrism) {
+      sessionUpdateData.activePrism = this.mapPrismToDb(resolvedPrism);
+    }
+    if (dto.videoId !== undefined || session.videoId !== resolvedVideoId) {
+      sessionUpdateData.videoId = resolvedVideoId;
     }
 
     const updatedSession =
@@ -394,21 +387,24 @@ export class ChatService {
     const normalized = content.trim();
     const normalizedLower = normalized.toLowerCase();
 
-    if (normalizedLower.startsWith('/summarize')) {
-      return PrismActionType.GENERATE_SUMMARY;
-    }
+    // Knowledge-only intents: avoid overlap with creation/translation/diffraction.
+    if (prism === ChatPrismType.KNOWLEDGE) {
+      if (normalizedLower.startsWith('/summarize')) {
+        return PrismActionType.GENERATE_SUMMARY;
+      }
 
-    if (normalizedLower.startsWith('/mindmap')) {
-      return PrismActionType.GENERATE_MINDMAP;
-    }
+      if (normalizedLower.startsWith('/mindmap')) {
+        return PrismActionType.GENERATE_MINDMAP;
+      }
 
-    // 自然语言触发，避免用户必须输入 slash 指令。
-    if (this.isMindmapIntent(normalized)) {
-      return PrismActionType.GENERATE_MINDMAP;
-    }
+      // 自然语言触发，避免用户必须输入 slash 指令。
+      if (this.isMindmapIntent(normalized)) {
+        return PrismActionType.GENERATE_MINDMAP;
+      }
 
-    if (this.isSummaryIntent(normalized)) {
-      return PrismActionType.GENERATE_SUMMARY;
+      if (this.isSummaryIntent(normalized)) {
+        return PrismActionType.GENERATE_SUMMARY;
+      }
     }
 
     switch (prism) {

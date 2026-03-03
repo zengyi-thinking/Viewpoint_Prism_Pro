@@ -9,6 +9,8 @@ import { ThemeSelector } from '@/components/theme';
 import Link from 'next/link';
 import { useWorkbenchStore } from '@/stores/workbench.store';
 
+type PrismType = 'knowledge' | 'creation' | 'translation' | 'diffraction' | null;
+
 const LEFT_MIN_WIDTH = 220;
 const RIGHT_MIN_WIDTH = 260;
 const CENTER_MIN_WIDTH = 400;
@@ -18,12 +20,23 @@ type DragTarget = 'left' | 'right' | null;
 
 export function WorkbenchShell({ projectName, projectId }: { projectName?: string; projectId?: string }) {
   const requestSeekTo = useWorkbenchStore((s) => s.requestSeekTo);
+  const activePrism = useWorkbenchStore((s) => s.activePrism);
   const containerRef = useRef<HTMLDivElement>(null);
   const [leftWidth, setLeftWidth] = useState(280);
   const [rightWidth, setRightWidth] = useState(320);
   const [leftCollapsed, setLeftCollapsed] = useState(false);
   const [rightCollapsed, setRightCollapsed] = useState(false);
   const [dragging, setDragging] = useState<DragTarget>(null);
+
+  // 创作棱镜模式：空间折叠
+  const isCreationMode = activePrism === 'creation';
+
+  // 当激活创作棱镜时，自动折叠左侧面板
+  useEffect(() => {
+    if (isCreationMode && !leftCollapsed) {
+      setLeftCollapsed(true);
+    }
+  }, [isCreationMode]);
 
   useEffect(() => {
     const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
@@ -187,21 +200,45 @@ export function WorkbenchShell({ projectName, projectId }: { projectName?: strin
           aria-orientation="vertical"
           data-testid="resize-handle-left"
           onMouseDown={() => setDragging('left')}
-          className={`panel-separator relative w-1.5 cursor-col-resize ${
+          className={`panel-separator relative w-1.5 cursor-col-resize transition-all duration-300 ${
             dragging === 'left' ? 'dragging' : ''
-          }`}
+          } ${isCreationMode ? 'opacity-0 pointer-events-none' : ''}`}
         >
           <div className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-border-subtle" />
         </div>
 
-        {/* Center: Player + Chat */}
-        <div data-testid="center-panel" className="flex min-w-0 flex-1 flex-col overflow-y-auto overflow-x-hidden">
-          <PlayerCenter />
+        {/* Center: Player + Chat - 创作棱镜模式时播放器变为浮窗 */}
+        <div
+          data-testid="center-panel"
+          className={`relative min-w-0 flex-1 overflow-hidden transition-all duration-500 ${
+            isCreationMode ? 'm-2' : ''
+          }`}
+        >
+          {/* 播放器浮窗（创作模式） */}
+          {isCreationMode ? (
+            <div className="absolute left-0 bottom-0 z-20 w-48 rounded-lg border border-border bg-bg-panel shadow-xl transition-all duration-500 hover:z-30"
+                 style={{ width: '200px', height: '112px' }}>
+              <PlayerCenter />
+            </div>
+          ) : (
+            <div className="flex min-w-0 flex-1 flex-col overflow-y-auto overflow-x-hidden">
+              <PlayerCenter />
 
-          {/* Separator between Player and Chat */}
-          <div className="shrink-0 h-px bg-border-subtle" />
+              {/* Separator between Player and Chat */}
+              <div className="shrink-0 h-px bg-border-subtle" />
 
-          <ChatDock projectId={projectId} />
+              <ChatDock projectId={projectId} />
+            </div>
+          )}
+
+          {/* 创作模式下显示聊天面板覆盖层 */}
+          {isCreationMode && (
+            <div className="absolute bottom-0 left-0 right-0 top-0 flex flex-col">
+              <div className="flex-1" />
+              <div className="h-px bg-border-subtle" />
+              <ChatDock projectId={projectId} />
+            </div>
+          )}
         </div>
 
         <div
@@ -216,13 +253,13 @@ export function WorkbenchShell({ projectName, projectId }: { projectName?: strin
           <div className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-border-subtle" />
         </div>
 
-        {/* Right: Prism Studio Panel (2x2 grid) */}
+        {/* Right: Prism Studio Panel (2x2 grid) - 创作模式时展开 */}
         <div
           data-testid="right-panel"
-          className={`flex h-full shrink-0 border-l border-border bg-bg-panel transition-all duration-200 ${
+          className={`flex h-full shrink-0 border-l border-border bg-bg-panel transition-all duration-500 ${
             rightCollapsed ? 'panel-collapsed' : ''
-          }`}
-          style={{ width: rightCollapsed ? `${COLLAPSED_WIDTH}px` : `${rightWidth}px` }}
+          } ${isCreationMode ? 'w-full' : ''}`}
+          style={isCreationMode ? {} : { width: rightCollapsed ? `${COLLAPSED_WIDTH}px` : `${rightWidth}px` }}
         >
           <PrismSwitcher
             collapsed={rightCollapsed}

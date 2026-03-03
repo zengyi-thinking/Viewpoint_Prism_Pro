@@ -16,6 +16,80 @@ interface ChatDockProps {
   height?: number; // Keep for compatibility but unused
 }
 
+const DEFAULT_QUICK_PROMPTS_BY_PRISM: Record<string, QuickPrompt[]> = {
+  knowledge: [
+    {
+      id: 'mindmap',
+      type: 'mindmap',
+      label: '生成思维导图',
+      icon: '🧠',
+      promptTemplate: '/mindmap 生成当前视频的结构化思维导图，包括主线、分支和关键结论。',
+    },
+    {
+      id: 'summary',
+      type: 'summary',
+      label: '智能总结',
+      icon: '📝',
+      promptTemplate: '/summarize 总结当前视频核心观点和关键结论。',
+    },
+    {
+      id: 'crystal_card',
+      type: 'crystal_card',
+      label: '生成晶体卡片',
+      icon: '💎',
+      promptTemplate: '/summarize 生成可学习的晶体卡片并给出复习路径。',
+    },
+    {
+      id: 'explain',
+      type: 'explain',
+      label: '通俗解释',
+      icon: '💡',
+      promptTemplate: '请用通俗易懂的方式解释当前视频内容，并给一个生活化例子。',
+    },
+  ],
+  creation: [
+    {
+      id: 'creation_split_script',
+      type: 'creation_script_split',
+      label: '拆分产品脚本',
+      icon: '✂️',
+      promptTemplate: '请把这段产品脚本按镜头拆分，并给出每段可执行的画面提示词。',
+    },
+    {
+      id: 'creation_refine_prompt',
+      type: 'creation_prompt_refine',
+      label: '优化生成提示词',
+      icon: '🎬',
+      promptTemplate: '请把当前产品创意改写成更适合视频生成的提示词，强调镜头、动作、风格。',
+    },
+    {
+      id: 'creation_storyboard',
+      type: 'creation_storyboard',
+      label: '生成分镜结构',
+      icon: '🧩',
+      promptTemplate: '请输出一个 5 段式产品短视频分镜结构，每段包含目标、画面、台词和节奏。',
+    },
+  ],
+  translation: [
+    {
+      id: 'translation_refine',
+      type: 'translation_refine',
+      label: '润色字幕语气',
+      icon: '🌐',
+      promptTemplate: '请润色当前字幕，使语气更自然并保持术语一致。',
+    },
+  ],
+  diffraction: [
+    {
+      id: 'diffraction_xhs',
+      type: 'diffraction_rewrite',
+      label: '生成小红书文案',
+      icon: '📱',
+      promptTemplate: '请把当前内容改写成小红书风格文案，包含标题、正文和标签建议。',
+    },
+  ],
+};
+
 const DEFAULT_QUICK_PROMPTS: QuickPrompt[] = [
   {
     id: 'mindmap',
@@ -48,7 +122,7 @@ const DEFAULT_QUICK_PROMPTS: QuickPrompt[] = [
 ];
 
 export function ChatDock({ projectId, height }: ChatDockProps) {
-  const { activePrism, currentVideo, setActivePrism } = useWorkbenchStore();
+  const { activePrism, currentVideo } = useWorkbenchStore();
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState<Message[]>([]);
   const [quickPrompts, setQuickPrompts] = useState<QuickPrompt[]>([]);
@@ -63,26 +137,31 @@ export function ChatDock({ projectId, height }: ChatDockProps) {
   const messagesByContextRef = useRef<Record<string, Message[]>>({});
 
   useEffect(() => {
+    const fallbackPrompts =
+      DEFAULT_QUICK_PROMPTS_BY_PRISM[effectivePrism || 'knowledge'] ?? DEFAULT_QUICK_PROMPTS;
+
     const fetchQuickPrompts = async () => {
       if (!getToken()) {
-        setQuickPrompts(DEFAULT_QUICK_PROMPTS);
+        setQuickPrompts(fallbackPrompts);
         return;
       }
 
       setIsLoadingPrompts(true);
       try {
-        const data = await chatApi.getQuickPrompts();
-        setQuickPrompts(data.prompts?.length ? data.prompts : DEFAULT_QUICK_PROMPTS);
+        const data = await chatApi.getQuickPrompts(
+          (effectivePrism as any) || 'knowledge',
+        );
+        setQuickPrompts(data.prompts?.length ? data.prompts : fallbackPrompts);
       } catch (error) {
         console.warn('Failed to fetch quick prompts, use local fallback.', error);
-        setQuickPrompts(DEFAULT_QUICK_PROMPTS);
+        setQuickPrompts(fallbackPrompts);
       } finally {
         setIsLoadingPrompts(false);
       }
     };
 
     fetchQuickPrompts();
-  }, []);
+  }, [effectivePrism]);
 
   const createSessionForContext = async () => {
     if (!projectId) {
@@ -214,11 +293,14 @@ export function ChatDock({ projectId, height }: ChatDockProps) {
     }
 
     const normalized = messageContent.trim().toLowerCase();
-    const isMindmapIntent =
-      normalized.startsWith('/mindmap') || /思维导图|脑图|mind\s*map|mindmap/i.test(messageContent);
-    const isSummaryIntent =
-      normalized.startsWith('/summarize') || /总结|概括|摘要|梳理|复盘|要点|文章/i.test(messageContent);
-    const requiresVideoContext = isMindmapIntent || isSummaryIntent;
+    const knowledgeIntent =
+      normalized.startsWith('/mindmap') ||
+      normalized.startsWith('/summarize') ||
+      /思维导图|脑图|mind\s*map|mindmap|总结|概括|摘要|梳理|复盘|要点|文章/i.test(
+        messageContent,
+      );
+    const requiresVideoContext =
+      effectivePrism === 'knowledge' && knowledgeIntent;
 
     if (requiresVideoContext && !currentVideo?.id) {
       setMessages((prev) => [
@@ -232,12 +314,7 @@ export function ChatDock({ projectId, height }: ChatDockProps) {
       return;
     }
 
-    const targetPrism = requiresVideoContext
-      ? 'knowledge'
-      : effectivePrism;
-    if (requiresVideoContext && activePrism !== 'knowledge') {
-      setActivePrism('knowledge');
-    }
+    const targetPrism = effectivePrism;
 
     const userMsg: Message = {
       id: Date.now().toString(),

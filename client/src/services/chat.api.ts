@@ -5,7 +5,7 @@ export type ChatPrismType = 'knowledge' | 'creation' | 'translation' | 'diffract
 
 export interface QuickPrompt {
   id: string;
-  type: 'mindmap' | 'summary' | 'crystal_card' | 'explain';
+  type: string;
   label: string;
   icon: string;
   promptTemplate: string;
@@ -74,6 +74,8 @@ export const chatApi = {
       body: JSON.stringify(payload),
     }),
 
-  getQuickPrompts: () =>
-    apiFetch<GetQuickPromptsResponse>('/api/chat/quick-prompts'),
+  getQuickPrompts: (prism?: ChatPrismType) =>
+    apiFetch<GetQuickPromptsResponse>(
+      `/api/chat/quick-prompts${prism ? `?prism=${encodeURIComponent(prism)}` : ''}`,
+    ),
 };
