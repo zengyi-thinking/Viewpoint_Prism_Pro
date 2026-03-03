@@ -269,7 +269,12 @@ export class AiRouterService {
       case 'midjourney':
         return this.configService.get<string>('MIDJOURNEY_API_KEY') || null;
       case 'seedance':
-        return this.configService.get<string>('SEEDANCE_API_KEY') || null;
+        return (
+          this.configService.get<string>('SEEDANCE_API_KEY') ||
+          this.configService.get<string>('SILICONFLOW_API_KEY') ||
+          this.configService.get<string>('OPENAI_API_KEY') ||
+          null
+        );
       case 'elevenlabs':
         return (
           this.configService.get<string>('ELEVENLABS_API_KEY') ||

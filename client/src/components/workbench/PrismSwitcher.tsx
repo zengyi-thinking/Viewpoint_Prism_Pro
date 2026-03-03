@@ -3,6 +3,7 @@
 import { useWorkbenchStore, PrismType } from '@/stores/workbench.store';
 import { KnowledgeBoard } from '@/components/prisms/knowledge';
 import { CreationCanvas } from '@/components/prisms/creation/CreationCanvas';
+import { TranslationPanel } from '@/components/prisms/translation/TranslationPanel';
 
 const prisms: { type: PrismType; label: string; subtitle: string; color: string; icon: React.ReactNode }[] = [
   {
@@ -59,6 +60,7 @@ interface PrismSwitcherProps {
   collapsed?: boolean;
   onToggle?: () => void;
   onTimeClick?: (timestamp: number) => void;
+  videoId?: string; // 添加 videoId prop
 }
 
 export function PrismSwitcher({ collapsed = false, onToggle, onTimeClick }: PrismSwitcherProps) {
@@ -195,7 +197,7 @@ export function PrismSwitcher({ collapsed = false, onToggle, onTimeClick }: Pris
   );
 }
 
-function PrismActivePanel({ onTimeClick }: { onTimeClick?: (timestamp: number) => void }) {
+function PrismActivePanel({ videoId, onTimeClick }: { videoId?: string; onTimeClick?: (timestamp: number) => void }) {
   const { activePrism, currentVideo } = useWorkbenchStore();
 
   const config: Record<string, { title: string; color: string; desc: string }> = {
@@ -265,6 +267,37 @@ function PrismActivePanel({ onTimeClick }: { onTimeClick?: (timestamp: number) =
     return (
       <div className="panel flex h-full flex-col rounded-none border-t border-l-0 border-r-0 border-b-0">
         <CreationCanvas videoId={currentVideo.id} onTimeClick={onTimeClick} />
+      </div>
+    );
+  }
+
+  // 译制棱镜 - 翻译面板
+  if (activePrism === 'translation') {
+    if (!currentVideo) {
+      return (
+        <div className="panel flex h-full flex-col rounded-none border-t border-l-0 border-r-0 border-b-0">
+          <div className="px-4 py-3">
+            <div className="flex items-center gap-2">
+              <span className="status-dot" style={{ background: c.color }} />
+              <span className="wb-section-title">{c.title}</span>
+            </div>
+            <p className="wb-meta mt-1">{c.desc}</p>
+          </div>
+          <div className="flex flex-1 items-center justify-center px-4">
+            <div className="w-full rounded-xl border border-border-subtle bg-bg-panel-secondary p-3">
+              <p className="text-center text-sm font-medium text-text-primary">当前没有已绑定视频</p>
+              <p className="wb-meta mt-1 text-center">
+                请在左侧点击一个视频卡片，随后这里会显示翻译控制台。
+              </p>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div className="panel flex h-full flex-col rounded-none border-t border-l-0 border-r-0 border-b-0">
+        <TranslationPanel videoId={currentVideo.id} onTimeClick={onTimeClick} />
       </div>
     );
   }

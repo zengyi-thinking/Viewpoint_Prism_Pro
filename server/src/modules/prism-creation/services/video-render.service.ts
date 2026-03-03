@@ -1,4 +1,5 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { AITaskType } from '../../../infrastructure/ai-router/ai-router.interface';
 import { AiRouterService } from '../../../infrastructure/ai-router/ai-router.service';
@@ -11,6 +12,7 @@ export class VideoRenderService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly aiRouter: AiRouterService,
+    private readonly configService: ConfigService,
   ) {}
 
   /**
@@ -142,7 +144,13 @@ export class VideoRenderService {
 
         this.logger.log(`Render completed for node ${nodeId}: ${videoUrl}`);
       } else {
-        // For development, simulate a completed render with placeholder
+        const allowPlaceholderFallback =
+          this.configService.get<string>('CREATION_PLACEHOLDER_FALLBACK') === 'true';
+
+        if (!allowPlaceholderFallback) {
+          throw new Error('Video generation succeeded but provider returned empty video URL');
+        }
+
         const placeholderUrl = `https://placehold.co/1280x720/2D2D3A/E91E8C?text=Rendered+Video+${nodeId.slice(0, 8)}`;
 
         await this.prisma.flowNode.update({
@@ -161,7 +169,9 @@ export class VideoRenderService {
           },
         });
 
-        this.logger.warn(`Using placeholder video for node ${nodeId}`);
+        this.logger.warn(
+          `Using placeholder rendered video for node ${nodeId} because CREATION_PLACEHOLDER_FALLBACK=true`,
+        );
       }
     } catch (error) {
       this.logger.error(`Render failed for task ${taskId}: ${error.message}`, error.stack);

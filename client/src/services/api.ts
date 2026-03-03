@@ -66,14 +66,29 @@ export async function apiFetch<T>(path: string, options?: RequestInit): Promise<
   const bases = getApiBaseCandidates();
   let res: Response | null = null;
   let lastNetworkError: unknown = null;
+  let lastServerRes: Response | null = null;
 
-  for (const base of bases) {
+  for (let i = 0; i < bases.length; i += 1) {
+    const base = bases[i];
     try {
-      res = await fetch(buildUrl(base, path), { ...options, headers });
+      const candidate = await fetch(buildUrl(base, path), { ...options, headers });
+      const hasNextCandidate = i < bases.length - 1;
+
+      // 某些环境下（例如 dev proxy）会返回 5xx，但直连后端可用，尝试下一候选基址。
+      if (candidate.status >= 500 && hasNextCandidate) {
+        lastServerRes = candidate;
+        continue;
+      }
+
+      res = candidate;
       break;
     } catch (error) {
       lastNetworkError = error;
     }
+  }
+
+  if (!res && lastServerRes) {
+    res = lastServerRes;
   }
 
   if (!res) {

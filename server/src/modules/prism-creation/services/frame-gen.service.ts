@@ -1,4 +1,5 @@
 import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { AITaskType } from '../../../infrastructure/ai-router/ai-router.interface';
 import { AiRouterService } from '../../../infrastructure/ai-router/ai-router.service';
@@ -14,6 +15,7 @@ export class FrameGenService {
     private readonly prisma: PrismaService,
     private readonly aiRouter: AiRouterService,
     private readonly storage: StorageService,
+    private readonly configService: ConfigService,
   ) {}
 
   /**
@@ -103,7 +105,16 @@ export class FrameGenService {
     } catch (error) {
       this.logger.error(`Failed to generate ${frameType} frame for node ${nodeId}: ${error.message}`, error.stack);
 
-      // Return placeholder on error for development
+      const allowPlaceholderFallback =
+        this.configService.get<string>('CREATION_PLACEHOLDER_FALLBACK') === 'true';
+
+      if (!allowPlaceholderFallback) {
+        throw error;
+      }
+
+      this.logger.warn(
+        `Using placeholder ${frameType} frame for node ${nodeId} because CREATION_PLACEHOLDER_FALLBACK=true`,
+      );
       return {
         frameUrl: `https://placehold.co/1280x720/2D2D3A/E91E8C?text=${frameType === FrameType.FIRST ? 'First+Frame' : 'Last+Frame'}`,
         frameType,
