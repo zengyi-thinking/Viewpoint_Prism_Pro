@@ -393,6 +393,37 @@ export class FfmpegService {
   }
 
   /**
+   * Resize image to specified dimensions
+   * @param imagePath - Path to image file
+   * @param options - Resize options (width, height, format, quality)
+   * @returns Path to resized image
+   */
+  async resizeImage(
+    imagePath: string,
+    options: { width: number; height: number; format?: string; quality?: number },
+  ): Promise<string> {
+    await this.ensureTempDir();
+
+    const output = path.join(this.tempDir, `resized-img-${Date.now()}.${options.format || 'jpg'}`);
+
+    return new Promise((resolve, reject) => {
+      ffmpeg(imagePath)
+        .size(`${options.width}x${options.height}`)
+        .outputFormat(options.format || 'jpg')
+        .outputOptions('-q:v', (options.quality || 90).toString())
+        .save(output)
+        .on('end', () => {
+          this.logger.log(`Resized image to ${options.width}x${options.height}`);
+          resolve(output);
+        })
+        .on('error', (err) => {
+          this.logger.error(`Failed to resize image: ${err.message}`, err.stack);
+          reject(err);
+        });
+    });
+  }
+
+  /**
    * Clean up temporary files
    */
   async cleanup(): Promise<void> {

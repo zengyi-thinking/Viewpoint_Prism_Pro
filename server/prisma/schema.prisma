@@ -397,6 +397,7 @@ model DiffractionTask {
   id      String      @id @default(cuid())
   videoId String
   video   VideoSource @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  userId  String
   status  TaskStatus  @default(PENDING)
 
   createdAt DateTime @default(now())
@@ -405,6 +406,7 @@ model DiffractionTask {
   platformDrafts PlatformDraft[]
 
   @@index([videoId])
+  @@index([userId])
   @@map("diffraction_tasks")
 }
 
