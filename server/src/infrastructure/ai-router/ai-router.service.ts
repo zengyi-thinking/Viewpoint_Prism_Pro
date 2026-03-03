@@ -12,27 +12,29 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { ConfigService } from '@nestjs/config';
 
 // Task type to provider class mappings (using constructor types)
+// 所有任务类型优先使用 Seedance (硅基流动) Provider
 const PROVIDER_MAPPING: Record<AITaskType, any[]> = {
-  [AITaskType.ASR]: [WhisperProvider, VolcengineAsrProvider, AliyunAsrProvider],
-  [AITaskType.LLM_CHAT]: [OpenAIProvider, GeminiProvider],
-  [AITaskType.MULTIMODAL]: [OpenAIProvider, GeminiProvider],
-  [AITaskType.IMAGE_GEN]: [MidjourneyProvider, OpenAIProvider],
+  [AITaskType.ASR]: [SeedanceProvider, WhisperProvider, VolcengineAsrProvider, AliyunAsrProvider],
+  [AITaskType.LLM_CHAT]: [SeedanceProvider, OpenAIProvider, GeminiProvider],
+  [AITaskType.MULTIMODAL]: [SeedanceProvider, OpenAIProvider, GeminiProvider],
+  [AITaskType.IMAGE_GEN]: [SeedanceProvider, MidjourneyProvider, OpenAIProvider],
   [AITaskType.VIDEO_GEN]: [SeedanceProvider],
-  [AITaskType.TTS]: [ElevenLabsProvider, OpenAIProvider],
+  [AITaskType.TTS]: [SeedanceProvider, ElevenLabsProvider, OpenAIProvider],
   [AITaskType.VOICE_CLONE]: [ElevenLabsProvider],
-  [AITaskType.TRANSLATION]: [OpenAIProvider, GeminiProvider],
+  [AITaskType.TRANSLATION]: [SeedanceProvider, OpenAIProvider, GeminiProvider],
 };
 
-// Default provider preferences
+// Default provider preferences - 优先使用硅基流动
+// OpenAI/Gemini/Midjourney/ElevenLabs 为后续高端服务预留
 const DEFAULT_PROVIDER_PREFERENCES: Record<AITaskType, string> = {
-  [AITaskType.ASR]: 'whisper',
-  [AITaskType.LLM_CHAT]: 'openai',
-  [AITaskType.MULTIMODAL]: 'openai',
-  [AITaskType.IMAGE_GEN]: 'midjourney',
+  [AITaskType.ASR]: 'seedance',
+  [AITaskType.LLM_CHAT]: 'seedance',
+  [AITaskType.MULTIMODAL]: 'seedance',
+  [AITaskType.IMAGE_GEN]: 'seedance',
   [AITaskType.VIDEO_GEN]: 'seedance',
-  [AITaskType.TTS]: 'elevenlabs',
+  [AITaskType.TTS]: 'seedance',
   [AITaskType.VOICE_CLONE]: 'elevenlabs',
-  [AITaskType.TRANSLATION]: 'openai',
+  [AITaskType.TRANSLATION]: 'seedance',
 };
 
 @Injectable()

@@ -8,7 +8,13 @@ type VideoStatus = 'InQueue' | 'InProgress' | 'Succeed' | 'Failed' | string;
 @Injectable()
 export class SeedanceProvider extends BaseProvider {
   name = 'seedance';
-  supportedTasks = [AITaskType.VIDEO_GEN];
+  supportedTasks = [
+    AITaskType.LLM_CHAT,
+    AITaskType.MULTIMODAL,
+    AITaskType.IMAGE_GEN,
+    AITaskType.VIDEO_GEN,
+    AITaskType.TRANSLATION,
+  ];
   private readonly logger = new Logger(SeedanceProvider.name);
 
   constructor(private readonly configService: ConfigService) {
@@ -16,9 +22,151 @@ export class SeedanceProvider extends BaseProvider {
   }
 
   async execute(taskType: AITaskType, payload: any, apiKey: string): Promise<any> {
-    if (taskType !== AITaskType.VIDEO_GEN) {
-      throw new Error(`Seedance only supports VIDEO_GEN, got ${taskType}`);
+    switch (taskType) {
+      case AITaskType.LLM_CHAT:
+      case AITaskType.MULTIMODAL:
+      case AITaskType.TRANSLATION:
+        return this.executeChat(taskType, payload, apiKey);
+
+      case AITaskType.IMAGE_GEN:
+        return this.executeImageGen(payload, apiKey);
+
+      case AITaskType.VIDEO_GEN:
+        return this.executeVideoGen(payload, apiKey);
+
+      default:
+        throw new Error(`Seedance does not support ${taskType} yet`);
     }
+  }
+
+  private async executeChat(taskType: AITaskType, payload: any, apiKey: string): Promise<any> {
+    const baseUrl = this.resolveBaseUrl();
+    const model =
+      payload?.model ||
+      this.configService.get<string>('SILICONFLOW_MODEL_LLM') ||
+      'deepseek-ai/DeepSeek-V3';
+
+    // 构建消息列表
+    const messages: any[] = payload?.messages || [];
+
+    // 如果没有 messages，尝试从 payload 构建
+    if (messages.length === 0) {
+      // 处理不同任务的 payload
+      if (taskType === AITaskType.TRANSLATION) {
+        messages.push({
+          role: 'system',
+          content: '你是一个专业的翻译助手。请将提供的文本翻译成目标语言，保持原文的语调和格式。',
+        });
+        messages.push({
+          role: 'user',
+          content: `请将以下文本翻译成${payload?.targetLang || '中文'}：\n\n${payload?.text || payload?.content || ''}`,
+        });
+      } else if (taskType === AITaskType.MULTIMODAL && payload?.imageUrl) {
+        messages.push({
+          role: 'user',
+          content: [
+            {
+              type: 'image_url',
+              image_url: { url: payload.imageUrl },
+            },
+            {
+              type: 'text',
+              text: payload?.prompt || '请分析这张图片',
+            },
+          ],
+        });
+      } else {
+        // LLM_CHAT 默认处理
+        if (payload?.systemPrompt) {
+          messages.push({ role: 'system', content: payload.systemPrompt });
+        }
+        messages.push({
+          role: 'user',
+          content: payload?.prompt || payload?.content || '',
+        });
+      }
+    }
+
+    const requestBody: Record<string, unknown> = {
+      model,
+      messages,
+      stream: payload?.stream || false,
+    };
+
+    if (typeof payload?.temperature === 'number') {
+      requestBody.temperature = payload.temperature;
+    }
+    if (typeof payload?.max_tokens === 'number') {
+      requestBody.max_tokens = payload.max_tokens;
+    }
+    if (typeof payload?.top_p === 'number') {
+      requestBody.top_p = payload.top_p;
+    }
+
+    this.logger.log(`Calling SiliconFlow chat API, model=${model}, messages=${messages.length}`);
+
+    const response = await this.postJson(
+      `${baseUrl}/chat/completions`,
+      requestBody,
+      apiKey,
+    );
+
+    // 提取生成的内容
+    const content =
+      response?.choices?.[0]?.message?.content ||
+      response?.message?.content ||
+      '';
+
+    return {
+      content,
+      usage: response?.usage,
+      model: response?.model,
+      finishReason: response?.choices?.[0]?.finish_reason,
+    };
+  }
+
+  private async executeImageGen(payload: any, apiKey: string): Promise<any> {
+    const baseUrl = this.resolveBaseUrl();
+    const model =
+      payload?.model ||
+      this.configService.get<string>('SILICONFLOW_MODEL_IMAGE') ||
+      'black-forest-labs/FLUX.1-schnell';
+
+    const requestBody: Record<string, unknown> = {
+      model,
+      prompt: payload?.prompt || '',
+      image_size: payload?.image_size || payload?.imageSize || '1024x1024',
+      num_inference_steps: payload?.num_inference_steps || payload?.steps || 4,
+    };
+
+    if (typeof payload?.seed === 'number') {
+      requestBody.seed = payload.seed;
+    }
+    if (typeof payload?.guidance_scale === 'number') {
+      requestBody.guidance_scale = payload.guidance_scale;
+    }
+
+    this.logger.log(`Calling SiliconFlow image generation API, model=${model}`);
+
+    const response = await this.postJson(
+      `${baseUrl}/images/generations`,
+      requestBody,
+      apiKey,
+    );
+
+    const imageUrl = response?.data?.[0]?.url || response?.images?.[0]?.url || '';
+    if (!imageUrl) {
+      throw new Error(`SiliconFlow image generation failed: no URL in response`);
+    }
+
+    return {
+      url: imageUrl,
+      imageUrl,
+      images: response?.data || response?.images || [],
+    };
+  }
+
+  private async executeVideoGen(payload: any, apiKey: string): Promise<any> {
 
     const baseUrl = this.resolveBaseUrl();
     const image = await this.resolveInputImage(payload);

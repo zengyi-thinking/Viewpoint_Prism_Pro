@@ -3,6 +3,11 @@ import { PrismaService } from '../../../prisma/prisma.service';
 import { StorageService } from '../../../infrastructure/storage/storage.service';
 import { TaskStatus, StitchFlowDto } from '../dto';
 import { randomUUID } from 'crypto';
+import { mkdir, writeFile, rm } from 'fs/promises';
+import { join } from 'path';
+import { tmpdir } from 'os';
+import ffmpeg, { FfprobeData } from 'fluent-ffmpeg';
+import * as fs from 'fs';
 
 export interface StitchOptions {
   includeNarration?: boolean;
@@ -157,7 +162,6 @@ export class StitchService {
       }
 
       // 执行视频拼接（FFmpeg 集成）
-      // 这里模拟 FFmpeg 拼接过程，实际生产环境需要调用 FFmpeg
       const outputUrl = await this.performVideoStitch(
         taskId,
         videoUrls,
@@ -205,7 +209,7 @@ export class StitchService {
 
   /**
    * 使用 FFmpeg 执行视频拼接
-   * 这里是一个简化实现，实际生产环境需要更完整的 FFmpeg 集成
+   * 实现完整的视频拼接流程：下载 → concat → 上传
    */
   private async performVideoStitch(
     taskId: string,
@@ -216,37 +220,170 @@ export class StitchService {
   ): Promise<string> {
     this.logger.log(`Performing video stitch for task ${taskId} with ${videoUrls.length} videos`);
 
-    // 检查是否有外部 FFmpeg 服务可用
-    // 如果有，可以使用 fluent-ffmpeg 或调用外部 API
-    // 这里我们生成一个占位符 URL 用于演示
-
     // 生成输出文件名
     const outputKey = `exports/${userId}/${projectId}/stitched-${randomUUID()}.mp4`;
 
-    // TODO: 实际实现 FFmpeg 拼接
-    // 1. 下载所有视频到临时文件
-    // 2. 生成 FFmpeg concat 文件
-    // 3. 执行 FFmpeg 命令
-    // 4. 上传结果到 MinIO
+    try {
+      // 创建临时目录
+      const tempDir = join(tmpdir(), `prismflow-${taskId}`);
+      await mkdir(tempDir, { recursive: true });
 
-    // 模拟处理时间
-    await new Promise((resolve) => setTimeout(resolve, 2000));
+      // 1. 下载所有视频到临时文件
+      this.logger.log(`Downloading ${videoUrls.length} videos to ${tempDir}`);
+      const videoFiles: string[] = [];
 
-    // 返回占位符 URL（实际应该返回上传后的 URL）
-    const placeholderUrl = `https://placehold.co/1920x1080/1E1E24/E91E8C?text=Stitched+Video+${projectId.slice(0, 8)}`;
+      for (let i = 0; i < videoUrls.length; i++) {
+        const url = videoUrls[i];
+        const filename = `video-${i.toString().padStart(3, '0')}.mp4`;
+        const filepath = join(tempDir, filename);
 
-    this.logger.log(`Generated placeholder URL for stitched video: ${placeholderUrl}`);
+        try {
+          const response = await fetch(url);
+          if (!response.ok) {
+            throw new Error(`Failed to download video from ${url}: ${response.statusText}`);
+          }
 
-    // 保存导出记录到项目
-    await this.prisma.prismFlowProject.update({
-      where: { id: projectId },
-      data: {
-        status: TaskStatus.COMPLETED,
-        // 可以添加一个字段来存储最终导出视频 URL
-      } as any,
-    });
+          const buffer = Buffer.from(await response.arrayBuffer());
+          await writeFile(filepath, buffer);
+          videoFiles.push(filepath);
+          this.logger.log(`Downloaded video ${i + 1}/${videoUrls.length}: ${filename}`);
+        } catch (error) {
+          this.logger.warn(`Failed to download video ${i}: ${(error as Error).message}`);
+          // 继续处理其他视频
+        }
+      }
 
-    return placeholderUrl;
+      if (videoFiles.length === 0) {
+        throw new BadRequestException('No videos available for stitching');
+      }
+
+      // 2. 生成 concat 文件列表
+      const concatListPath = join(tempDir, 'concat-list.txt');
+      const concatContent = videoFiles.map((file) => `file '${file}'`).join('\n');
+      await writeFile(concatListPath, concatContent);
+
+      this.logger.log(`Generated concat list at ${concatListPath}`);
+
+      // 3. 执行 FFmpeg 拼接命令
+      const outputPath = join(tempDir, `output-${randomUUID()}.mp4`);
+
+      this.logger.log(`Starting FFmpeg concat...`);
+      await new Promise<void>((resolve, reject) => {
+        ffmpeg()
+          .input(concatListPath)
+          .inputOptions([
+            '-f', 'concat',
+            '-safe', '0',
+          ])
+          .outputOptions([
+            '-c:v', 'libx264',
+            '-preset', 'medium',
+            '-crf', '23',
+            '-c:a', 'aac',
+            '-b:a', '128k',
+            '-movflags', '+faststart',
+          ])
+          .output(outputPath)
+          .on('start', (commandLine) => {
+            this.logger.log(`FFmpeg started: ${commandLine}`);
+          })
+          .on('progress', (progress) => {
+            // 更新任务进度
+            if (progress.percent) {
+              this.updateTaskProgress(taskId, Math.floor(progress.percent));
+            }
+          })
+          .on('end', () => {
+            this.logger.log(`FFmpeg concat completed: ${outputPath}`);
+            resolve();
+          })
+          .on('error', (err) => {
+            this.logger.error(`FFmpeg error: ${err.message}`);
+            reject(err);
+          })
+          .run();
+      });
+
+      // 4. 读取输出视频并上传到存储
+      this.logger.log(`Uploading stitched video to ${outputKey}`);
+      const outputBuffer = await fs.promises.readFile(outputPath);
+
+      const outputUrl = await this.storage.upload(outputBuffer, outputKey, {
+        'Content-Type': 'video/mp4',
+      });
+
+      // 5. 获取视频元数据（可选）
+      const metadata = await this.getVideoMetadata(outputPath);
+
+      // 6. 清理临时文件
+      try {
+        await rm(tempDir, { recursive: true, force: true });
+        this.logger.log(`Cleaned up temporary directory: ${tempDir}`);
+      } catch (error) {
+        this.logger.warn(`Failed to clean up temp directory: ${(error as Error).message}`);
+      }
+
+      // 7. 更新项目状态
+      await this.prisma.prismFlowProject.update({
+        where: { id: projectId },
+        data: {
+          status: TaskStatus.COMPLETED,
+          // 将 stitchedVideoUrl 保存到项目 metadata 或单独的字段
+          // 注意：如果 Prisma schema 中没有此字段，需要先更新 schema
+        } as any,
+      });
+
+      // 更新任务结果为包含视频 URL
+      await this.prisma.taskRecord.update({
+        where: { id: taskId },
+        data: {
+          result: { outputUrl, stitchedVideoUrl: outputUrl } as any,
+        } as any,
+      });
+
+      this.logger.log(`Video stitch completed: ${outputUrl}`);
+      return outputUrl;
+    } catch (error) {
+      this.logger.error(`Video stitch failed: ${(error as Error).message}`);
+      throw error;
+    }
+  }
+
+  /**
+   * 获取视频元数据（分辨率、时长等）
+   * 注意：FfprobeData 的属性可能因版本不同而变化
+   */
+  private async getVideoMetadata(filePath: string): Promise<any | null> {
+    try {
+      return await new Promise((resolve, reject) => {
+        ffmpeg.ffprobe(filePath, (err, metadata) => {
+          if (err) {
+            reject(err);
+          } else {
+            resolve(metadata);
+          }
+        });
+      });
+    } catch (error) {
+      this.logger.warn(`Failed to get video metadata: ${(error as Error).message}`);
+      return null;
+    }
+  }
+
+  /**
+   * 更新任务进度
+   */
+  private async updateTaskProgress(taskId: string, progress: number): Promise<void> {
+    try {
+      await this.prisma.taskRecord.update({
+        where: { id: taskId },
+        data: {
+          progress,
+        },
+      });
+    } catch (error) {
+      this.logger.warn(`Failed to update task progress: ${(error as Error).message}`);
+    }
   }
 
   /**
