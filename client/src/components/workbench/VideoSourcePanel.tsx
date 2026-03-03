@@ -184,7 +184,7 @@ export function VideoSourcePanel({
         {/* Header */}
         <div className="border-b border-border-subtle p-4">
           <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-text-secondary">视频源</h2>
+            <h2 className="wb-section-title">视频源</h2>
             <div className="flex items-center gap-2">
               <button
                 onClick={() => setShowUploadModal(true)}
@@ -217,7 +217,7 @@ export function VideoSourcePanel({
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="搜索视频..."
-              className="input w-full py-2 pl-9 pr-3 text-xs"
+              className="input w-full py-2 pl-9 pr-3 text-sm"
             />
           </div>
         </div>
@@ -227,7 +227,7 @@ export function VideoSourcePanel({
           <div className="flex items-center justify-between border-b border-border-subtle px-4 py-2">
             <button
               onClick={handleSelectAll}
-              className="flex items-center gap-2 text-xs text-text-tertiary transition hover:text-text-secondary"
+              className="flex items-center gap-2 text-sm text-text-secondary transition hover:text-text-primary"
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 {selectedVideoIds.length === filtered.length ? (
@@ -243,7 +243,7 @@ export function VideoSourcePanel({
               </svg>
               {selectedVideoIds.length === filtered.length ? '取消全选' : '全选'}
             </button>
-            <span className="text-xs text-text-tertiary">
+            <span className="wb-meta">
               {selectedVideoIds.length} / {filtered.length}
             </span>
           </div>
@@ -327,8 +327,8 @@ export function VideoSourcePanel({
                       </div>
                       {/* Info */}
                       <div className="min-w-0 flex-1">
-                        <p className="truncate text-xs text-text-secondary">{v.title}</p>
-                        <p className="text-[10px] text-text-tertiary">{formatDuration(v.duration)}</p>
+                        <p className="truncate text-sm font-medium text-text-primary">{v.title}</p>
+                        <p className="wb-meta">{formatDuration(v.duration)}</p>
                       </div>
                       {/* Status indicators */}
                       <div className="flex gap-1">

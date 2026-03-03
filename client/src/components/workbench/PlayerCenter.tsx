@@ -9,9 +9,7 @@ import { VideoEventType, VideoActionContext } from '@/types/video-behavior';
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
 // Default player height (can be adjusted via resize handle)
-const DEFAULT_PLAYER_HEIGHT = 360;
-const MIN_PLAYER_HEIGHT = 200;
-const MAX_PLAYER_HEIGHT = 600;
+const MIN_PLAYER_HEIGHT = 220;
 
 export function PlayerCenter() {
   const { currentVideo, seekRequest, clearSeekRequest } = useWorkbenchStore();
@@ -29,7 +27,6 @@ export function PlayerCenter() {
   const [volume, setVolume] = useState(1);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [playerHeight, setPlayerHeight] = useState(DEFAULT_PLAYER_HEIGHT);
 
   // Get full video URL with token
   const getVideoUrl = (video: typeof currentVideo) => {
@@ -253,7 +250,7 @@ export function PlayerCenter() {
                 <path d="M8 5v14l11-7z" />
               </svg>
             </div>
-            <p className="text-sm text-text-tertiary">选择左侧视频开始播放</p>
+            <p className="text-sm font-medium text-text-secondary">选择左侧视频开始播放</p>
           </div>
         </div>
 
@@ -288,15 +285,15 @@ export function PlayerCenter() {
   return (
     <div
       ref={containerRef}
-      className="panel flex flex-col rounded-none border-x-0 border-t-0 min-h-0 overflow-hidden"
-      style={{ height: playerHeight, minHeight: MIN_PLAYER_HEIGHT, maxHeight: MAX_PLAYER_HEIGHT }}
+      className="panel flex h-full min-h-[220px] flex-col rounded-none border-x-0 border-t-0 overflow-hidden"
+      style={{ minHeight: MIN_PLAYER_HEIGHT }}
     >
       {/* Video Title Bar */}
       <div className="flex shrink-0 items-center justify-between border-b border-border-subtle px-3 py-2">
-        <h3 className="text-xs font-semibold text-text-primary truncate pr-2">{currentVideo.title}</h3>
+        <h3 className="wb-section-title truncate pr-2">{currentVideo.title}</h3>
         <div className="flex items-center gap-2 shrink-0">
           {currentVideo.resolution && (
-            <span className="text-[10px] text-text-tertiary tabular-nums">{currentVideo.resolution}</span>
+            <span className="wb-meta tabular-nums">{currentVideo.resolution}</span>
           )}
           {currentVideo.thumbnailUrl && (
             <span className="status-dot status-dot-success" title="已生成缩略图" />

@@ -9,8 +9,6 @@ import { ThemeSelector } from '@/components/theme';
 import Link from 'next/link';
 import { useWorkbenchStore } from '@/stores/workbench.store';
 
-type PrismType = 'knowledge' | 'creation' | 'translation' | 'diffraction' | null;
-
 const LEFT_MIN_WIDTH = 220;
 const RIGHT_MIN_WIDTH = 260;
 const CENTER_MIN_WIDTH = 400;
@@ -30,13 +28,27 @@ export function WorkbenchShell({ projectName, projectId }: { projectName?: strin
 
   // 创作棱镜模式：空间折叠
   const isCreationMode = activePrism === 'creation';
+  const effectiveLeftCollapsed = leftCollapsed || isCreationMode;
 
-  // 当激活创作棱镜时，自动折叠左侧面板
   useEffect(() => {
-    if (isCreationMode && !leftCollapsed) {
-      setLeftCollapsed(true);
-    }
-  }, [isCreationMode]);
+    const applyResponsiveCollapse = () => {
+      const width = window.innerWidth;
+      if (width < 1280) setLeftCollapsed(true);
+      if (width < 1100) setRightCollapsed(true);
+    };
+    applyResponsiveCollapse();
+    window.addEventListener('resize', applyResponsiveCollapse);
+    return () => window.removeEventListener('resize', applyResponsiveCollapse);
+  }, []);
+
+  useEffect(() => {
+    if (!containerRef.current) return;
+    const totalWidth = containerRef.current.getBoundingClientRect().width;
+    const suggestedLeft = Math.round(Math.min(320, Math.max(LEFT_MIN_WIDTH, totalWidth * 0.18)));
+    const suggestedRight = Math.round(Math.min(380, Math.max(RIGHT_MIN_WIDTH, totalWidth * 0.22)));
+    setLeftWidth(suggestedLeft);
+    setRightWidth(suggestedRight);
+  }, []);
 
   useEffect(() => {
     const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
@@ -117,7 +129,7 @@ export function WorkbenchShell({ projectName, projectId }: { projectName?: strin
       // Ctrl/Cmd + B: Toggle left panel
       if ((e.ctrlKey || e.metaKey) && e.key === 'b') {
         e.preventDefault();
-        setLeftCollapsed(!leftCollapsed);
+        setLeftCollapsed((prev) => !prev);
       }
 
       // Ctrl/Cmd + Shift + B: Toggle right panel
@@ -147,9 +159,9 @@ export function WorkbenchShell({ projectName, projectId }: { projectName?: strin
   }, [leftCollapsed, rightCollapsed]);
 
   return (
-    <div className="flex h-screen flex-col bg-bg-primary text-text-primary">
+    <div className="workbench-shell flex h-dvh min-h-0 flex-col bg-bg-primary text-text-primary">
       {/* Top bar */}
-      <header className="flex h-12 shrink-0 items-center justify-between border-b border-border bg-bg-panel px-4">
+      <header className="flex h-[clamp(46px,5.2vh,58px)] shrink-0 items-center justify-between border-b border-border bg-bg-panel px-[clamp(12px,1.35vw,20px)]">
         <div className="flex items-center gap-3">
           <Link href="/projects" className="flex items-center gap-2 text-text-secondary transition hover:text-text-primary">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -167,14 +179,14 @@ export function WorkbenchShell({ projectName, projectId }: { projectName?: strin
             </defs>
             <path d="M14 2L26 24H2L14 2Z" stroke="url(#wlg)" strokeWidth="1.5" fill="none" />
           </svg>
-          <span className="text-sm font-medium text-text-secondary">{projectName || '工作台'}</span>
+          <span className="wb-title">{projectName || '工作台'}</span>
         </div>
 
         <div className="flex items-center gap-2">
           {/* Engine status indicator */}
           <div className="flex items-center gap-1.5 rounded-lg border border-border-subtle bg-bg-panel-secondary px-2.5 py-1">
             <span className="status-dot status-dot-warning" />
-            <span className="text-[10px] text-text-tertiary">引擎待配置</span>
+            <span className="wb-meta">引擎待配置</span>
           </div>
 
           {/* Theme toggle (sun/moon icon) */}
@@ -183,89 +195,95 @@ export function WorkbenchShell({ projectName, projectId }: { projectName?: strin
       </header>
 
       {/* Main content area */}
-      <div ref={containerRef} className="flex flex-1 overflow-hidden">
-        {/* Left: Video Source Panel */}
-        <div
-          data-testid="left-panel"
-          className={`flex h-full shrink-0 transition-all duration-200 ${
-            leftCollapsed ? 'panel-collapsed' : ''
-          }`}
-          style={{ width: leftCollapsed ? `${COLLAPSED_WIDTH}px` : `${leftWidth}px` }}
-        >
-          <VideoSourcePanel projectId={projectId} collapsed={leftCollapsed} onToggle={() => setLeftCollapsed(!leftCollapsed)} />
-        </div>
+      <div className="wb-main-gap flex min-h-0 flex-1">
+        <div ref={containerRef} className="flex min-h-0 flex-1 overflow-hidden">
+          {/* Left: Video Source Panel */}
+          <div
+            data-testid="left-panel"
+            className={`flex h-full shrink-0 transition-all duration-200 ${
+              effectiveLeftCollapsed ? 'panel-collapsed' : ''
+            }`}
+            style={{ width: effectiveLeftCollapsed ? `${COLLAPSED_WIDTH}px` : `${leftWidth}px` }}
+          >
+            <VideoSourcePanel projectId={projectId} collapsed={effectiveLeftCollapsed} onToggle={() => setLeftCollapsed((prev) => !prev)} />
+          </div>
 
-        <div
-          role="separator"
-          aria-orientation="vertical"
-          data-testid="resize-handle-left"
-          onMouseDown={() => setDragging('left')}
-          className={`panel-separator relative w-1.5 cursor-col-resize transition-all duration-300 ${
-            dragging === 'left' ? 'dragging' : ''
-          } ${isCreationMode ? 'opacity-0 pointer-events-none' : ''}`}
-        >
-          <div className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-border-subtle" />
-        </div>
+          <div
+            role="separator"
+            aria-orientation="vertical"
+            data-testid="resize-handle-left"
+            onMouseDown={() => setDragging('left')}
+            className={`panel-separator relative w-1.5 cursor-col-resize transition-all duration-300 ${
+              dragging === 'left' ? 'dragging' : ''
+            } ${isCreationMode ? 'opacity-0 pointer-events-none' : ''}`}
+          >
+            <div className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-border-subtle" />
+          </div>
 
-        {/* Center: Player + Chat - 创作棱镜模式时播放器变为浮窗 */}
-        <div
-          data-testid="center-panel"
-          className={`relative min-w-0 flex-1 overflow-hidden transition-all duration-500 ${
-            isCreationMode ? 'm-2' : ''
-          }`}
-        >
-          {/* 播放器浮窗（创作模式） */}
-          {isCreationMode ? (
-            <div className="absolute left-0 bottom-0 z-20 w-48 rounded-lg border border-border bg-bg-panel shadow-xl transition-all duration-500 hover:z-30"
-                 style={{ width: '200px', height: '112px' }}>
-              <PlayerCenter />
-            </div>
-          ) : (
-            <div className="flex min-w-0 flex-1 flex-col overflow-y-auto overflow-x-hidden">
-              <PlayerCenter />
+          {/* Center: Player + Chat - 创作棱镜模式时播放器变为浮窗 */}
+          <div
+            data-testid="center-panel"
+            className={`relative min-w-0 flex flex-1 flex-col overflow-hidden transition-all duration-500 ${
+              isCreationMode ? 'm-2' : ''
+            }`}
+          >
+            {/* 播放器浮窗（创作模式） */}
+            {isCreationMode ? (
+              <div className="absolute left-0 bottom-0 z-20 w-48 rounded-lg border border-border bg-bg-panel shadow-xl transition-all duration-500 hover:z-30"
+                   style={{ width: '200px', height: '112px' }}>
+                <PlayerCenter />
+              </div>
+            ) : (
+              <div className="grid min-w-0 min-h-0 flex-1 grid-rows-[minmax(220px,42svh)_1px_minmax(0,1fr)] overflow-hidden">
+                <PlayerCenter />
 
-              {/* Separator between Player and Chat */}
-              <div className="shrink-0 h-px bg-border-subtle" />
+                {/* Separator between Player and Chat */}
+                <div className="shrink-0 h-px bg-border-subtle" />
 
-              <ChatDock projectId={projectId} />
-            </div>
-          )}
+                <div className="min-h-0">
+                  <ChatDock projectId={projectId} />
+                </div>
+              </div>
+            )}
 
-          {/* 创作模式下显示聊天面板覆盖层 */}
-          {isCreationMode && (
-            <div className="absolute bottom-0 left-0 right-0 top-0 flex flex-col">
-              <div className="flex-1" />
-              <div className="h-px bg-border-subtle" />
-              <ChatDock projectId={projectId} />
-            </div>
-          )}
-        </div>
+            {/* 创作模式下显示聊天面板覆盖层 */}
+            {isCreationMode && (
+              <div className="absolute bottom-0 left-0 right-0 top-0 flex flex-col pointer-events-none">
+                <div className="flex-1" />
+                <div className="h-px bg-border-subtle" />
+                <div className="pointer-events-auto h-[42%] min-h-[260px] max-h-[420px]">
+                  <ChatDock projectId={projectId} />
+                </div>
+              </div>
+            )}
+          </div>
 
-        <div
-          role="separator"
-          aria-orientation="vertical"
-          data-testid="resize-handle-right"
-          onMouseDown={() => setDragging('right')}
-          className={`panel-separator relative w-1.5 cursor-col-resize ${
-            dragging === 'right' ? 'dragging' : ''
-          }`}
-        >
-          <div className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-border-subtle" />
-        </div>
+          <div
+            role="separator"
+            aria-orientation="vertical"
+            data-testid="resize-handle-right"
+            onMouseDown={() => setDragging('right')}
+            className={`panel-separator relative w-1.5 cursor-col-resize ${
+              dragging === 'right' ? 'dragging' : ''
+            }`}
+          >
+            <div className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-border-subtle" />
+          </div>
 
-        {/* Right: Prism Studio Panel (2x2 grid) - 创作模式时展开 */}
-        <div
-          data-testid="right-panel"
-          className={`flex h-full shrink-0 border-l border-border bg-bg-panel transition-all duration-500 ${
-            rightCollapsed ? 'panel-collapsed' : ''
-          } ${isCreationMode ? 'w-full' : ''}`}
-          style={isCreationMode ? {} : { width: rightCollapsed ? `${COLLAPSED_WIDTH}px` : `${rightWidth}px` }}
-        >
-          <PrismSwitcher
-            collapsed={rightCollapsed}
-            onToggle={() => setRightCollapsed(!rightCollapsed)}
-            onTimeClick={requestSeekTo}
-          />
+          {/* Right: Prism Studio Panel (2x2 grid) - 创作模式时展开 */}
+          <div
+            data-testid="right-panel"
+            className={`flex h-full shrink-0 border-l border-border bg-bg-panel transition-all duration-500 ${
+              rightCollapsed ? 'panel-collapsed' : ''
+            } ${isCreationMode ? 'w-full' : ''}`}
+            style={isCreationMode ? {} : { width: rightCollapsed ? `${COLLAPSED_WIDTH}px` : `${rightWidth}px` }}
+          >
+            <PrismSwitcher
+              collapsed={rightCollapsed}
+              onToggle={() => setRightCollapsed(!rightCollapsed)}
+              onTimeClick={requestSeekTo}
+            />
+          </div>
         </div>
       </div>
     </div>

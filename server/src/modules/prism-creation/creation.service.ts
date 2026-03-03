@@ -1,4 +1,10 @@
-import { Injectable, Logger, NotFoundException, ForbiddenException } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  NotFoundException,
+  ForbiddenException,
+  BadRequestException,
+} from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AITaskType } from '../../infrastructure/ai-router/ai-router.interface';
 import { AiRouterService } from '../../infrastructure/ai-router/ai-router.service';
@@ -89,8 +95,35 @@ export class CreationService {
 
     this.logger.log(`Starting script split for project ${project.id}`);
 
-    // Call LLM to split the script
-    const segments = await this.splitScriptWithLLM(userId, dto.scriptText, dto.stylePreset);
+    const shouldPersist = dto.persist === true;
+
+    // 允许两种输入：
+    // 1) scriptText -> 走 LLM 拆分
+    // 2) segments -> 直接持久化（用于“确认生成节点”）
+    let segments: Array<{ segment: string; prompt: string; estimatedDuration?: number }> = [];
+    if (dto.segments?.length) {
+      segments = dto.segments.map((seg) => ({
+        segment: seg.segment,
+        prompt: seg.prompt || seg.segment,
+        estimatedDuration: seg.estimatedDuration,
+      }));
+    } else if (dto.scriptText?.trim()) {
+      // Call LLM to split the script
+      segments = await this.splitScriptWithLLM(userId, dto.scriptText, dto.stylePreset);
+    } else {
+      throw new BadRequestException('scriptText 或 segments 至少需要提供一个');
+    }
+
+    // 仅预览拆分，不写入节点
+    if (!shouldPersist) {
+      return {
+        userId,
+        videoId,
+        projectId: project.id,
+        persisted: false,
+        segments,
+      };
+    }
 
     // Get current max order index
     const maxOrderIndex = await this.prisma.flowNode.aggregate({
@@ -130,6 +163,7 @@ export class CreationService {
       userId,
       videoId,
       projectId: project.id,
+      persisted: true,
       segments: createdNodes,
     };
   }

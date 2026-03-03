@@ -624,3 +624,77 @@ html {
   background: var(--text-tertiary);
   animation: kb-caret-blink 1s steps(1, end) infinite;
 }
+
+/* ============================================
+   Workbench responsive typography & spacing
+   ============================================ */
+.workbench-shell {
+  --wb-fs-10: clamp(10px, 0.54vw, 12px);
+  --wb-fs-11: clamp(11px, 0.60vw, 13px);
+  --wb-fs-12: clamp(12px, 0.66vw, 14px);
+  --wb-fs-14: clamp(13px, 0.78vw, 16px);
+  --wb-gap: clamp(8px, 0.9vw, 14px);
+  --wb-title: clamp(15px, 0.98vw, 19px);
+  --wb-section: clamp(13px, 0.8vw, 16px);
+  --wb-meta: clamp(11px, 0.64vw, 13px);
+  --wb-font-ui: "IBM Plex Sans", "SF Pro Text", "PingFang SC", "Microsoft YaHei", var(--font-geist-sans), system-ui, sans-serif;
+  font-family: var(--wb-font-ui);
+}
+
+.workbench-shell input,
+.workbench-shell button,
+.workbench-shell textarea {
+  font-family: var(--wb-font-ui);
+}
+
+.workbench-shell .wb-main-gap {
+  padding: clamp(8px, 0.95vw, 14px);
+  padding-top: clamp(10px, 1.2vw, 18px);
+}
+
+.workbench-shell .wb-title {
+  font-size: var(--wb-title);
+  font-weight: 640;
+  line-height: 1.25;
+  letter-spacing: 0.01em;
+  color: var(--text-primary);
+}
+
+.workbench-shell .wb-section-title {
+  font-size: var(--wb-section);
+  font-weight: 620;
+  line-height: 1.35;
+  color: var(--text-primary);
+}
+
+.workbench-shell .wb-meta {
+  font-size: var(--wb-meta);
+  line-height: 1.35;
+  color: var(--text-secondary);
+}
+
+.workbench-shell .wb-emphasis {
+  color: var(--text-primary);
+  font-weight: 560;
+}
+
+.workbench-shell .text-\[10px\] { font-size: var(--wb-fs-10) !important; line-height: 1.35 !important; }
+.workbench-shell .text-\[11px\] { font-size: var(--wb-fs-11) !important; line-height: 1.35 !important; }
+.workbench-shell .text-\[13px\] { font-size: var(--wb-fs-12) !important; line-height: 1.4 !important; }
+.workbench-shell .text-xs { font-size: var(--wb-fs-12) !important; line-height: 1.4 !important; }
+.workbench-shell .text-sm { font-size: var(--wb-fs-14) !important; line-height: 1.45 !important; }
+
+.workbench-shell .panel {
+  border-radius: clamp(10px, 1vw, 16px);
+}
+
+.workbench-shell .input {
+  padding-inline: clamp(10px, 0.9vw, 14px);
+  padding-block: clamp(7px, 0.75vw, 10px);
+}
+
+@media (max-width: 1280px) {
+  .workbench-shell .panel-separator {
+    width: 1px !important;
+  }
+}

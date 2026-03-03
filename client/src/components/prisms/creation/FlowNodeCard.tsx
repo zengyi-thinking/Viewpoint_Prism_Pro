@@ -3,7 +3,17 @@
 import React, { memo, useCallback } from 'react';
 import { Handle, Position } from '@xyflow/react';
 import { useCreationStore, FlowNodeData, RenderStatus } from '@/stores/creation.store';
-import { Lock, Unlock, ImagePlus, Play, RefreshCw, AlertCircle, Loader2 } from 'lucide-react';
+import {
+  Lock,
+  Unlock,
+  ImagePlus,
+  Play,
+  RefreshCw,
+  AlertCircle,
+  Loader2,
+  GitBranch,
+  GitMerge,
+} from 'lucide-react';
 
 // 状态颜色映射
 const statusColors: Record<RenderStatus, string> = {
@@ -27,8 +37,25 @@ interface FlowNodeCardProps {
 }
 
 function FlowNodeCardComponent({ id, data, selected }: FlowNodeCardProps) {
-  const { selectNode, generateFrame, lockFrame, renderNode } = useCreationStore();
-  const { orderIndex, prompt, scriptSegment, firstFrameUrl, lastFrameUrl, renderStatus, firstFrameLocked, lastFrameLocked, isGeneratingFrame, isRendering } = data;
+  const { selectNode, generateFrame, lockFrame, renderNode, createBranch, mergeBranch } = useCreationStore();
+  const {
+    orderIndex,
+    prompt,
+    scriptSegment,
+    firstFrameUrl,
+    lastFrameUrl,
+    renderStatus,
+    firstFrameLocked,
+    lastFrameLocked,
+    isGeneratingFrame,
+    isRendering,
+    branchName,
+    parentNodeId,
+    isMerged,
+    childBranchCount,
+  } = data;
+
+  const isBranchNode = Boolean(parentNodeId || branchName);
 
   const handleDoubleClick = useCallback(() => {
     selectNode(id);
@@ -45,6 +72,19 @@ function FlowNodeCardComponent({ id, data, selected }: FlowNodeCardProps) {
   const handleRender = useCallback(() => {
     renderNode(id);
   }, [id, renderNode]);
+
+  const handleCreateBranch = useCallback(() => {
+    const suggested = `branch-${orderIndex + 1}`;
+    const input = window.prompt('请输入分支名称', suggested);
+    const normalized = input?.trim();
+    if (!normalized) return;
+    createBranch(id, normalized);
+  }, [id, orderIndex, createBranch]);
+
+  const handleMergeBranch = useCallback(() => {
+    if (!isBranchNode || isMerged) return;
+    mergeBranch(id);
+  }, [id, isBranchNode, isMerged, mergeBranch]);
 
   const handleToggleFirstFrameLock = useCallback(() => {
     lockFrame(id, 'first', !firstFrameLocked);
@@ -77,7 +117,24 @@ function FlowNodeCardComponent({ id, data, selected }: FlowNodeCardProps) {
           <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-[#E91E8C]/20 text-xs font-bold text-[#E91E8C]">
             {orderIndex + 1}
           </span>
-          <span className="text-xs font-medium text-[#E5E5E5]">节点</span>
+          <span className="text-xs font-medium text-[#E5E5E5]">
+            {isBranchNode ? '分支节点' : '主干节点'}
+          </span>
+          {isBranchNode && branchName && (
+            <span className="rounded-full bg-[#9C27B0]/20 px-2 py-0.5 text-[10px] text-[#C084FC]">
+              {branchName}
+            </span>
+          )}
+          {!isBranchNode && (childBranchCount || 0) > 0 && (
+            <span className="rounded-full bg-[#2D2D3A] px-2 py-0.5 text-[10px] text-[#9CA3AF]">
+              {childBranchCount} 分支
+            </span>
+          )}
+          {isBranchNode && isMerged && (
+            <span className="rounded-full bg-[#10B981]/20 px-2 py-0.5 text-[10px] text-[#34D399]">
+              已合并
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-1">
           <span
@@ -196,6 +253,30 @@ function FlowNodeCardComponent({ id, data, selected }: FlowNodeCardProps) {
           )}
           渲染
         </button>
+      </div>
+
+      {/* Branch / Merge 操作 */}
+      <div className="flex gap-1 px-3 pb-2">
+        {!isBranchNode ? (
+          <button
+            onClick={handleCreateBranch}
+            className="w-full rounded-lg border border-[#3D3D4A] bg-[#2A2230] py-1.5 text-[10px] font-medium text-[#D8B4FE] transition hover:bg-[#3A2A44]"
+            title="基于当前节点新建分支"
+          >
+            <GitBranch className="mr-1 inline h-3 w-3" />
+            新建分支
+          </button>
+        ) : (
+          <button
+            onClick={handleMergeBranch}
+            disabled={Boolean(isMerged)}
+            className="w-full rounded-lg border border-[#2D4A3D] bg-[#1F3028] py-1.5 text-[10px] font-medium text-[#86EFAC] transition hover:bg-[#2B4637] disabled:opacity-50"
+            title="将分支合并回主干"
+          >
+            <GitMerge className="mr-1 inline h-3 w-3" />
+            {isMerged ? '已合并' : '合并到主干'}
+          </button>
+        )}
       </div>
 
       {/* 输出连接点 */}

@@ -20,6 +20,10 @@ export interface FlowNodeData extends Record<string, unknown> {
   orderIndex: number;
   prompt?: string;
   scriptSegment?: string;
+  parentNodeId?: string | null;
+  branchName?: string | null;
+  isMerged?: boolean;
+  childBranchCount?: number;
   firstFrameUrl?: string;
   lastFrameUrl?: string;
   renderedVideoUrl?: string;
@@ -35,6 +39,19 @@ export interface FlowNodeData extends Record<string, unknown> {
 
 export type FlowNode = Node<FlowNodeData>;
 export type FlowEdge = Edge;
+
+function extractNodeList(response: any): any[] {
+  if (Array.isArray(response)) return response;
+  if (Array.isArray(response?.items)) return response.items;
+  return [];
+}
+
+function extractSingleNode(response: any): any | null {
+  if (!response) return null;
+  if (response.node) return response.node;
+  if (response.id) return response;
+  return null;
+}
 
 interface CreationStore {
   // 项目状态
@@ -59,6 +76,8 @@ interface CreationStore {
   loadNodes: (videoId: string) => Promise<void>;
   createNode: (payload: CreateFlowNodePayload) => Promise<void>;
   createNodesFromSegments: (videoId: string, segments: Array<{ segment: string; prompt: string; estimatedDuration?: number }>) => Promise<void>;
+  createBranch: (sourceNodeId: string, branchName: string, promptOverride?: string) => Promise<void>;
+  mergeBranch: (branchNodeId: string) => Promise<void>;
   updateNode: (nodeId: string, data: Partial<FlowNodeData>) => Promise<void>;
   deleteNode: (nodeId: string) => Promise<void>;
   selectNode: (nodeId: string | null) => void;
@@ -109,19 +128,22 @@ export const useCreationStore = create<CreationStore>((set, get) => ({
       const response = await creationApi.getNodes(videoId) as any[];
 
       // Transform API response to React Flow nodes
-      // 确保 response 是数组，如果不是则使用空数组
-      const responseData = Array.isArray(response) ? response : [];
+      const responseData = extractNodeList(response);
       const flowNodes: FlowNode[] = responseData.map((node: any) => ({
         id: node.id,
         type: 'flowNodeCard',
         position: {
-          x: node.positionX ?? node.positionX ?? Math.random() * 500,
-          y: node.positionY ?? node.positionY ?? Math.random() * 400,
+          x: node.positionX ?? node.position?.x ?? Math.random() * 500,
+          y: node.positionY ?? node.position?.y ?? Math.random() * 400,
         },
         data: {
           orderIndex: node.orderIndex,
           prompt: node.prompt,
           scriptSegment: node.scriptSegment,
+          parentNodeId: node.parentNodeId ?? null,
+          branchName: node.branchName ?? null,
+          isMerged: Boolean(node.isMerged),
+          childBranchCount: Array.isArray(node.childBranches) ? node.childBranches.length : 0,
           firstFrameUrl: node.firstFrameUrl,
           lastFrameUrl: node.lastFrameUrl,
           renderedVideoUrl: node.renderedVideoUrl,
@@ -133,7 +155,21 @@ export const useCreationStore = create<CreationStore>((set, get) => ({
         },
       }));
 
-      set({ nodes: flowNodes, edges: [], isLoading: false });
+      const flowEdges: FlowEdge[] = responseData
+        .filter((node: any) => Boolean(node.parentNodeId))
+        .map((node: any) => ({
+          id: `edge-${node.parentNodeId}-${node.id}`,
+          source: node.parentNodeId,
+          target: node.id,
+          animated: true,
+          style: {
+            stroke: '#9C27B0',
+            strokeWidth: 1.5,
+            strokeDasharray: '4 3',
+          },
+        }));
+
+      set({ nodes: flowNodes, edges: flowEdges, isLoading: false });
     } catch (error) {
       console.error('Failed to load nodes:', error);
       set({ error: '加载节点失败', isLoading: false });
@@ -148,29 +184,55 @@ export const useCreationStore = create<CreationStore>((set, get) => ({
     set({ isLoading: true, error: null });
     try {
       const response = await creationApi.createNode(currentVideoId, payload) as any;
+      const createdNode = extractSingleNode(response);
+
+      if (!createdNode?.id) {
+        await get().loadNodes(currentVideoId);
+        return;
+      }
 
       const newNode: FlowNode = {
-        id: response.id,
+        id: createdNode.id,
         type: 'flowNodeCard',
         position: {
-          x: payload.positionX ?? Math.random() * 500,
-          y: payload.positionY ?? Math.random() * 400,
+          x: createdNode.positionX ?? payload.positionX ?? Math.random() * 500,
+          y: createdNode.positionY ?? payload.positionY ?? Math.random() * 400,
         },
         data: {
-          orderIndex: response.orderIndex,
-          prompt: response.prompt,
-          scriptSegment: response.scriptSegment,
-          firstFrameUrl: response.firstFrameUrl,
-          lastFrameUrl: response.lastFrameUrl,
-          renderedVideoUrl: response.renderedVideoUrl,
-          renderStatus: response.renderStatus || 'PENDING',
-          firstFrameLocked: response.firstFrameLocked,
-          lastFrameLocked: response.lastFrameLocked,
+          orderIndex: createdNode.orderIndex,
+          prompt: createdNode.prompt,
+          scriptSegment: createdNode.scriptSegment,
+          parentNodeId: createdNode.parentNodeId ?? null,
+          branchName: createdNode.branchName ?? null,
+          isMerged: Boolean(createdNode.isMerged),
+          childBranchCount: Array.isArray(createdNode.childBranches) ? createdNode.childBranches.length : 0,
+          firstFrameUrl: createdNode.firstFrameUrl,
+          lastFrameUrl: createdNode.lastFrameUrl,
+          renderedVideoUrl: createdNode.renderedVideoUrl,
+          renderStatus: createdNode.renderStatus || 'PENDING',
+          firstFrameLocked: createdNode.firstFrameLocked,
+          lastFrameLocked: createdNode.lastFrameLocked,
         },
       };
 
       set((state) => ({
         nodes: [...state.nodes, newNode],
+        edges: newNode.data.parentNodeId
+          ? [
+              ...state.edges,
+              {
+                id: `edge-${newNode.data.parentNodeId}-${newNode.id}`,
+                source: newNode.data.parentNodeId,
+                target: newNode.id,
+                animated: true,
+                style: {
+                  stroke: '#9C27B0',
+                  strokeWidth: 1.5,
+                  strokeDasharray: '4 3',
+                },
+              },
+            ]
+          : state.edges,
         isLoading: false,
       }));
     } catch (error) {
@@ -183,37 +245,61 @@ export const useCreationStore = create<CreationStore>((set, get) => ({
   createNodesFromSegments: async (videoId: string, segments: Array<{ segment: string; prompt: string; estimatedDuration?: number }>) => {
     set({ isLoading: true, error: null, currentVideoId: videoId });
     try {
-      const response = await creationApi.scriptSplit(videoId, {
-        scriptText: segments.map(s => s.segment).join('\n\n'),
-      }) as { segments: any[] };
+      await creationApi.scriptSplit(videoId, {
+        persist: true,
+        segments: segments.map((s) => ({
+          segment: s.segment,
+          prompt: s.prompt,
+          estimatedDuration: s.estimatedDuration,
+        })),
+      });
 
-      const newNodes: FlowNode[] = (response.segments || []).map((node: any) => ({
-        id: node.id,
-        type: 'flowNodeCard',
-        position: {
-          x: node.positionX ?? Math.random() * 500,
-          y: node.positionY ?? Math.random() * 400,
-        },
-        data: {
-          orderIndex: node.orderIndex,
-          prompt: node.prompt,
-          scriptSegment: node.scriptSegment,
-          firstFrameUrl: node.firstFrameUrl,
-          lastFrameUrl: node.lastFrameUrl,
-          renderedVideoUrl: node.renderedVideoUrl,
-          renderStatus: node.renderStatus || 'PENDING',
-          firstFrameLocked: node.firstFrameLocked,
-          lastFrameLocked: node.lastFrameLocked,
-        },
-      }));
-
-      set((state) => ({
-        nodes: [...state.nodes, ...newNodes],
-        isLoading: false,
-      }));
+      // 统一重新拉取，避免前后端结构差异导致前端映射错误
+      await get().loadNodes(videoId);
     } catch (error) {
       console.error('Failed to create nodes from segments:', error);
       set({ error: '批量创建节点失败', isLoading: false });
+    }
+  },
+
+  // Update a node
+  createBranch: async (sourceNodeId: string, branchName: string, promptOverride?: string) => {
+    const { currentVideoId } = get();
+    if (!currentVideoId) return;
+
+    set({ isLoading: true, error: null });
+    try {
+      await creationApi.createBranch(currentVideoId, {
+        sourceNodeId,
+        branchName,
+        promptOverride,
+      });
+      await get().loadNodes(currentVideoId);
+    } catch (error) {
+      console.error('Failed to create branch:', error);
+      set({ error: '创建分支失败', isLoading: false });
+    }
+  },
+
+  mergeBranch: async (branchNodeId: string) => {
+    const { currentVideoId, nodes } = get();
+    if (!currentVideoId) return;
+
+    const previousNodes = nodes;
+    set((state) => ({
+      nodes: state.nodes.map((node) =>
+        node.id === branchNodeId
+          ? { ...node, data: { ...node.data, isMerged: true } }
+          : node
+      ),
+    }));
+
+    try {
+      await creationApi.mergeBranch(currentVideoId, branchNodeId);
+      await get().loadNodes(currentVideoId);
+    } catch (error) {
+      console.error('Failed to merge branch:', error);
+      set({ nodes: previousNodes, error: '合并分支失败' });
     }
   },
 

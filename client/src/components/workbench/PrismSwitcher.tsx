@@ -98,7 +98,7 @@ export function PrismSwitcher({ collapsed = false, onToggle, onTimeClick }: Pris
               </defs>
               <path d="M14 2L26 24H2L14 2Z" stroke="url(#psg)" strokeWidth="1.5" fill="none" />
             </svg>
-            <span className="text-xs font-semibold text-text-tertiary">Studio</span>
+            <span className="wb-section-title">Studio</span>
           </div>
           <div className="flex items-center gap-1">
             {hasActivePrism ? (
@@ -155,10 +155,10 @@ export function PrismSwitcher({ collapsed = false, onToggle, onTimeClick }: Pris
                 {p.icon}
               </div>
               <div>
-                <div className="text-[11px] font-medium" style={{ color: isActive ? p.color : 'var(--text-secondary)' }}>
+                <div className="text-[13px] font-semibold" style={{ color: isActive ? p.color : 'var(--text-primary)' }}>
                   {p.label}
                 </div>
-                <div className="mt-0.5 text-[9px] text-text-tertiary">{p.subtitle}</div>
+                <div className="mt-0.5 text-[11px] text-text-tertiary">{p.subtitle}</div>
               </div>
               {isActive && (
                 <span
@@ -187,7 +187,7 @@ export function PrismSwitcher({ collapsed = false, onToggle, onTimeClick }: Pris
           </div>
         ) : (
           <div className="flex h-full items-center justify-center px-4">
-            <p className="text-center text-[10px] text-text-tertiary">选择棱镜开始工作</p>
+            <p className="wb-meta text-center">选择棱镜开始工作</p>
           </div>
         )}
       </div>
@@ -215,14 +215,14 @@ function PrismActivePanel({ onTimeClick }: { onTimeClick?: (timestamp: number) =
           <div className="px-4 py-3">
             <div className="flex items-center gap-2">
               <span className="status-dot" style={{ background: c.color }} />
-              <span className="text-xs font-medium text-text-secondary">{c.title}</span>
+              <span className="wb-section-title">{c.title}</span>
             </div>
-            <p className="mt-1 text-[10px] text-text-tertiary">{c.desc}</p>
+            <p className="wb-meta mt-1">{c.desc}</p>
           </div>
           <div className="flex flex-1 items-center justify-center px-4">
             <div className="w-full rounded-xl border border-border-subtle bg-bg-panel-secondary p-3">
-              <p className="text-center text-xs text-text-secondary">当前没有已绑定视频</p>
-              <p className="mt-1 text-center text-[10px] text-text-tertiary">
+              <p className="text-center text-sm font-medium text-text-primary">当前没有已绑定视频</p>
+              <p className="wb-meta mt-1 text-center">
                 请在左侧点击一个视频卡片，随后这里会显示知识看板按钮与同步操作。
               </p>
             </div>
@@ -246,14 +246,14 @@ function PrismActivePanel({ onTimeClick }: { onTimeClick?: (timestamp: number) =
           <div className="px-4 py-3">
             <div className="flex items-center gap-2">
               <span className="status-dot" style={{ background: c.color }} />
-              <span className="text-xs font-medium text-text-secondary">{c.title}</span>
+              <span className="wb-section-title">{c.title}</span>
             </div>
-            <p className="mt-1 text-[10px] text-text-tertiary">{c.desc}</p>
+            <p className="wb-meta mt-1">{c.desc}</p>
           </div>
           <div className="flex flex-1 items-center justify-center px-4">
             <div className="w-full rounded-xl border border-border-subtle bg-bg-panel-secondary p-3">
-              <p className="text-center text-xs text-text-secondary">当前没有已绑定视频</p>
-              <p className="mt-1 text-center text-[10px] text-text-tertiary">
+              <p className="text-center text-sm font-medium text-text-primary">当前没有已绑定视频</p>
+              <p className="wb-meta mt-1 text-center">
                 请在左侧点击一个视频卡片，随后这里会显示 PrismFlow 节点画布。
               </p>
             </div>
@@ -274,16 +274,16 @@ function PrismActivePanel({ onTimeClick }: { onTimeClick?: (timestamp: number) =
       <div className="px-4 py-3">
         <div className="flex items-center gap-2">
           <span className="status-dot" style={{ background: c.color }} />
-          <span className="text-xs font-medium text-text-secondary">{c.title}</span>
+          <span className="wb-section-title">{c.title}</span>
         </div>
-        <p className="mt-1 text-[10px] text-text-tertiary">{c.desc}</p>
+        <p className="wb-meta mt-1">{c.desc}</p>
       </div>
       <div className="flex flex-1 items-center justify-center">
-        <p className="text-[10px] text-text-tertiary">请先选择视频开始分析</p>
+        <p className="wb-meta">请先选择视频开始分析</p>
       </div>
       <div className="border-t border-border-subtle px-4 py-2.5">
         <button
-          className="input w-full py-1.5 text-[10px] font-medium text-text-tertiary"
+          className="input w-full py-1.5 text-[11px] font-medium text-text-tertiary"
           style={{ background: `${c.color}08` }}
           disabled
         >

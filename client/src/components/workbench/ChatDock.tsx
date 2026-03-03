@@ -135,6 +135,7 @@ export function ChatDock({ projectId, height }: ChatDockProps) {
   const contextKey = currentVideo?.id ?? '__project__';
   const sessionByContextRef = useRef<Record<string, string>>({});
   const messagesByContextRef = useRef<Record<string, Message[]>>({});
+  const messageListRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const fallbackPrompts =
@@ -471,8 +472,15 @@ export function ChatDock({ projectId, height }: ChatDockProps) {
 
       const heading = trimmed.match(/^(#{1,3})\s+(.+)$/);
       if (heading) {
+        const level = heading[1].length;
+        const headingClass =
+          level === 1
+            ? 'mt-1 text-[15px] font-semibold tracking-tight text-text-primary'
+            : level === 2
+            ? 'mt-1 text-[14px] font-semibold text-text-primary'
+            : 'mt-1 text-[13px] font-semibold text-text-secondary';
         blocks.push(
-          <p key={`h-${key++}`} className="font-semibold text-text-primary">
+          <p key={`h-${key++}`} className={headingClass}>
             {renderInlineMarkdown(heading[2])}
           </p>,
         );
@@ -490,49 +498,67 @@ export function ChatDock({ projectId, height }: ChatDockProps) {
     return blocks;
   };
 
+  const handleMessageWheel = (e: React.WheelEvent<HTMLDivElement>) => {
+    const el = messageListRef.current;
+    if (!el) return;
+
+    const isScrollable = el.scrollHeight > el.clientHeight;
+    if (!isScrollable) return;
+
+    // Force wheel events to scroll chat history itself,
+    // instead of bubbling to outer containers.
+    el.scrollTop += e.deltaY;
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
   return (
-    <div className="panel flex flex-1 flex-col rounded-none border-x-0 border-b-0 min-h-0 overflow-hidden">
+    <div className="panel flex h-full flex-1 min-h-0 flex-col overflow-hidden rounded-none border-x-0 border-b-0">
       {/* Header */}
       <div className="shrink-0 flex items-center justify-between border-b border-border-subtle px-3 py-2">
         <div className="flex items-center gap-2">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-text-tertiary">
             <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" />
           </svg>
-          <h3 className="text-xs font-semibold text-text-secondary">对话窗口</h3>
+          <h3 className="wb-section-title">对话窗口</h3>
         </div>
-        <span className="text-[10px] text-text-tertiary">跨棱镜编排器</span>
+        <span className="wb-meta">跨棱镜编排器</span>
       </div>
 
       {/* Context hint */}
       <div className="shrink-0 border-b border-border-subtle px-3 py-2">
         {!currentVideo ? (
-          <p className="text-[10px] text-text-tertiary">
+          <p className="wb-meta">
             当前未绑定视频。请点击左侧视频卡片后再进行智能问答。
           </p>
         ) : activePrism !== 'knowledge' ? (
-          <p className="text-[10px] text-text-tertiary">
+          <p className="wb-meta">
             当前棱镜：{activePrism || '未选择'}。视频智能问答建议切换到知识棱镜。
           </p>
         ) : currentVideo.transcriptStatus !== 'COMPLETED' || currentVideo.keyframeStatus !== 'COMPLETED' ? (
-          <p className="text-[10px] text-text-tertiary">
+          <p className="wb-meta">
             视频已绑定：{currentVideo.title}。请先“确认导入”完成分析，回答会更准确。
           </p>
         ) : (
-          <p className="text-[10px] text-text-tertiary">
-            已连接视频上下文：{currentVideo.title}
+          <p className="wb-meta">
+            已连接视频上下文：<span className="wb-emphasis">{currentVideo.title}</span>
           </p>
         )}
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-4 py-3 min-h-0">
+      <div
+        ref={messageListRef}
+        onWheel={handleMessageWheel}
+        className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 py-3"
+      >
         {messages.length === 0 ? (
           <div className="flex h-full flex-col items-center justify-center gap-3">
             <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-text-tertiary opacity-30">
               <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" />
             </svg>
             <div className="text-center">
-              <p className="text-xs text-text-tertiary mb-2">快速指令</p>
+              <p className="wb-meta mb-2">快速指令</p>
               <div className="flex flex-wrap justify-center gap-2">
                 {['/summarize', '/mindmap', '/translate'].map((cmd) => (
                   <button
@@ -551,10 +577,10 @@ export function ChatDock({ projectId, height }: ChatDockProps) {
             {messages.map((msg) => (
               <div
                 key={msg.id}
-                className={`max-w-[85%] rounded-2xl px-3 py-2 text-[13px] ${
+                className={`max-w-[85%] rounded-2xl px-3 py-2 text-[13px] leading-6 ${
                   msg.role === 'user'
-                    ? 'ml-auto bg-bg-panel-tertiary text-text-secondary'
-                    : 'mr-auto bg-gradient-to-r from-[#FF6B35]/10 to-[#E91E8C]/10 text-text-secondary'
+                    ? 'ml-auto bg-bg-panel-tertiary text-text-primary'
+                    : 'mr-auto border border-border-subtle bg-gradient-to-r from-[#FF6B35]/10 to-[#E91E8C]/10 text-text-primary'
                 }`}
               >
                 {renderMessageContent(msg.content)}
@@ -578,7 +604,7 @@ export function ChatDock({ projectId, height }: ChatDockProps) {
                 key={prompt.id}
                 onClick={() => handleQuickPrompt(prompt)}
                 disabled={isSending}
-                className="flex shrink-0 items-center gap-1.5 rounded-lg bg-bg-panel-tertiary px-2.5 py-1.5 text-[10px] text-text-secondary transition hover:bg-bg-panel-secondary hover:text-text-primary disabled:opacity-50"
+                className="flex shrink-0 items-center gap-1.5 rounded-lg bg-bg-panel-tertiary px-2.5 py-1.5 text-[11px] text-text-secondary transition hover:bg-bg-panel-secondary hover:text-text-primary disabled:opacity-50"
                 title={prompt.promptTemplate}
               >
                 <span className="text-xs">{prompt.icon}</span>

@@ -32,7 +32,13 @@ export interface ExportProjectPayload {
 }
 
 export interface ScriptSplitPayload {
-  scriptText: string;
+  scriptText?: string;
+  persist?: boolean;
+  segments?: Array<{
+    segment: string;
+    prompt?: string;
+    estimatedDuration?: number;
+  }>;
   stylePreset?: {
     cameraMovements?: string[];
     pacePattern?: number[];
@@ -86,6 +92,11 @@ export const creationApi = {
     apiFetch(`/api/prism/creation/videos/${videoId}/branches`, {
       method: 'POST',
       body: JSON.stringify(payload),
+    }),
+
+  mergeBranch: (videoId: string, nodeId: string) =>
+    apiFetch(`/api/prism/creation/videos/${videoId}/branches/${nodeId}/merge`, {
+      method: 'POST',
     }),
 
   render: (videoId: string, payload: RenderFlowPayload) =>

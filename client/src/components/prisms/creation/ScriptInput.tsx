@@ -1,8 +1,8 @@
 'use client';
 
 import React, { useState } from 'react';
-import { creationApi, ScriptSegment } from '@/services/creation.api';
-import { useCreationStore, FlowNode } from '@/stores/creation.store';
+import { creationApi } from '@/services/creation.api';
+import { useCreationStore } from '@/stores/creation.store';
 import { Loader2, Sparkles, X, Check, GripVertical } from 'lucide-react';
 
 interface ScriptInputProps {
@@ -34,9 +34,16 @@ export function ScriptInput({ videoId, isOpen, onClose }: ScriptInputProps) {
     try {
       const response = await creationApi.scriptSplit(videoId, {
         scriptText: scriptText,
-      }) as { segments: SplitSegment[] };
+        persist: false,
+      }) as { segments: Array<{ segment?: string; prompt?: string; estimatedDuration?: number }> };
 
-      setSplitSegments(response.segments || []);
+      const preview = (response.segments || []).map((seg) => ({
+        segment: seg.segment || '',
+        prompt: seg.prompt || seg.segment || '',
+        estimatedDuration: seg.estimatedDuration,
+      }));
+
+      setSplitSegments(preview);
     } catch (error) {
       console.error('AI 拆分文案失败:', error);
       alert('AI 拆分文案失败，请重试');

@@ -1,5 +1,15 @@
 import { Type } from 'class-transformer';
-import { IsBoolean, IsEnum, IsNumber, IsObject, IsOptional, IsString, Min } from 'class-validator';
+import {
+  IsArray,
+  IsBoolean,
+  IsEnum,
+  IsNumber,
+  IsObject,
+  IsOptional,
+  IsString,
+  Min,
+  ValidateNested,
+} from 'class-validator';
 
 export enum RenderQuality {
   DRAFT = 'draft',
@@ -13,9 +23,24 @@ export enum TaskStatus {
   FAILED = 'FAILED',
 }
 
-export class ScriptSplitDto {
+export class ScriptSplitSegmentDto {
   @IsString()
-  scriptText: string;
+  segment: string;
+
+  @IsOptional()
+  @IsString()
+  prompt?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  estimatedDuration?: number;
+}
+
+export class ScriptSplitDto {
+  @IsOptional()
+  @IsString()
+  scriptText?: string;
 
   @IsOptional()
   @IsObject()
@@ -25,6 +50,16 @@ export class ScriptSplitDto {
     colorGrading?: Record<string, any>;
     transitionStyle?: string;
   };
+
+  @IsOptional()
+  @IsBoolean()
+  persist?: boolean;
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => ScriptSplitSegmentDto)
+  segments?: ScriptSplitSegmentDto[];
 }
 
 export class CreateFlowNodeDto {
