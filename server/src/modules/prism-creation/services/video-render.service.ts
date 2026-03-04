@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { AITaskType } from '../../../infrastructure/ai-router/ai-router.interface';
@@ -39,20 +39,19 @@ export class VideoRenderService {
       throw new NotFoundException('Node not found');
     }
 
-    // Check if both frames are available
-    if (!node.firstFrameUrl || !node.lastFrameUrl) {
-      this.logger.warn(`Node ${nodeId} does not have both frames, proceeding anyway`);
-    }
-
-    // Check if frames are locked - if not, we should generate them first
-    if (!node.firstFrameLocked || !node.lastFrameLocked) {
-      this.logger.warn(`Node ${nodeId} has unlocked frames, rendering may use generated frames`);
+    const frameContext = await this.resolveRenderFrameContext(node);
+    if (!frameContext.lastFrameUrl) {
+      throw new BadRequestException(
+        frameContext.isFirstMainNode
+          ? '首个节点需要先生成落幅帧后再渲染'
+          : '当前节点需要先生成画面帧后再渲染',
+      );
     }
 
     // Update node status to processing
     await this.prisma.flowNode.update({
       where: { id: nodeId },
-      data: { renderStatus: TaskStatus.PROCESSING },
+      data: { renderStatus: TaskStatus.PROCESSING, renderedVideoUrl: null },
     });
 
     // Create task record
@@ -65,11 +64,15 @@ export class VideoRenderService {
           flowProjectId: node.flowProjectId,
           quality,
           stylePresetId,
-          firstFrameUrl: node.firstFrameUrl,
-          lastFrameUrl: node.lastFrameUrl,
+          firstFrameUrl: frameContext.firstFrameUrl,
+          lastFrameUrl: frameContext.lastFrameUrl,
           prompt: node.prompt,
+          isFirstMainNode: frameContext.isFirstMainNode,
+          previousNodeId: frameContext.previousNodeId,
         } as any,
-        status: TaskStatus.PENDING,
+        status: TaskStatus.PROCESSING,
+        progress: 5,
+        startedAt: new Date(),
       },
     });
 
@@ -77,8 +80,8 @@ export class VideoRenderService {
     this.executeRender(taskRecord.id, nodeId, userId, {
       quality,
       stylePresetId,
-      firstFrameUrl: node.firstFrameUrl,
-      lastFrameUrl: node.lastFrameUrl,
+      firstFrameUrl: frameContext.firstFrameUrl,
+      lastFrameUrl: frameContext.lastFrameUrl,
       prompt: node.prompt,
     }).catch((error) => {
       this.logger.error(`Render failed for node ${nodeId}: ${error.message}`);
@@ -111,6 +114,14 @@ export class VideoRenderService {
     try {
       this.logger.log(`Starting render for task ${taskId}, node ${nodeId}`);
 
+      await this.prisma.taskRecord.update({
+        where: { id: taskId },
+        data: {
+          status: TaskStatus.PROCESSING,
+          progress: 20,
+        },
+      });
+
       // Call AI Router to generate video
       const result = await this.aiRouter.execute(AITaskType.VIDEO_GEN, {
         firstFrameUrl: options.firstFrameUrl,
@@ -122,6 +133,13 @@ export class VideoRenderService {
 
       // Extract video URL from result
       const videoUrl = this.extractVideoUrl(result);
+
+      await this.prisma.taskRecord.update({
+        where: { id: taskId },
+        data: {
+          progress: 85,
+        },
+      });
 
       if (videoUrl) {
         // Update node with rendered video URL
@@ -138,7 +156,9 @@ export class VideoRenderService {
           where: { id: taskId },
           data: {
             status: TaskStatus.COMPLETED,
+            progress: 100,
             result: { videoUrl } as any,
+            completedAt: new Date(),
           },
         });
 
@@ -165,7 +185,9 @@ export class VideoRenderService {
           where: { id: taskId },
           data: {
             status: TaskStatus.COMPLETED,
+            progress: 100,
             result: { videoUrl: placeholderUrl } as any,
+            completedAt: new Date(),
           },
         });
 
@@ -187,10 +209,55 @@ export class VideoRenderService {
         where: { id: taskId },
         data: {
           status: TaskStatus.FAILED,
+          progress: 100,
           error: error.message,
+          completedAt: new Date(),
         } as any,
       });
     }
+  }
+
+  private async resolveRenderFrameContext(node: any) {
+    const firstMainNode = await this.prisma.flowNode.findFirst({
+      where: {
+        flowProjectId: node.flowProjectId,
+        parentNodeId: null,
+      },
+      orderBy: { orderIndex: 'asc' },
+      select: { id: true },
+    });
+    const isFirstMainNode = firstMainNode?.id === node.id;
+    if (isFirstMainNode) {
+      return {
+        isFirstMainNode: true,
+        previousNodeId: null,
+        firstFrameUrl: node.firstFrameUrl || null,
+        lastFrameUrl: node.lastFrameUrl || null,
+      };
+    }
+
+    const previousNode = await this.prisma.flowNode.findFirst({
+      where: {
+        flowProjectId: node.flowProjectId,
+        orderIndex: { lt: node.orderIndex },
+      },
+      orderBy: { orderIndex: 'desc' },
+    });
+
+    const firstFrameUrl =
+      previousNode?.lastFrameUrl ||
+      previousNode?.firstFrameUrl ||
+      node.firstFrameUrl ||
+      node.lastFrameUrl ||
+      null;
+    const lastFrameUrl = node.firstFrameUrl || node.lastFrameUrl || null;
+
+    return {
+      isFirstMainNode: false,
+      previousNodeId: previousNode?.id || null,
+      firstFrameUrl,
+      lastFrameUrl,
+    };
   }
 
   /**

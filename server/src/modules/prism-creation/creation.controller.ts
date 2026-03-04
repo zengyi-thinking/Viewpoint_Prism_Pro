@@ -2,7 +2,20 @@ import { Body, Controller, Get, Param, Patch, Post, Delete, UseGuards, Query } f
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { CreationService } from './creation.service';
-import { CreateBranchDto, CreateFlowNodeDto, UpdateFlowNodeDto, RenderFlowDto, StitchFlowDto, StitchExportDto, ExportProjectDto, ScriptSplitDto, GenerateFrameDto, LockFrameDto, RenderQuality } from './dto';
+import {
+  CreateBranchDto,
+  CreateFlowNodeDto,
+  UpdateFlowNodeDto,
+  RenderFlowDto,
+  StitchFlowDto,
+  StitchExportDto,
+  ExportProjectDto,
+  ScriptSplitDto,
+  GenerateFrameDto,
+  LockFrameDto,
+  RenderQuality,
+  RefineCopyDto,
+} from './dto';
 
 @UseGuards(JwtAuthGuard)
 @Controller('api/prism/creation')
@@ -115,6 +128,14 @@ export class CreationController {
     return this.creationService.getExportTaskStatus(taskId);
   }
 
+  @Get('tasks/:taskId/render-status')
+  getRenderTaskStatus(
+    @CurrentUser() userId: string,
+    @Param('taskId') taskId: string,
+  ) {
+    return this.creationService.getRenderTaskStatus(userId, taskId);
+  }
+
   @Post('videos/:videoId/script-split')
   @Post(':videoId/script-split')
   scriptSplit(
@@ -152,5 +173,14 @@ export class CreationController {
     @Query('quality') quality?: RenderQuality,
   ) {
     return this.creationService.renderNode(userId, nodeId, quality);
+  }
+
+  @Post('nodes/:nodeId/refine-copy')
+  refineNodeCopy(
+    @CurrentUser() userId: string,
+    @Param('nodeId') nodeId: string,
+    @Body() dto: RefineCopyDto,
+  ) {
+    return this.creationService.refineNodeCopy(userId, nodeId, dto);
   }
 }

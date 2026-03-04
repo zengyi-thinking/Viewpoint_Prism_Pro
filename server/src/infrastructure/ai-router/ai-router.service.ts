@@ -14,12 +14,12 @@ import { ConfigService } from '@nestjs/config';
 // Task type to provider class mappings (using constructor types)
 // 所有任务类型优先使用 Seedance (硅基流动) Provider
 const PROVIDER_MAPPING: Record<AITaskType, any[]> = {
-  [AITaskType.ASR]: [SeedanceProvider, WhisperProvider, VolcengineAsrProvider, AliyunAsrProvider],
+  [AITaskType.ASR]: [SeedanceProvider, GeminiProvider, WhisperProvider, VolcengineAsrProvider, AliyunAsrProvider],
   [AITaskType.LLM_CHAT]: [SeedanceProvider, OpenAIProvider, GeminiProvider],
   [AITaskType.MULTIMODAL]: [SeedanceProvider, OpenAIProvider, GeminiProvider],
-  [AITaskType.IMAGE_GEN]: [SeedanceProvider, MidjourneyProvider, OpenAIProvider],
+  [AITaskType.IMAGE_GEN]: [SeedanceProvider, GeminiProvider, MidjourneyProvider, OpenAIProvider],
   [AITaskType.VIDEO_GEN]: [SeedanceProvider],
-  [AITaskType.TTS]: [SeedanceProvider, ElevenLabsProvider, OpenAIProvider],
+  [AITaskType.TTS]: [SeedanceProvider, GeminiProvider, ElevenLabsProvider, OpenAIProvider],
   [AITaskType.VOICE_CLONE]: [ElevenLabsProvider],
   [AITaskType.TRANSLATION]: [SeedanceProvider, OpenAIProvider, GeminiProvider],
 };

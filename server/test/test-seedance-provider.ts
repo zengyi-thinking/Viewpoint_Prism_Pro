@@ -7,8 +7,8 @@
  */
 
 import { ConfigService } from '@nestjs/config';
-import { SeedanceProvider } from './src/infrastructure/ai-router/providers/seedance.provider';
-import { AITaskType } from './src/infrastructure/ai-router/ai-router.interface';
+import { SeedanceProvider } from '../src/infrastructure/ai-router/providers/seedance.provider';
+import { AITaskType } from '../src/infrastructure/ai-router/ai-router.interface';
 
 // 创建简单的 ConfigService 模拟
 class TestConfigService {

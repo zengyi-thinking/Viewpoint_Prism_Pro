@@ -23,14 +23,5 @@
     }
   },
   "include": ["src/**/*.ts"],
-  "exclude": [
-    "node_modules",
-    "dist",
-    "test",
-    "*.ts",
-    "src/modules/prism-knowledge/services/prompt-template.service.ts",
-    "src/modules/prism-knowledge/services/quality-assessment.service.ts",
-    "src/modules/prism-knowledge/prompt-template.controller.ts",
-    "src/modules/prism-knowledge/quality-assessment.controller.ts"
-  ]
+  "exclude": ["node_modules", "dist", "test"]
 }

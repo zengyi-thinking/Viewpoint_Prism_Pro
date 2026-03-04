@@ -11,11 +11,15 @@ import {
   SettleKnowledgeDto,
 } from './dto';
 import { MindmapResult } from './services/mindmap.service';
+import { FlashcardService } from './services/flashcard.service';
 
 @UseGuards(JwtAuthGuard)
 @Controller('api/prism/knowledge')
 export class KnowledgeController {
-  constructor(private readonly knowledgeService: KnowledgeService) {}
+  constructor(
+    private readonly knowledgeService: KnowledgeService,
+    private readonly flashcardService: FlashcardService,
+  ) {}
 
   @Post('videos/:videoId/analyze')
   @Post(':videoId/analyze')
@@ -217,5 +221,55 @@ export class KnowledgeController {
     @Body() options: any,
   ) {
     return this.knowledgeService.regenerateCrystalCards(userId, videoId, options);
+  }
+
+  /**
+   * 闪卡复习 - SM-2 自适应算法
+   */
+  @Post('flashcards/:flashcardId/review')
+  reviewFlashcard(
+    @CurrentUser() userId: string,
+    @Param('flashcardId') flashcardId: string,
+    @Body() body: { quality: number; timeTaken?: number },
+  ) {
+    return this.flashcardService.reviewFlashcard(
+      userId,
+      flashcardId,
+      body.quality,
+      body.timeTaken,
+    );
+  }
+
+  /**
+   * 获取今日需要复习的闪卡
+   */
+  @Get('flashcards/today')
+  getTodayReviews(
+    @CurrentUser() userId: string,
+  ) {
+    return this.flashcardService.getTodayReviews(userId);
+  }
+
+  /**
+   * 获取复习统计
+   */
+  @Get('flashcards/stats')
+  getReviewStats(
+    @CurrentUser() userId: string,
+    @Query('days') days: number = 30,
+  ) {
+    return this.flashcardService.getReviewStats(userId, days);
+  }
+
+  /**
+   * 重新调度闪卡
+   */
+  @Post('flashcards/:flashcardId/reschedule')
+  rescheduleFlashcard(
+    @CurrentUser() userId: string,
+    @Param('flashcardId') flashcardId: string,
+    @Body() body: { reason: string },
+  ) {
+    return this.flashcardService.rescheduleFlashcard(flashcardId, body.reason);
   }
 }

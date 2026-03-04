@@ -1,21 +1,22 @@
 'use client';
 
-import React, { memo, useCallback } from 'react';
+import React, { memo, useCallback, useState } from 'react';
 import { Handle, Position } from '@xyflow/react';
 import { useCreationStore, FlowNodeData, RenderStatus } from '@/stores/creation.store';
 import {
-  Lock,
-  Unlock,
-  ImagePlus,
-  Play,
-  RefreshCw,
   AlertCircle,
-  Loader2,
   GitBranch,
   GitMerge,
+  ImagePlus,
+  Loader2,
+  Lock,
+  Play,
+  RefreshCw,
+  Trash2,
+  Unlock,
+  Wand2,
 } from 'lucide-react';
 
-// 状态颜色映射
 const statusColors: Record<RenderStatus, string> = {
   PENDING: '#6B7280',
   PROCESSING: '#F59E0B',
@@ -37,7 +38,19 @@ interface FlowNodeCardProps {
 }
 
 function FlowNodeCardComponent({ id, data, selected }: FlowNodeCardProps) {
-  const { selectNode, generateFrame, lockFrame, renderNode, createBranch, mergeBranch } = useCreationStore();
+  const {
+    selectNode,
+    generateFrame,
+    lockFrame,
+    renderNode,
+    createBranch,
+    mergeBranch,
+    deleteNode,
+    updateNode,
+    updateNodeLocalData,
+    refineNodeCopy,
+  } = useCreationStore();
+
   const {
     orderIndex,
     prompt,
@@ -45,6 +58,7 @@ function FlowNodeCardComponent({ id, data, selected }: FlowNodeCardProps) {
     firstFrameUrl,
     lastFrameUrl,
     renderStatus,
+    renderProgress = 0,
     firstFrameLocked,
     lastFrameLocked,
     isGeneratingFrame,
@@ -53,21 +67,24 @@ function FlowNodeCardComponent({ id, data, selected }: FlowNodeCardProps) {
     parentNodeId,
     isMerged,
     childBranchCount,
+    firstFramePrompt,
+    lastFramePrompt,
+    sceneFramePrompt,
+    renderedVideoUrl,
   } = data;
 
   const isBranchNode = Boolean(parentNodeId || branchName);
+  const isFirstMainNode = !isBranchNode && Boolean(data.isFirstScene);
+  const sceneFrameUrl = firstFrameUrl || lastFrameUrl;
+
+  const [isEditingCopy, setIsEditingCopy] = useState(false);
+  const [copyRequirement, setCopyRequirement] = useState('');
+  const [savingCopy, setSavingCopy] = useState(false);
 
   const handleDoubleClick = useCallback(() => {
     selectNode(id);
+    setIsEditingCopy((v) => !v);
   }, [id, selectNode]);
-
-  const handleGenerateFirstFrame = useCallback(() => {
-    generateFrame(id, 'first');
-  }, [id, generateFrame]);
-
-  const handleGenerateLastFrame = useCallback(() => {
-    generateFrame(id, 'last');
-  }, [id, generateFrame]);
 
   const handleRender = useCallback(() => {
     renderNode(id);
@@ -86,33 +103,64 @@ function FlowNodeCardComponent({ id, data, selected }: FlowNodeCardProps) {
     mergeBranch(id);
   }, [id, isBranchNode, isMerged, mergeBranch]);
 
-  const handleToggleFirstFrameLock = useCallback(() => {
-    lockFrame(id, 'first', !firstFrameLocked);
-  }, [id, firstFrameLocked, lockFrame]);
+  const handleDelete = useCallback(() => {
+    const ok = window.confirm('确认删除该节点？删除后不可恢复。');
+    if (!ok) return;
+    deleteNode(id);
+  }, [deleteNode, id]);
 
-  const handleToggleLastFrameLock = useCallback(() => {
+  const persistCopyEdit = useCallback(async () => {
+    await updateNode(id, {
+      scriptSegment: String(data.scriptSegment || '').trim(),
+      prompt: String(data.prompt || '').trim(),
+    });
+  }, [id, data.scriptSegment, data.prompt, updateNode]);
+
+  const handleAiRefineCopy = useCallback(async () => {
+    const req = copyRequirement.trim();
+    if (!req) return;
+    setSavingCopy(true);
+    try {
+      await refineNodeCopy(id, req);
+      setCopyRequirement('');
+    } finally {
+      setSavingCopy(false);
+    }
+  }, [copyRequirement, id, refineNodeCopy]);
+
+  const triggerFirstFrame = useCallback(() => {
+    generateFrame(id, 'first', String(firstFramePrompt || sceneFramePrompt || prompt || ''));
+  }, [firstFramePrompt, generateFrame, id, prompt, sceneFramePrompt]);
+
+  const triggerLastFrame = useCallback(() => {
+    generateFrame(id, 'last', String(lastFramePrompt || prompt || ''));
+  }, [generateFrame, id, lastFramePrompt, prompt]);
+
+  const toggleFirstLock = useCallback(() => {
+    lockFrame(id, 'first', !firstFrameLocked);
+  }, [firstFrameLocked, id, lockFrame]);
+
+  const toggleLastLock = useCallback(() => {
     lockFrame(id, 'last', !lastFrameLocked);
   }, [id, lastFrameLocked, lockFrame]);
 
   return (
     <div
       className={[
-        'w-72 rounded-xl border-2 bg-[#1E1E24] transition-all duration-200',
+        'w-[360px] rounded-xl border-2 bg-[#1E1E24] transition-all duration-200',
         selected
           ? 'border-[#E91E8C] shadow-lg shadow-[#E91E8C]/20'
           : 'border-[#2D2D3A] hover:border-[#3D3D4A]',
       ].join(' ')}
       onDoubleClick={handleDoubleClick}
     >
-      {/* 输入连接点 */}
       <Handle
         type="target"
         position={Position.Left}
-        className="!w-3 !h-3 !bg-[#E91E8C] !border-2 !border-[#1E1E24]"
+        className="!h-3 !w-3 !border-2 !border-[#1E1E24] !bg-[#E91E8C]"
       />
 
-      {/* Header */}
-      <div className="flex items-center justify-between px-3 py-2 border-b border-[#2D2D3A]">
+      <div className="flex items-center justify-between border-b border-[#2D2D3A] px-3 py-2">
         <div className="flex items-center gap-2">
           <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-[#E91E8C]/20 text-xs font-bold text-[#E91E8C]">
             {orderIndex + 1}
@@ -136,7 +184,7 @@ function FlowNodeCardComponent({ id, data, selected }: FlowNodeCardProps) {
             </span>
           )}
         </div>
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-2">
           <span
             className="flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium"
             style={{ backgroundColor: `${statusColors[renderStatus]}20`, color: statusColors[renderStatus] }}
@@ -145,117 +193,266 @@ function FlowNodeCardComponent({ id, data, selected }: FlowNodeCardProps) {
             {renderStatus === 'FAILED' && <AlertCircle className="h-3 w-3" />}
             {statusLabels[renderStatus]}
           </span>
-        </div>
-      </div>
-
-      {/* 片段文案 */}
-      <div className="px-3 py-2 border-b border-[#2D2D3A]">
-        <p className="text-[11px] text-[#9CA3AF] line-clamp-2">
-          {scriptSegment || prompt || '点击编辑文案...'}
-        </p>
-      </div>
-
-      {/* 缩略图预览 */}
-      <div className="flex gap-2 px-3 py-2">
-        {/* 首帧 */}
-        <div className="relative flex-1">
-          <div className="aspect-video w-full overflow-hidden rounded-lg bg-[#2D2D3A]">
-            {firstFrameUrl ? (
-              <img src={firstFrameUrl} alt="首帧" className="h-full w-full object-cover" />
-            ) : (
-              <div className="flex h-full w-full items-center justify-center">
-                <ImagePlus className="h-4 w-4 text-[#6B7280]" />
-              </div>
-            )}
-          </div>
           <button
-            onClick={handleToggleFirstFrameLock}
-            className="absolute top-1 right-1 rounded p-1 transition hover:bg-[#2D2D3A]"
-            title={firstFrameLocked ? '解锁首帧' : '锁定首帧'}
+            onClick={handleDelete}
+            className="rounded p-1 text-[#9CA3AF] transition hover:bg-[#3B1F26] hover:text-[#F87171]"
+            title="删除节点"
           >
-            {firstFrameLocked ? (
-              <Lock className="h-3 w-3 text-[#F59E0B]" />
-            ) : (
-              <Unlock className="h-3 w-3 text-[#6B7280]" />
-            )}
+            <Trash2 className="h-3.5 w-3.5" />
           </button>
-          <span className="absolute bottom-1 left-1 rounded bg-black/60 px-1 py-0.5 text-[9px] text-white">
-            首帧
-          </span>
         </div>
+      </div>
 
-        {/* 落幅 */}
-        <div className="relative flex-1">
-          <div className="aspect-video w-full overflow-hidden rounded-lg bg-[#2D2D3A]">
-            {lastFrameUrl ? (
-              <img src={lastFrameUrl} alt="落幅" className="h-full w-full object-cover" />
-            ) : (
-              <div className="flex h-full w-full items-center justify-center">
-                <ImagePlus className="h-4 w-4 text-[#6B7280]" />
-              </div>
-            )}
-          </div>
+      <div className="space-y-2 border-b border-[#2D2D3A] px-3 py-2">
+        <div>
+          <label className="text-[10px] text-[#6B7280]">节点文案</label>
+          <textarea
+            value={String(data.scriptSegment || '')}
+            onChange={(e) => updateNodeLocalData(id, { scriptSegment: e.target.value })}
+            rows={2}
+            className="mt-1 w-full resize-y rounded-md border border-[#2D2D3A] bg-[#14141C] px-2 py-1 text-xs text-[#E5E7EB] outline-none focus:border-[#E91E8C]"
+          />
+        </div>
+        <div>
+          <label className="text-[10px] text-[#6B7280]">画面提示词</label>
+          <textarea
+            value={String(data.prompt || '')}
+            onChange={(e) => {
+              const value = e.target.value;
+              updateNodeLocalData(id, {
+                prompt: value,
+                sceneFramePrompt: value,
+              });
+            }}
+            rows={2}
+            className="mt-1 w-full resize-y rounded-md border border-[#2D2D3A] bg-[#14141C] px-2 py-1 text-xs text-[#E5E7EB] outline-none focus:border-[#E91E8C]"
+          />
+        </div>
+        <div className="flex items-center gap-2">
           <button
-            onClick={handleToggleLastFrameLock}
-            className="absolute top-1 right-1 rounded p-1 transition hover:bg-[#2D2D3A]"
-            title={lastFrameLocked ? '解锁落幅' : '锁定落幅'}
+            onClick={persistCopyEdit}
+            className="rounded-md bg-[#2D2D3A] px-2 py-1 text-[10px] text-[#E5E7EB] transition hover:bg-[#3A3A4C]"
           >
-            {lastFrameLocked ? (
-              <Lock className="h-3 w-3 text-[#F59E0B]" />
-            ) : (
-              <Unlock className="h-3 w-3 text-[#6B7280]" />
-            )}
+            保存文案
           </button>
-          <span className="absolute bottom-1 left-1 rounded bg-black/60 px-1 py-0.5 text-[9px] text-white">
-            落幅
-          </span>
+          <button
+            onClick={() => setIsEditingCopy((v) => !v)}
+            className="rounded-md border border-[#2D2D3A] px-2 py-1 text-[10px] text-[#9CA3AF] transition hover:bg-[#2D2D3A] hover:text-white"
+          >
+            AI 调整
+          </button>
         </div>
+        {isEditingCopy && (
+          <div className="space-y-2 rounded-md border border-[#2D2D3A] bg-[#14141C] p-2">
+            <label className="text-[10px] text-[#9CA3AF]">输入新的调整要求</label>
+            <textarea
+              value={copyRequirement}
+              onChange={(e) => setCopyRequirement(e.target.value)}
+              rows={2}
+              placeholder="例如：语气更热情，镜头更紧凑，强调产品卖点..."
+              className="w-full resize-y rounded-md border border-[#2D2D3A] bg-[#101017] px-2 py-1 text-xs text-[#E5E7EB] outline-none focus:border-[#E91E8C]"
+            />
+            <button
+              onClick={handleAiRefineCopy}
+              disabled={savingCopy || !copyRequirement.trim()}
+              className="rounded-md bg-[#E91E8C] px-2 py-1 text-[10px] text-white transition hover:bg-[#D11B7A] disabled:opacity-50"
+            >
+              {savingCopy ? <Loader2 className="inline h-3 w-3 animate-spin" /> : <Wand2 className="inline h-3 w-3" />}
+              <span className="ml-1">AI 重调文案</span>
+            </button>
+          </div>
+        )}
       </div>
 
-      {/* 操作按钮 */}
-      <div className="flex gap-1 px-3 py-2 border-t border-[#2D2D3A]">
-        <button
-          onClick={handleGenerateFirstFrame}
-          disabled={isGeneratingFrame}
-          className="flex-1 rounded-lg bg-[#2D2D3A] py-1.5 text-[10px] font-medium text-[#9CA3AF] transition hover:bg-[#3D3D4A] hover:text-white disabled:opacity-50"
-          title="生成首帧"
-        >
-          {isGeneratingFrame ? (
-            <Loader2 className="mr-1 inline h-3 w-3 animate-spin" />
-          ) : (
-            <ImagePlus className="mr-1 inline h-3 w-3" />
-          )}
-          首帧
-        </button>
-        <button
-          onClick={handleGenerateLastFrame}
-          disabled={isGeneratingFrame}
-          className="flex-1 rounded-lg bg-[#2D2D3A] py-1.5 text-[10px] font-medium text-[#9CA3AF] transition hover:bg-[#3D3D4A] hover:text-white disabled:opacity-50"
-          title="生成落幅"
-        >
-          {isGeneratingFrame ? (
-            <Loader2 className="mr-1 inline h-3 w-3 animate-spin" />
-          ) : (
-            <ImagePlus className="mr-1 inline h-3 w-3" />
-          )}
-          落幅
-        </button>
-        <button
-          onClick={handleRender}
-          disabled={isRendering || renderStatus === 'PROCESSING'}
-          className="flex-1 rounded-lg bg-[#E91E8C] py-1.5 text-[10px] font-medium text-white transition hover:bg-[#D11B7A] disabled:opacity-50"
-          title="渲染动态"
-        >
-          {isRendering || renderStatus === 'PROCESSING' ? (
-            <Loader2 className="mr-1 inline h-3 w-3 animate-spin" />
-          ) : (
-            <Play className="mr-1 inline h-3 w-3" />
-          )}
-          渲染
-        </button>
+      <div className="space-y-2 px-3 py-2">
+        {isFirstMainNode ? (
+          <>
+            <div>
+              <label className="text-[10px] text-[#6B7280]">首帧提示词</label>
+              <input
+                value={String(data.firstFramePrompt || '')}
+                onChange={(e) => updateNodeLocalData(id, { firstFramePrompt: e.target.value })}
+                className="mt-1 w-full rounded-md border border-[#2D2D3A] bg-[#14141C] px-2 py-1 text-xs text-[#E5E7EB] outline-none focus:border-[#E91E8C]"
+              />
+            </div>
+            <div>
+              <label className="text-[10px] text-[#6B7280]">尾帧提示词</label>
+              <input
+                value={String(data.lastFramePrompt || '')}
+                onChange={(e) => updateNodeLocalData(id, { lastFramePrompt: e.target.value })}
+                className="mt-1 w-full rounded-md border border-[#2D2D3A] bg-[#14141C] px-2 py-1 text-xs text-[#E5E7EB] outline-none focus:border-[#E91E8C]"
+              />
+            </div>
+          </>
+        ) : (
+          <div>
+            <label className="text-[10px] text-[#6B7280]">画面帧提示词（承接上一节点尾帧）</label>
+            <input
+              value={String(data.sceneFramePrompt || '')}
+              onChange={(e) => updateNodeLocalData(id, { sceneFramePrompt: e.target.value })}
+              className="mt-1 w-full rounded-md border border-[#2D2D3A] bg-[#14141C] px-2 py-1 text-xs text-[#E5E7EB] outline-none focus:border-[#E91E8C]"
+            />
+          </div>
+        )}
+
+        {isFirstMainNode ? (
+          <div className="grid grid-cols-2 gap-2">
+            <div className="relative">
+              <div className="aspect-video overflow-hidden rounded-lg bg-[#2D2D3A]">
+                {firstFrameUrl ? (
+                  <img src={firstFrameUrl} alt="首帧" className="h-full w-full object-cover" />
+                ) : (
+                  <div className="flex h-full w-full items-center justify-center">
+                    <ImagePlus className="h-4 w-4 text-[#6B7280]" />
+                  </div>
+                )}
+              </div>
+              <button
+                onClick={toggleFirstLock}
+                className="absolute right-1 top-1 rounded p-1 transition hover:bg-[#2D2D3A]"
+                title={firstFrameLocked ? '解锁首帧' : '锁定首帧'}
+              >
+                {firstFrameLocked ? (
+                  <Lock className="h-3 w-3 text-[#F59E0B]" />
+                ) : (
+                  <Unlock className="h-3 w-3 text-[#6B7280]" />
+                )}
+              </button>
+              <span className="absolute bottom-1 left-1 rounded bg-black/60 px-1 py-0.5 text-[9px] text-white">
+                首帧
+              </span>
+            </div>
+            <div className="relative">
+              <div className="aspect-video overflow-hidden rounded-lg bg-[#2D2D3A]">
+                {lastFrameUrl ? (
+                  <img src={lastFrameUrl} alt="尾帧" className="h-full w-full object-cover" />
+                ) : (
+                  <div className="flex h-full w-full items-center justify-center">
+                    <ImagePlus className="h-4 w-4 text-[#6B7280]" />
+                  </div>
+                )}
+              </div>
+              <button
+                onClick={toggleLastLock}
+                className="absolute right-1 top-1 rounded p-1 transition hover:bg-[#2D2D3A]"
+                title={lastFrameLocked ? '解锁尾帧' : '锁定尾帧'}
+              >
+                {lastFrameLocked ? (
+                  <Lock className="h-3 w-3 text-[#F59E0B]" />
+                ) : (
+                  <Unlock className="h-3 w-3 text-[#6B7280]" />
+                )}
+              </button>
+              <span className="absolute bottom-1 left-1 rounded bg-black/60 px-1 py-0.5 text-[9px] text-white">
+                尾帧
+              </span>
+            </div>
+          </div>
+        ) : (
+          <div className="relative">
+            <div className="aspect-video overflow-hidden rounded-lg bg-[#2D2D3A]">
+              {sceneFrameUrl ? (
+                <img src={sceneFrameUrl} alt="画面帧" className="h-full w-full object-cover" />
+              ) : (
+                <div className="flex h-full w-full items-center justify-center">
+                  <ImagePlus className="h-4 w-4 text-[#6B7280]" />
+                </div>
+              )}
+            </div>
+            <button
+              onClick={toggleFirstLock}
+              className="absolute right-1 top-1 rounded p-1 transition hover:bg-[#2D2D3A]"
+              title={firstFrameLocked ? '解锁画面帧' : '锁定画面帧'}
+            >
+              {firstFrameLocked ? (
+                <Lock className="h-3 w-3 text-[#F59E0B]" />
+              ) : (
+                <Unlock className="h-3 w-3 text-[#6B7280]" />
+              )}
+            </button>
+            <span className="absolute bottom-1 left-1 rounded bg-black/60 px-1 py-0.5 text-[9px] text-white">
+              画面帧
+            </span>
+          </div>
+        )}
       </div>
 
-      {/* Branch / Merge 操作 */}
+      <div className="space-y-2 border-t border-[#2D2D3A] px-3 py-2">
+        <div className="flex gap-1">
+          {isFirstMainNode ? (
+            <>
+              <button
+                onClick={triggerFirstFrame}
+                disabled={isGeneratingFrame}
+                className="flex-1 rounded-lg bg-[#2D2D3A] py-1.5 text-[10px] font-medium text-[#9CA3AF] transition hover:bg-[#3D3D4A] hover:text-white disabled:opacity-50"
+              >
+                {isGeneratingFrame ? <Loader2 className="mr-1 inline h-3 w-3 animate-spin" /> : <ImagePlus className="mr-1 inline h-3 w-3" />}
+                首帧
+              </button>
+              <button
+                onClick={triggerLastFrame}
+                disabled={isGeneratingFrame}
+                className="flex-1 rounded-lg bg-[#2D2D3A] py-1.5 text-[10px] font-medium text-[#9CA3AF] transition hover:bg-[#3D3D4A] hover:text-white disabled:opacity-50"
+              >
+                {isGeneratingFrame ? <Loader2 className="mr-1 inline h-3 w-3 animate-spin" /> : <ImagePlus className="mr-1 inline h-3 w-3" />}
+                尾帧
+              </button>
+            </>
+          ) : (
+            <button
+              onClick={triggerFirstFrame}
+              disabled={isGeneratingFrame}
+              className="flex-1 rounded-lg bg-[#2D2D3A] py-1.5 text-[10px] font-medium text-[#9CA3AF] transition hover:bg-[#3D3D4A] hover:text-white disabled:opacity-50"
+            >
+              {isGeneratingFrame ? <Loader2 className="mr-1 inline h-3 w-3 animate-spin" /> : <ImagePlus className="mr-1 inline h-3 w-3" />}
+              生成画面帧
+            </button>
+          )}
+          <button
+            onClick={handleRender}
+            disabled={isRendering || renderStatus === 'PROCESSING'}
+            className="flex-1 rounded-lg bg-[#E91E8C] py-1.5 text-[10px] font-medium text-white transition hover:bg-[#D11B7A] disabled:opacity-50"
+          >
+            {isRendering || renderStatus === 'PROCESSING' ? (
+              <Loader2 className="mr-1 inline h-3 w-3 animate-spin" />
+            ) : (
+              <Play className="mr-1 inline h-3 w-3" />
+            )}
+            渲染
+          </button>
+        </div>
+
+        {(isRendering || renderStatus === 'PROCESSING' || renderProgress > 0) && (
+          <div>
+            <div className="mb-1 flex items-center justify-between text-[10px] text-[#9CA3AF]">
+              <span>渲染进度</span>
+              <span>{Math.max(0, Math.min(100, Math.round(renderProgress)))}%</span>
+            </div>
+            <div className="h-1.5 w-full overflow-hidden rounded bg-[#2D2D3A]">
+              <div
+                className="h-full bg-gradient-to-r from-[#E91E8C] to-[#9C27B0] transition-all"
+                style={{ width: `${Math.max(0, Math.min(100, renderProgress))}%` }}
+              />
+            </div>
+          </div>
+        )}
+
+        {renderedVideoUrl && (
+          <div className="rounded-lg border border-[#2D2D3A] bg-[#14141C] p-2">
+            <div className="mb-1 text-[10px] text-[#9CA3AF]">生成结果预览</div>
+            <video src={renderedVideoUrl} controls className="w-full rounded bg-black" />
+            <a
+              href={renderedVideoUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="mt-1 inline-block text-[10px] text-[#60A5FA] hover:underline"
+            >
+              在新窗口查看视频
+            </a>
+          </div>
+        )}
+      </div>
+
       <div className="flex gap-1 px-3 pb-2">
         {!isBranchNode ? (
           <button
@@ -279,16 +476,14 @@ function FlowNodeCardComponent({ id, data, selected }: FlowNodeCardProps) {
         )}
       </div>
 
-      {/* 输出连接点 */}
       <Handle
         type="source"
         position={Position.Right}
-        className="!w-3 !h-3 !bg-[#E91E8C] !border-2 !border-[#1E1E24]"
+        className="!h-3 !w-3 !border-2 !border-[#1E1E24] !bg-[#E91E8C]"
       />
     </div>
   );
 }
 
-// 使用 memo 优化渲染性能
 export const FlowNodeCard = memo(FlowNodeCardComponent);
 FlowNodeCard.displayName = 'FlowNodeCard';

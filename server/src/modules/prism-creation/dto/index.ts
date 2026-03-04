@@ -52,6 +52,10 @@ export class ScriptSplitDto {
   };
 
   @IsOptional()
+  @IsString()
+  adjustInstruction?: string;
+
+  @IsOptional()
   @IsBoolean()
   persist?: boolean;
 
@@ -180,6 +184,11 @@ export class GenerateFrameDto {
   @IsOptional()
   @IsString()
   prompt?: string;
+}
+
+export class RefineCopyDto {
+  @IsString()
+  requirement: string;
 }
 
 export class LockFrameDto {

@@ -211,4 +211,186 @@ export class FlashcardService {
     }
     return Math.min(5, 1 + (index % 5));
   }
+
+  /**
+   * 闪卡复习（使用 SM-2 算法更新复习间隔）
+   *
+   * @param userId 用户 ID
+   * @param flashcardId 闪卡 ID
+   * @param quality 复习质量 (0-5)
+   *   0: 完全忘记
+   *   1: 错误但有印象
+   *   2: 困难回忆
+   *   3: 有难度但正确
+   *   4: 正确且容易
+   *   5: 完美回忆
+   * @param timeTaken 回答耗时（秒）
+   */
+  async reviewFlashcard(
+    userId: string,
+    flashcardId: string,
+    quality: number,
+    timeTaken?: number,
+  ) {
+    void timeTaken;
+    const validQuality = Math.max(0, Math.min(5, quality));
+
+    const flashcard = await this.prisma.flashcard.findFirst({
+      where: {
+        id: flashcardId,
+        asset: {
+          video: {
+            project: { userId },
+          },
+        },
+      },
+    });
+
+    if (!flashcard) {
+      throw new Error('Flashcard not found');
+    }
+
+    const currentReviewCount = flashcard.reviewCount ?? 0;
+    const nextIntervalDays = this.resolveNextIntervalDays(currentReviewCount, validQuality);
+    const nextReviewDate = this.calculateNextReviewDate(nextIntervalDays);
+    const nextDifficulty = this.resolveNextDifficulty(flashcard.difficulty ?? 1, validQuality);
+
+    const updated = await this.prisma.flashcard.update({
+      where: { id: flashcardId },
+      data: {
+        reviewCount: currentReviewCount + 1,
+        nextReview: nextReviewDate,
+        difficulty: nextDifficulty,
+      },
+    });
+
+    this.logger.log(
+      `Flashcard ${flashcardId} reviewed: quality=${validQuality}, interval=${nextIntervalDays}d`,
+    );
+
+    return updated;
+  }
+
+  private calculateNextReviewDate(intervalDays: number): Date {
+    const date = new Date();
+    date.setDate(date.getDate() + intervalDays);
+    return date;
+  }
+
+  private resolveNextIntervalDays(reviewCount: number, quality: number): number {
+    if (quality <= 2) return 1;
+    if (reviewCount <= 0) return 1;
+    if (reviewCount === 1) return 3;
+    if (reviewCount === 2) return 7;
+    if (reviewCount === 3) return 14;
+    return 30;
+  }
+
+  private resolveNextDifficulty(current: number, quality: number): number {
+    const base = Number.isFinite(current) ? current : 1;
+    if (quality <= 2) return Math.min(5, base + 1);
+    if (quality >= 4) return Math.max(1, base - 1);
+    return base;
+  }
+
+  /**
+   * 获取今日需要复习的闪卡
+   */
+  async getTodayReviews(userId: string) {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+
+    const flashcards = await this.prisma.flashcard.findMany({
+      where: {
+        asset: {
+          video: {
+            project: { userId },
+          },
+        },
+        nextReview: {
+          gte: today,
+          lt: tomorrow,
+        },
+      },
+      include: {
+        asset: {
+          select: {
+            id: true,
+            videoId: true,
+          },
+        },
+      },
+      orderBy: {
+        nextReview: 'asc',
+      },
+    });
+
+    const learning = flashcards.filter((f) => (f.reviewCount ?? 0) <= 2);
+    const grouped = {
+      new: flashcards.filter((f) => f.reviewCount === 0),
+      learning,
+      review: flashcards.filter((f) => !learning.find((l) => l.id === f.id)),
+    };
+
+    return {
+      total: flashcards.length,
+      new: grouped.new.length,
+      learning: grouped.learning.length,
+      review: grouped.review.length,
+      flashcards,
+    };
+  }
+
+  /**
+   * 获取复习统计
+   */
+  async getReviewStats(userId: string, days: number = 30) {
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - days);
+
+    const flashcards = await this.prisma.flashcard.findMany({
+      where: {
+        asset: {
+          video: {
+            project: { userId },
+          },
+        },
+        createdAt: {
+          gte: startDate,
+        },
+      },
+    });
+
+    const totalReviews = flashcards.reduce((sum, c) => sum + (c.reviewCount ?? 0), 0);
+    const cardsReviewed = flashcards.filter((c) => (c.reviewCount ?? 0) > 0).length;
+    const dueCards = flashcards.filter((c) => (c.nextReview ? c.nextReview <= new Date() : false)).length;
+
+    return {
+      period: `${days} days`,
+      totalReviews,
+      cardsReviewed,
+      dueCards,
+      totalCards: flashcards.length,
+    };
+  }
+
+  /**
+   * 重新调度闪卡（重置学习进度）
+   */
+  async rescheduleFlashcard(flashcardId: string, reason: string) {
+    const updated = await this.prisma.flashcard.update({
+      where: { id: flashcardId },
+      data: {
+        nextReview: new Date(),
+        reviewCount: 0,
+      },
+    });
+
+    this.logger.log(`Flashcard ${flashcardId} rescheduled: ${reason}`);
+
+    return updated;
+  }
 }

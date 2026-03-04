@@ -6,6 +6,7 @@ import {
   IsEnum,
   IsIn,
   IsInt,
+  IsNumber,
   IsOptional,
   IsString,
   Max,
@@ -99,3 +100,6 @@ export class RegenerateFlashcardsDto {
   @Max(30)
   maxCards?: number = 12;
 }
+
+// Re-export prompt template DTOs
+export * from './prompt-template.dto';

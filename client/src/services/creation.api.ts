@@ -34,6 +34,7 @@ export interface ExportProjectPayload {
 export interface ScriptSplitPayload {
   scriptText?: string;
   persist?: boolean;
+  adjustInstruction?: string;
   segments?: Array<{
     segment: string;
     prompt?: string;
@@ -138,6 +139,15 @@ export const creationApi = {
       method: 'POST',
     });
   },
+
+  getRenderTaskStatus: (taskId: string) =>
+    apiFetch(`/api/prism/creation/tasks/${taskId}/render-status`),
+
+  refineNodeCopy: (nodeId: string, payload: { requirement: string }) =>
+    apiFetch(`/api/prism/creation/nodes/${nodeId}/refine-copy`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
 
   // Export project
   exportProject: (videoId: string, payload?: ExportProjectPayload) =>

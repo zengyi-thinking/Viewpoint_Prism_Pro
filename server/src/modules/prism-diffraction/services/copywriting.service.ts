@@ -56,9 +56,23 @@ export class CopywritingService {
 
       // 保存到 PlatformDraft
       // 注意：需要先获取或创建 DiffractionTask
+      let task = await this.prisma.diffractionTask.findFirst({
+        where: { videoId, userId },
+      });
+
+      if (!task) {
+        task = await this.prisma.diffractionTask.create({
+          data: {
+            videoId,
+            userId,
+            status: 'PROCESSING',
+          },
+        });
+      }
+
       const draft = await this.prisma.platformDraft.create({
         data: {
-          diffractionId: videoId, // 暂时使用 videoId 作为 diffractionId
+          diffractionId: task.id,
           platform: platform.toUpperCase() as any,
           title: this.extractTitle(result.generatedContent, platform),
           content: result.generatedContent,

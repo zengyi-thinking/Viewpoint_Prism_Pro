@@ -1,7 +1,7 @@
 import { NestFactory } from '@nestjs/core';
-import { AppModule } from './src/app.module';
-import { AiRouterService } from './src/infrastructure/ai-router/ai-router.service';
-import { AITaskType } from './src/infrastructure/ai-router/ai-router.interface';
+import { AppModule } from '../src/app.module';
+import { AiRouterService } from '../src/infrastructure/ai-router/ai-router.service';
+import { AITaskType } from '../src/infrastructure/ai-router/ai-router.interface';
 
 async function testAIRouter() {
   console.log('========================================');

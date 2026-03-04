@@ -9,9 +9,12 @@ type VideoStatus = 'InQueue' | 'InProgress' | 'Succeed' | 'Failed' | string;
 export class SeedanceProvider extends BaseProvider {
   name = 'seedance';
   supportedTasks = [
+    AITaskType.ASR,
     AITaskType.LLM_CHAT,
     AITaskType.MULTIMODAL,
     AITaskType.IMAGE_GEN,
+    AITaskType.TTS,
+    AITaskType.VOICE_CLONE,
     AITaskType.VIDEO_GEN,
     AITaskType.TRANSLATION,
   ];
@@ -23,6 +26,9 @@ export class SeedanceProvider extends BaseProvider {
 
   async execute(taskType: AITaskType, payload: any, apiKey: string): Promise<any> {
     switch (taskType) {
+      case AITaskType.ASR:
+        return this.executeASR(payload, apiKey);
+
       case AITaskType.LLM_CHAT:
       case AITaskType.MULTIMODAL:
       case AITaskType.TRANSLATION:
@@ -33,6 +39,12 @@ export class SeedanceProvider extends BaseProvider {
 
       case AITaskType.VIDEO_GEN:
         return this.executeVideoGen(payload, apiKey);
+
+      case AITaskType.TTS:
+        return this.executeTTS(payload, apiKey);
+
+      case AITaskType.VOICE_CLONE:
+        return this.executeVoiceClone(payload, apiKey);
 
       default:
         throw new Error(`Seedance does not support ${taskType} yet`);
@@ -46,12 +58,9 @@ export class SeedanceProvider extends BaseProvider {
       this.configService.get<string>('SILICONFLOW_MODEL_LLM') ||
       'deepseek-ai/DeepSeek-V3';
 
-    // 构建消息列表
     const messages: any[] = payload?.messages || [];
 
-    // 如果没有 messages，尝试从 payload 构建
     if (messages.length === 0) {
-      // 处理不同任务的 payload
       if (taskType === AITaskType.TRANSLATION) {
         messages.push({
           role: 'system',
@@ -76,7 +85,6 @@ export class SeedanceProvider extends BaseProvider {
           ],
         });
       } else {
-        // LLM_CHAT 默认处理
         if (payload?.systemPrompt) {
           messages.push({ role: 'system', content: payload.systemPrompt });
         }
@@ -111,7 +119,6 @@ export class SeedanceProvider extends BaseProvider {
       apiKey,
     );
 
-    // 提取生成的内容
     const content =
       response?.choices?.[0]?.message?.content ||
       response?.message?.content ||
@@ -167,28 +174,52 @@ export class SeedanceProvider extends BaseProvider {
   }
 
   private async executeVideoGen(payload: any, apiKey: string): Promise<any> {
-
     const baseUrl = this.resolveBaseUrl();
     const image = await this.resolveInputImage(payload);
-    const model =
-      payload?.model ||
-      this.configService.get<string>('SILICONFLOW_MODEL_VIDEO') ||
-      (image ? 'Wan-AI/Wan2.2-I2V-A14B' : 'Wan-AI/Wan2.2-T2V-A14B');
+    const modelCandidates = this.resolveVideoModelCandidates(payload, Boolean(image));
 
-    const submitBody: Record<string, unknown> = {
-      model,
-      prompt: payload?.prompt || 'Generate a short cinematic video',
-      image_size: payload?.image_size || payload?.imageSize || '1280x720',
-    };
+    let submitResult: any = null;
+    let selectedModel = '';
+    let lastSubmitError: Error | null = null;
 
-    if (image) submitBody.image = image;
-    if (payload?.negative_prompt) submitBody.negative_prompt = payload.negative_prompt;
-    if (typeof payload?.seed === 'number') submitBody.seed = payload.seed;
-    if (typeof payload?.duration === 'number') submitBody.duration = payload.duration;
-    if (typeof payload?.fps === 'number') submitBody.fps = payload.fps;
+    for (const model of modelCandidates) {
+      const submitBody: Record<string, unknown> = {
+        model,
+        prompt: payload?.prompt || 'Generate a short cinematic video',
+        image_size: payload?.image_size || payload?.imageSize || '1280x720',
+      };
 
-    this.logger.log(`Submitting SiliconFlow video task, model=${String(submitBody.model)}`);
-    const submitResult = await this.postJson(`${baseUrl}/video/submit`, submitBody, apiKey);
+      if (image) submitBody.image = image;
+      if (payload?.negative_prompt) submitBody.negative_prompt = payload.negative_prompt;
+      if (typeof payload?.seed === 'number') submitBody.seed = payload.seed;
+      if (typeof payload?.duration === 'number') submitBody.duration = payload.duration;
+      if (typeof payload?.fps === 'number') submitBody.fps = payload.fps;
+
+      this.logger.log(`Submitting SiliconFlow video task, model=${model}`);
+
+      try {
+        submitResult = await this.postJson(`${baseUrl}/video/submit`, submitBody, apiKey);
+        selectedModel = model;
+        break;
+      } catch (error: any) {
+        lastSubmitError = error instanceof Error ? error : new Error(String(error));
+
+        if (this.isModelNotExistsError(lastSubmitError)) {
+          this.logger.warn(`Video model unavailable: ${model}, trying next candidate`);
+          continue;
+        }
+
+        throw error;
+      }
+    }
+
+    if (!submitResult) {
+      throw (
+        lastSubmitError ||
+        new Error('SiliconFlow video submit failed: no available model')
+      );
+    }
+
     const requestId = this.extractRequestId(submitResult);
     if (!requestId) {
       throw new Error(`SiliconFlow video submit response missing requestId: ${JSON.stringify(submitResult)}`);
@@ -220,6 +251,7 @@ export class SeedanceProvider extends BaseProvider {
         const result: Record<string, unknown> = {
           requestId,
           status,
+          model: selectedModel,
           video_url: videoUrl,
           url: videoUrl,
           videos:
@@ -229,7 +261,6 @@ export class SeedanceProvider extends BaseProvider {
             [],
         };
 
-        // Backward compatibility: queue render processor expects base64 field "video".
         if (payload?.returnBase64 || payload?.firstFrame || payload?.lastFrame) {
           const binary = await this.downloadBinary(videoUrl);
           result.video = binary.toString('base64');
@@ -252,6 +283,171 @@ export class SeedanceProvider extends BaseProvider {
     throw new Error(`SiliconFlow video generation timeout (requestId=${requestId})`);
   }
 
+  /**
+   * 执行 ASR (语音识别)
+   * 端点: /v1/audio/transcriptions
+   */
+  private async executeASR(payload: any, apiKey: string): Promise<any> {
+    const baseUrl = this.resolveBaseUrl();
+
+    this.logger.log('Calling SiliconFlow ASR API, audioUrl=' + String((payload?.audioUrl || 'file').substring(0, 50)) + '...');
+
+    try {
+      const formData = new FormData();
+      if (payload?.audioFile) {
+        formData.append('file', payload.audioFile);
+      } else if (payload?.audioUrl) {
+        this.logger.log('Audio URL provided, downloading...');
+        const audioBuffer = await this.downloadBinary(payload.audioUrl);
+        const arrayBuffer = audioBuffer.buffer.slice(audioBuffer.byteOffset, audioBuffer.byteOffset + audioBuffer.byteLength) as ArrayBuffer;
+        formData.append('file', new Blob([arrayBuffer], { type: 'audio/mpeg' }), 'audio.mp3');
+      }
+
+      const response = await fetch(`${baseUrl}/audio/transcriptions`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: formData,
+      });
+
+      if (!response.ok) {
+        throw new Error(`SiliconFlow ASR request failed (${response.status})`);
+      }
+
+      const result = await response.json();
+
+      return {
+        text: result?.text || result?.result?.text || '',
+        segments: result?.segments || result?.result?.segments || [],
+        language: result?.language || result?.result?.language || 'zh',
+        duration: result?.duration || result?.result?.duration || 0,
+        usage: result?.usage,
+        model: 'FunAudioLLM/SenseVoiceSmall',
+      };
+    } catch (error: any) {
+      this.logger.error(`SiliconFlow ASR request failed: ${error.message}`);
+      throw error;
+    }
+  }
+
+  /**
+   * 执行 TTS (文字转语音)
+   * 端点: /v1/audio/speech
+   * 注意: 此 API 返回二进制音频数据，不是 JSON
+   */
+  private async executeTTS(payload: any, apiKey: string): Promise<any> {
+    const baseUrl = this.resolveBaseUrl();
+
+    this.logger.log('Calling SiliconFlow TTS API, text=' + String((payload?.text || '').substring(0, 50)) + '...');
+
+    try {
+      const requestBody: Record<string, unknown> = {
+        model: 'FunAudioLLM/CosyVoice2-0.5B',
+        input: payload?.text || '',
+        response_format: payload?.responseFormat || 'mp3',
+        sample_rate: payload?.sampleRate || 32000,
+        stream: payload?.stream || false,
+        speed: payload?.speed || 1,
+      };
+
+      // 设置 voice 参数 - 必须提供
+      if (payload?.voice && typeof payload.voice === 'string') {
+        (requestBody as Record<string, any>).voice = payload.voice;
+      } else {
+        // 使用默认音色: FunAudioLLM/CosyVoice2-0.5B:anna (女声)
+        (requestBody as Record<string, any>).voice = 'FunAudioLLM/CosyVoice2-0.5B:anna';
+      }
+
+      if (payload?.emotion && typeof payload.emotion === 'string') {
+        (requestBody as Record<string, any>).emotion = payload.emotion;
+      }
+
+      // 直接调用 fetch 处理二进制响应
+      const res = await fetch(`${baseUrl}/audio/speech`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(requestBody),
+      });
+
+      if (!res.ok) {
+        throw new Error(`SiliconFlow TTS request failed (${res.status})`);
+      }
+
+      // 直接获取二进制音频数据
+      const audioBuffer = Buffer.from(await res.arrayBuffer());
+      const audioBase64 = audioBuffer.toString('base64');
+
+      return {
+        audioUrl: '',
+        audioData: audioBase64,
+        audio: audioBuffer,
+        voice: payload?.voice || 'FunAudioLLM/CosyVoice2-0.5B:anna',
+        usage: null,
+        model: 'FunAudioLLM/CosyVoice2-0.5B',
+      };
+    } catch (error: any) {
+      this.logger.error(`SiliconFlow TTS request failed: ${error.message}`);
+      throw error;
+    }
+  }
+
+  /**
+   * 执行音色克隆
+   * 端点: POST /v1/audio/voice/upload
+   */
+  private async executeVoiceClone(payload: any, apiKey: string): Promise<any> {
+    const baseUrl = this.resolveBaseUrl();
+
+    this.logger.log('Calling SiliconFlow Voice Clone API');
+
+    try {
+      const formData = new FormData();
+
+      if (payload?.referenceAudio) {
+        formData.append('file', payload.referenceAudio);
+      } else if (payload?.referenceAudioUrl) {
+        const audioBuffer = await this.downloadBinary(payload.referenceAudioUrl);
+        const arrayBuffer = audioBuffer.buffer.slice(audioBuffer.byteOffset, audioBuffer.byteOffset + audioBuffer.byteLength) as ArrayBuffer;
+        formData.append('file', new Blob([arrayBuffer], { type: 'audio/mpeg' }), 'reference_audio.mp3');
+      }
+
+      if (payload?.voiceName && typeof payload.voiceName === 'string') {
+        formData.append('name', payload.voiceName);
+      }
+      if (payload?.description && typeof payload.description === 'string') {
+        formData.append('description', payload.description);
+      }
+
+      const response = await fetch(`${baseUrl}/audio/voice/upload`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: formData,
+      });
+
+      if (!response.ok) {
+        throw new Error(`SiliconFlow Voice Clone upload failed (${response.status})`);
+      }
+
+      const result = await response.json();
+
+      return {
+        voiceId: result?.voice_id || result?.id || '',
+        voiceName: payload?.voiceName || 'Custom Voice',
+        status: result?.status || 'uploaded',
+        usage: result?.usage,
+      };
+    } catch (error: any) {
+      this.logger.error(`SiliconFlow Voice Clone request failed: ${error.message}`);
+      throw error;
+    }
+  }
+
   async testConnection(apiKey: string): Promise<boolean> {
     try {
       const baseUrl = this.resolveBaseUrl();
@@ -272,7 +468,6 @@ export class SeedanceProvider extends BaseProvider {
       this.configService.get<string>('SEEDANCE_BASE_URL') ||
       this.configService.get<string>('SILICONFLOW_BASE_URL') ||
       'https://api.siliconflow.cn/v1';
-
     const trimmed = raw.replace(/\/+$/, '');
     return /\/v\d+$/.test(trimmed) ? trimmed : `${trimmed}/v1`;
   }
@@ -283,11 +478,8 @@ export class SeedanceProvider extends BaseProvider {
       payload?.firstFrame ||
       payload?.firstFrameUrl ||
       payload?.imageUrl;
-
     if (!candidate || typeof candidate !== 'string') return undefined;
-
     if (candidate.startsWith('data:image/')) return candidate;
-
     if (candidate.startsWith('http://') || candidate.startsWith('https://')) {
       if (this.shouldEmbedAsDataUrl(candidate)) {
         try {
@@ -298,8 +490,6 @@ export class SeedanceProvider extends BaseProvider {
       }
       return candidate;
     }
-
-    // Assume base64 string.
     return `data:image/png;base64,${candidate}`;
   }
 
@@ -365,6 +555,58 @@ export class SeedanceProvider extends BaseProvider {
     );
   }
 
+  private resolveVideoModelCandidates(payload: any, hasImage: boolean): string[] {
+    const explicitModel =
+      typeof payload?.model === 'string' ? payload.model.trim() : '';
+    if (explicitModel) return [explicitModel];
+
+    const configuredCommon = this.readConfig('SILICONFLOW_MODEL_VIDEO');
+    const configuredI2V = this.readConfig('SILICONFLOW_MODEL_VIDEO_I2V');
+    const configuredT2V = this.readConfig('SILICONFLOW_MODEL_VIDEO_T2V');
+
+    const candidates: string[] = [];
+    const push = (model?: string) => {
+      const normalized = (model || '').trim();
+      if (!normalized) return;
+      if (!candidates.includes(normalized)) candidates.push(normalized);
+    };
+
+    if (hasImage) {
+      push(configuredI2V);
+      push(this.swapVideoModelFamily(configuredCommon, 'i2v'));
+      push(configuredCommon);
+      push('Wan-AI/Wan2.2-I2V-A14B');
+      push('Wan-AI/Wan2.2-T2V-A14B');
+    } else {
+      push(configuredT2V);
+      push(this.swapVideoModelFamily(configuredCommon, 't2v'));
+      push(configuredCommon);
+      push('Wan-AI/Wan2.2-T2V-A14B');
+      push('Wan-AI/Wan2.2-I2V-A14B');
+    }
+
+    return candidates;
+  }
+
+  private swapVideoModelFamily(model: string | undefined, target: 'i2v' | 't2v'): string | undefined {
+    const normalized = (model || '').trim();
+    if (!normalized) return undefined;
+
+    if (target === 'i2v') {
+      return normalized.replace(/-T2V-/i, '-I2V-');
+    }
+
+    return normalized.replace(/-I2V-/i, '-T2V-');
+  }
+
+  private isModelNotExistsError(error: Error): boolean {
+    return /Model does not exist/i.test(error.message);
+  }
+
+  private readConfig(key: string): string {
+    return this.configService.get<string>(key)?.trim() || '';
+  }
+
   private isSuccessStatus(status: VideoStatus): boolean {
     return status === 'Succeed' || status === 'SUCCEED' || status === 'COMPLETED';
   }
@@ -373,7 +615,7 @@ export class SeedanceProvider extends BaseProvider {
     return status === 'Failed' || status === 'FAILED' || status === 'ERROR';
   }
 
-  private async postJson(url: string, body: Record<string, unknown>, apiKey: string) {
+  private async postJson(url: string, body: Record<string, unknown>, apiKey: string): Promise<any> {
     const res = await fetch(url, {
       method: 'POST',
       headers: {

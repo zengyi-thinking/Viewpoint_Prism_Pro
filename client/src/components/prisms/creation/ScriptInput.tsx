@@ -19,6 +19,7 @@ interface SplitSegment {
 
 export function ScriptInput({ videoId, isOpen, onClose }: ScriptInputProps) {
   const [scriptText, setScriptText] = useState('');
+  const [adjustInstruction, setAdjustInstruction] = useState('');
   const [isSplitting, setIsSplitting] = useState(false);
   const [splitSegments, setSplitSegments] = useState<SplitSegment[]>([]);
   const [isConfirming, setIsConfirming] = useState(false);
@@ -35,6 +36,7 @@ export function ScriptInput({ videoId, isOpen, onClose }: ScriptInputProps) {
       const response = await creationApi.scriptSplit(videoId, {
         scriptText: scriptText,
         persist: false,
+        adjustInstruction: adjustInstruction.trim() || undefined,
       }) as { segments: Array<{ segment?: string; prompt?: string; estimatedDuration?: number }> };
 
       const preview = (response.segments || []).map((seg) => ({
@@ -72,6 +74,7 @@ export function ScriptInput({ videoId, isOpen, onClose }: ScriptInputProps) {
 
   const handleClose = () => {
     setScriptText('');
+    setAdjustInstruction('');
     setSplitSegments([]);
     onClose();
   };
@@ -121,6 +124,16 @@ export function ScriptInput({ videoId, isOpen, onClose }: ScriptInputProps) {
 例如：清晨的阳光透过窗户洒在桌面上，一杯咖啡冒着热气。镜头缓慢推进，展示咖啡杯的细节。画面切换到窗外的城市风景..."
               className="flex-1 resize-none rounded-xl bg-[#121218] border border-[#2D2D3A] p-4 text-sm text-white placeholder:text-[#6B7280] focus:border-[#E91E8C] focus:outline-none focus:ring-1 focus:ring-[#E91E8C]"
             />
+            <label className="mt-3 text-xs font-medium text-[#9CA3AF]">
+              调整要求（可选）
+            </label>
+            <textarea
+              value={adjustInstruction}
+              onChange={(e) => setAdjustInstruction(e.target.value)}
+              rows={2}
+              placeholder="例如：节奏更快、偏科技感、减少空镜头、强调产品卖点..."
+              className="mt-1 resize-none rounded-xl bg-[#121218] border border-[#2D2D3A] p-3 text-xs text-white placeholder:text-[#6B7280] focus:border-[#E91E8C] focus:outline-none focus:ring-1 focus:ring-[#E91E8C]"
+            />
             <div className="mt-4 flex items-center justify-between">
               <span className="text-xs text-[#6B7280]">
                 {scriptText.length} 字符
@@ -169,11 +182,11 @@ export function ScriptInput({ videoId, isOpen, onClose }: ScriptInputProps) {
             ) : (
               <>
                 <div className="flex-1 overflow-y-auto space-y-3 pr-2">
-                  {splitSegments.map((seg, index) => (
-                    <div
-                      key={index}
-                      className="rounded-xl border border-[#2D2D3A] bg-[#121218] p-4"
-                    >
+                {splitSegments.map((seg, index) => (
+                  <div
+                    key={index}
+                    className="rounded-xl border border-[#2D2D3A] bg-[#121218] p-4"
+                  >
                       <div className="mb-2 flex items-center gap-2">
                         <span className="flex h-6 w-6 items-center justify-center rounded-full bg-[#E91E8C]/20 text-xs font-medium text-[#E91E8C]">
                           {index + 1}
@@ -184,13 +197,28 @@ export function ScriptInput({ videoId, isOpen, onClose }: ScriptInputProps) {
                           </span>
                         )}
                       </div>
-                      <p className="mb-2 text-sm text-white line-clamp-2">
-                        {seg.segment}
-                      </p>
-                      <p className="text-xs text-[#9CA3AF]">
-                        <span className="text-[#6B7280]">Prompt:</span>{' '}
-                        {seg.prompt}
-                      </p>
+                      <label className="mb-1 block text-[11px] text-[#9CA3AF]">片段文案</label>
+                      <textarea
+                        value={seg.segment}
+                        onChange={(e) => {
+                          const next = [...splitSegments];
+                          next[index] = { ...next[index], segment: e.target.value };
+                          setSplitSegments(next);
+                        }}
+                        rows={2}
+                        className="mb-2 w-full resize-y rounded-md border border-[#2D2D3A] bg-[#14141C] px-2 py-1 text-xs text-white outline-none focus:border-[#E91E8C]"
+                      />
+                      <label className="mb-1 block text-[11px] text-[#9CA3AF]">画面 Prompt</label>
+                      <textarea
+                        value={seg.prompt}
+                        onChange={(e) => {
+                          const next = [...splitSegments];
+                          next[index] = { ...next[index], prompt: e.target.value };
+                          setSplitSegments(next);
+                        }}
+                        rows={2}
+                        className="w-full resize-y rounded-md border border-[#2D2D3A] bg-[#14141C] px-2 py-1 text-xs text-[#D1D5DB] outline-none focus:border-[#E91E8C]"
+                      />
                     </div>
                   ))}
                 </div>

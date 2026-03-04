@@ -26,6 +26,7 @@ import {
   GenerateFrameDto,
   LockFrameDto,
   FrameType,
+  RefineCopyDto,
 } from './dto';
 
 @Injectable()
@@ -109,7 +110,12 @@ export class CreationService {
       }));
     } else if (dto.scriptText?.trim()) {
       // Call LLM to split the script
-      segments = await this.splitScriptWithLLM(userId, dto.scriptText, dto.stylePreset);
+      segments = await this.splitScriptWithLLM(
+        userId,
+        dto.scriptText,
+        dto.stylePreset,
+        dto.adjustInstruction,
+      );
     } else {
       throw new BadRequestException('scriptText 或 segments 至少需要提供一个');
     }
@@ -175,9 +181,13 @@ export class CreationService {
     userId: string,
     scriptText: string,
     stylePreset?: ScriptSplitDto['stylePreset'],
+    adjustInstruction?: string,
   ): Promise<Array<{ segment: string; prompt: string; estimatedDuration?: number }>> {
     const styleContext = stylePreset
       ? `\n风格预设: ${JSON.stringify(stylePreset)}`
+      : '';
+    const adjustContext = adjustInstruction?.trim()
+      ? `\n额外调整要求：${adjustInstruction.trim()}`
       : '';
 
     const prompt = `请将以下文案按镜头逻辑拆分为多个片段。每个片段应该是一个独立的场景或动作。
@@ -185,6 +195,7 @@ export class CreationService {
 文案内容：
 ${scriptText}
 ${styleContext}
+${adjustContext}
 
 输出格式（JSON数组）：
 [
@@ -240,17 +251,41 @@ ${styleContext}
   async getNodes(userId: string, videoId: string) {
     const project = await this.getOrCreateProject(userId, videoId);
 
-    const nodes = await this.prisma.flowNode.findMany({
-      where: { flowProjectId: project.id },
-      orderBy: { orderIndex: 'asc' },
-    });
+    const [nodes, renderTasks] = await Promise.all([
+      this.prisma.flowNode.findMany({
+        where: { flowProjectId: project.id },
+        orderBy: { orderIndex: 'asc' },
+      }),
+      this.prisma.taskRecord.findMany({
+        where: {
+          userId,
+          type: 'PRISMFLOW_NODE_RENDER',
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 200,
+      }),
+    ]);
+
+    const latestTaskByNodeId = new Map<string, any>();
+    for (const task of renderTasks) {
+      const nodeId = (task.payload as any)?.nodeId;
+      if (!nodeId || latestTaskByNodeId.has(nodeId)) continue;
+      latestTaskByNodeId.set(nodeId, task);
+    }
+    const firstMainNodeId =
+      nodes
+        .filter((n) => !n.parentNodeId && !n.branchName)
+        .sort((a, b) => a.orderIndex - b.orderIndex)[0]?.id ?? null;
 
     return {
       userId,
       videoId,
       projectId: project.id,
       projectName: project.name,
-      items: nodes.map((node) => this.toNodeDto(node)),
+      items: nodes.map((node) => ({
+        ...this.toNodeDto(node, latestTaskByNodeId.get(node.id)),
+        isFirstScene: firstMainNodeId === node.id,
+      })),
     };
   }
 
@@ -632,6 +667,49 @@ ${styleContext}
     return this.exportService.getTaskStatus(taskId);
   }
 
+  /**
+   * 获取单节点渲染任务状态
+   */
+  async getRenderTaskStatus(userId: string, taskId: string) {
+    const task = await this.prisma.taskRecord.findUnique({
+      where: { id: taskId },
+    });
+
+    if (!task || task.type !== 'PRISMFLOW_NODE_RENDER') {
+      throw new NotFoundException('Render task not found');
+    }
+    if (task.userId !== userId) {
+      throw new ForbiddenException('You do not have access to this render task');
+    }
+
+    const payload = (task.payload as any) || {};
+    const nodeId = payload.nodeId as string | undefined;
+    const node = nodeId
+      ? await this.prisma.flowNode.findUnique({
+          where: { id: nodeId },
+          select: {
+            id: true,
+            renderedVideoUrl: true,
+            renderStatus: true,
+          },
+        })
+      : null;
+
+    const result = (task.result as any) || {};
+
+    return {
+      taskId: task.id,
+      nodeId: nodeId ?? null,
+      status: task.status,
+      progress: task.progress ?? 0,
+      startedAt: task.startedAt,
+      completedAt: task.completedAt,
+      videoUrl: result.videoUrl ?? node?.renderedVideoUrl ?? null,
+      renderStatus: node?.renderStatus ?? null,
+      error: task.error ?? null,
+    };
+  }
+
   // ============================================================
   // Frame Generation
   // ============================================================
@@ -779,11 +857,115 @@ ${styleContext}
     };
   }
 
+  /**
+   * 根据用户追加需求，让 AI 重新调整节点文案与提示词
+   */
+  async refineNodeCopy(userId: string, nodeId: string, dto: RefineCopyDto) {
+    const requirement = dto.requirement?.trim();
+    if (!requirement) {
+      throw new BadRequestException('requirement is required');
+    }
+
+    const node = await this.prisma.flowNode.findUnique({
+      where: { id: nodeId },
+      include: {
+        flowProject: {
+          include: {
+            video: {
+              include: {
+                project: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!node) {
+      throw new NotFoundException('Node not found');
+    }
+    if (node.flowProject.video.project.userId !== userId) {
+      throw new ForbiddenException('You do not have access to this node');
+    }
+
+    const currentSegment = node.scriptSegment || '';
+    const currentPrompt = node.prompt || '';
+
+    let parsed: { scriptSegment: string; prompt: string };
+    try {
+      const aiResponse = await this.aiRouter.execute(
+        AITaskType.LLM_CHAT,
+        {
+          messages: [
+            {
+              role: 'system',
+              content:
+                '你是视频分镜文案优化助手。请仅返回 JSON 对象，字段为 scriptSegment 和 prompt，不要输出 markdown 代码块。',
+            },
+            {
+              role: 'user',
+              content: JSON.stringify(
+                {
+                  requirement,
+                  current: {
+                    scriptSegment: currentSegment,
+                    prompt: currentPrompt,
+                  },
+                },
+                null,
+                2,
+              ),
+            },
+          ],
+          temperature: 0.5,
+        },
+        userId,
+      );
+
+      const content =
+        (aiResponse as any)?.choices?.[0]?.message?.content ??
+        (aiResponse as any)?.content ??
+        '';
+      parsed = this.parseRefineCopyResult(content, currentSegment, currentPrompt);
+    } catch (error: any) {
+      this.logger.warn(`Refine copy fallback for node ${nodeId}: ${error?.message || 'unknown error'}`);
+      const fallbackSegment =
+        (currentSegment || `按要求调整：${requirement}`).trim();
+      const fallbackPrompt =
+        `${currentPrompt || fallbackSegment}。额外要求：${requirement}`.trim();
+      parsed = {
+        scriptSegment: fallbackSegment,
+        prompt: fallbackPrompt,
+      };
+    }
+
+    const updated = await this.prisma.flowNode.update({
+      where: { id: nodeId },
+      data: {
+        scriptSegment: parsed.scriptSegment,
+        prompt: parsed.prompt,
+      },
+      include: {
+        parentNode: true,
+        childBranches: true,
+      },
+    });
+
+    return {
+      userId,
+      nodeId,
+      requirement,
+      node: this.toNodeDto(updated),
+    };
+  }
+
   // ============================================================
   // DTO Converters
   // ============================================================
 
-  private toNodeDto(node: any) {
+  private toNodeDto(node: any, renderTask?: any) {
+    const taskPayload = (renderTask?.payload as any) || {};
+    const taskResult = (renderTask?.result as any) || {};
     return {
       id: node.id,
       flowProjectId: node.flowProjectId,
@@ -803,6 +985,17 @@ ${styleContext}
       isMerged: node.isMerged,
       narrationUrl: node.narrationUrl,
       bgmUrl: node.bgmUrl,
+      activeRenderTaskId:
+        taskPayload?.nodeId === node.id &&
+        (renderTask?.status === TaskStatus.PROCESSING || renderTask?.status === TaskStatus.PENDING)
+          ? renderTask?.id
+          : null,
+      renderProgress:
+        taskPayload?.nodeId === node.id ? (renderTask?.progress ?? 0) : 0,
+      latestRenderTaskStatus:
+        taskPayload?.nodeId === node.id ? renderTask?.status : null,
+      latestRenderTaskVideoUrl:
+        taskPayload?.nodeId === node.id ? (taskResult?.videoUrl ?? null) : null,
       createdAt: node.createdAt,
       updatedAt: node.updatedAt,
       // Include parent node info if available
@@ -822,6 +1015,45 @@ ${styleContext}
             isMerged: child.isMerged,
           }))
         : [],
+    };
+  }
+
+  private parseRefineCopyResult(content: string, fallbackSegment: string, fallbackPrompt: string) {
+    const raw = String(content || '').trim();
+    const candidates = [
+      raw,
+      raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim(),
+      raw.replace(/```json/gi, '').replace(/```/g, '').trim(),
+    ];
+
+    for (const candidate of candidates) {
+      if (!candidate) continue;
+      try {
+        const parsed = JSON.parse(candidate);
+        const scriptSegment = String(parsed?.scriptSegment || fallbackSegment).trim();
+        const prompt = String(parsed?.prompt || fallbackPrompt || scriptSegment).trim();
+        return { scriptSegment, prompt };
+      } catch {
+        // noop
+      }
+    }
+
+    const objectMatch = raw.match(/\{[\s\S]*\}/);
+    if (objectMatch) {
+      try {
+        const parsed = JSON.parse(objectMatch[0]);
+        return {
+          scriptSegment: String(parsed?.scriptSegment || fallbackSegment).trim(),
+          prompt: String(parsed?.prompt || fallbackPrompt || fallbackSegment).trim(),
+        };
+      } catch {
+        // noop
+      }
+    }
+
+    return {
+      scriptSegment: fallbackSegment,
+      prompt: fallbackPrompt || fallbackSegment,
     };
   }
 }

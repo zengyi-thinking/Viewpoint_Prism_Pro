@@ -3,6 +3,8 @@ import { PrismaService } from '../../../prisma/prisma.service';
 import { StorageService } from '../../../infrastructure/storage/storage.service';
 import { FfmpegService } from '../../../infrastructure/media/ffmpeg.service';
 import * as path from 'path';
+import * as fs from 'fs/promises';
+import { tmpdir } from 'os';
 
 export type ExportFormat = 'xiaohongshu' | 'twitter_x' | 'newsletter' | 'linkedin' | 'instagram';
 
@@ -117,17 +119,31 @@ export class BatchExportService {
     }
 
     return Promise.all(
-      imageUrls.map(async (url) => {
+      imageUrls.map(async (url, index) => {
         try {
-          const tempPath = url;
+          // 下载图片到临时文件
+          const response = await fetch(url);
+          if (!response.ok) {
+            throw new Error(`Failed to fetch image: ${response.statusText}`);
+          }
+          const buffer = Buffer.from(await response.arrayBuffer());
+
+          // 保存到临时文件
+          const tempPath = path.join(tmpdir(), `export-${taskId}-${platform}-${index}.jpg`);
+          await fs.writeFile(tempPath, buffer);
+
+          // 调整大小
           const resizedPath = await this.ffmpeg.resizeImage(
             tempPath,
             { width: spec.width, height: spec.height, format: 'jpg', quality: 90 },
           );
-          const resizedUrl = resizedPath;
-          return resizedUrl;
+
+          // 删除临时文件
+          await fs.unlink(tempPath).catch(() => {});
+
+          return resizedPath;
         } catch (error) {
-          this.logger.warn('Failed to process image');
+          this.logger.warn(`Failed to process image: ${error.message}`);
           return url;
         }
       })

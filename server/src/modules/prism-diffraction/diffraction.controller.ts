@@ -50,7 +50,6 @@ export class DiffractionController {
     return this.diffractionService.getTemplates();
   }
 
-  @Post('videos/:videoId/generate')
   @Post(':videoId/generate')
   generate(
     @CurrentUser() userId: string,
@@ -121,7 +120,7 @@ export class DiffractionController {
     }
 
     const result = await this.copywritingService.generateCopywriting(userId, {
-      videoId: task.id,
+      videoId: dto.videoId,
       platform: dto.platform as any,
       selectedFrames: dto.selectedFrames.map(f => f.imageUrl),
       styleHints: dto.styleHints,
@@ -198,11 +197,16 @@ export class DiffractionController {
   ) {
     const draft = await this.prisma.platformDraft.findUnique({
       where: { id: draftId },
-      include: { diffraction: { include: { video: true } } },
+      include: { diffraction: true },
     });
 
     if (!draft || !draft.diffraction) {
       throw new Error('Draft not found');
+    }
+
+    // 验证权限
+    if (draft.diffraction.userId !== userId) {
+      throw new Error('Permission denied');
     }
 
     await this.prisma.platformDraft.delete({

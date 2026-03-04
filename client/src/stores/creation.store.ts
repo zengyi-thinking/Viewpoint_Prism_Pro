@@ -35,6 +35,16 @@ export interface FlowNodeData extends Record<string, unknown> {
   // Loading states
   isGeneratingFrame?: boolean;
   isRendering?: boolean;
+  // Rendering progress
+  renderProgress?: number;
+  activeRenderTaskId?: string | null;
+  latestRenderTaskStatus?: string | null;
+  latestRenderTaskVideoUrl?: string | null;
+  isFirstScene?: boolean;
+  // Frame prompt editing (frontend runtime state)
+  firstFramePrompt?: string;
+  lastFramePrompt?: string;
+  sceneFramePrompt?: string;
 }
 
 export type FlowNode = Node<FlowNodeData>;
@@ -51,6 +61,21 @@ function extractSingleNode(response: any): any | null {
   if (response.node) return response.node;
   if (response.id) return response;
   return null;
+}
+
+function buildFirstFramePrompt(basePrompt?: string, scriptSegment?: string) {
+  const source = (basePrompt || scriptSegment || '视频场景').trim();
+  return `${source}，开场镜头，画面干净，主体明确，电影感构图，16:9`;
+}
+
+function buildLastFramePrompt(basePrompt?: string, scriptSegment?: string) {
+  const source = (basePrompt || scriptSegment || '视频场景').trim();
+  return `${source}，收尾镜头，结尾定格，氛围完整，电影感构图，16:9`;
+}
+
+function buildSceneFramePrompt(basePrompt?: string, scriptSegment?: string) {
+  const source = (basePrompt || scriptSegment || '视频场景').trim();
+  return `${source}，关键画面帧，信息清晰，细节完整，电影感构图，16:9`;
 }
 
 interface CreationStore {
@@ -103,6 +128,9 @@ interface CreationStore {
   // 查询任务状态
   pollStitchTask: (taskId: string) => Promise<void>;
   pollExportTask: (taskId: string) => Promise<void>;
+  pollRenderTask: (nodeId: string, taskId: string) => Promise<void>;
+  refineNodeCopy: (nodeId: string, requirement: string) => Promise<void>;
+  updateNodeLocalData: (nodeId: string, data: Partial<FlowNodeData>) => void;
 
   // 清除状态
   clear: () => void;
@@ -129,7 +157,12 @@ export const useCreationStore = create<CreationStore>((set, get) => ({
 
       // Transform API response to React Flow nodes
       const responseData = extractNodeList(response);
+      const firstMainOrderIndex = responseData
+        .filter((n: any) => !n.parentNodeId && !n.branchName)
+        .reduce((min: number, n: any) => Math.min(min, Number(n.orderIndex ?? Infinity)), Number.POSITIVE_INFINITY);
+
       const flowNodes: FlowNode[] = responseData.map((node: any) => ({
+        // 首节点保留首帧/尾帧；其他节点默认仅使用 sceneFrame(firstFrameUrl)。
         id: node.id,
         type: 'flowNodeCard',
         position: {
@@ -148,10 +181,21 @@ export const useCreationStore = create<CreationStore>((set, get) => ({
           lastFrameUrl: node.lastFrameUrl,
           renderedVideoUrl: node.renderedVideoUrl,
           renderStatus: node.renderStatus || 'PENDING',
+          renderProgress: node.renderProgress ?? 0,
+          activeRenderTaskId: node.activeRenderTaskId ?? null,
+          latestRenderTaskStatus: node.latestRenderTaskStatus ?? null,
+          latestRenderTaskVideoUrl: node.latestRenderTaskVideoUrl ?? null,
+          isFirstScene:
+            !node.parentNodeId &&
+            !node.branchName &&
+            Number(node.orderIndex) === firstMainOrderIndex,
           firstFrameLocked: node.firstFrameLocked,
           lastFrameLocked: node.lastFrameLocked,
           narrationUrl: node.narrationUrl,
           bgmUrl: node.bgmUrl,
+          firstFramePrompt: buildFirstFramePrompt(node.prompt, node.scriptSegment),
+          lastFramePrompt: buildLastFramePrompt(node.prompt, node.scriptSegment),
+          sceneFramePrompt: buildSceneFramePrompt(node.prompt, node.scriptSegment),
         },
       }));
 
@@ -170,6 +214,13 @@ export const useCreationStore = create<CreationStore>((set, get) => ({
         }));
 
       set({ nodes: flowNodes, edges: flowEdges, isLoading: false });
+
+      flowNodes.forEach((node) => {
+        const taskId = node.data.activeRenderTaskId;
+        if (taskId) {
+          setTimeout(() => get().pollRenderTask(node.id, taskId), 50);
+        }
+      });
     } catch (error) {
       console.error('Failed to load nodes:', error);
       set({ error: '加载节点失败', isLoading: false });
@@ -210,8 +261,18 @@ export const useCreationStore = create<CreationStore>((set, get) => ({
           lastFrameUrl: createdNode.lastFrameUrl,
           renderedVideoUrl: createdNode.renderedVideoUrl,
           renderStatus: createdNode.renderStatus || 'PENDING',
+          renderProgress: createdNode.renderProgress ?? 0,
+          activeRenderTaskId: createdNode.activeRenderTaskId ?? null,
+          latestRenderTaskStatus: createdNode.latestRenderTaskStatus ?? null,
+          latestRenderTaskVideoUrl: createdNode.latestRenderTaskVideoUrl ?? null,
+          isFirstScene:
+            Boolean(createdNode.isFirstScene) ||
+            (!createdNode.parentNodeId && !createdNode.branchName && Number(createdNode.orderIndex) === 0),
           firstFrameLocked: createdNode.firstFrameLocked,
           lastFrameLocked: createdNode.lastFrameLocked,
+          firstFramePrompt: buildFirstFramePrompt(createdNode.prompt, createdNode.scriptSegment),
+          lastFramePrompt: buildLastFramePrompt(createdNode.prompt, createdNode.scriptSegment),
+          sceneFramePrompt: buildSceneFramePrompt(createdNode.prompt, createdNode.scriptSegment),
         },
       };
 
@@ -325,6 +386,14 @@ export const useCreationStore = create<CreationStore>((set, get) => ({
     }
   },
 
+  updateNodeLocalData: (nodeId: string, data: Partial<FlowNodeData>) => {
+    set((state) => ({
+      nodes: state.nodes.map((node) =>
+        node.id === nodeId ? { ...node, data: { ...node.data, ...data } } : node
+      ),
+    }));
+  },
+
   // Delete a node
   deleteNode: async (nodeId: string) => {
     const { currentVideoId, nodes } = get();
@@ -365,6 +434,13 @@ export const useCreationStore = create<CreationStore>((set, get) => ({
     const { currentVideoId } = get();
     if (!currentVideoId) return;
 
+    const node = get().nodes.find((n) => n.id === nodeId);
+    const fallbackPrompt =
+      prompt ||
+      (frameType === 'first'
+        ? (node?.data.sceneFramePrompt || node?.data.firstFramePrompt || node?.data.prompt)
+        : (node?.data.lastFramePrompt || node?.data.prompt));
+
     // Set loading state
     set((state) => ({
       nodes: state.nodes.map((node) =>
@@ -373,7 +449,7 @@ export const useCreationStore = create<CreationStore>((set, get) => ({
     }));
 
     try {
-      const response = await creationApi.generateFrame(nodeId, { frameType, prompt }) as any;
+      const response = await creationApi.generateFrame(nodeId, { frameType, prompt: fallbackPrompt }) as any;
 
       // Update node with generated frame URL
       const updateData: Partial<FlowNodeData> = {
@@ -449,16 +525,25 @@ export const useCreationStore = create<CreationStore>((set, get) => ({
 
     try {
       const response = await creationApi.renderNode(nodeId, quality) as any;
-
-      // The actual video will be updated via polling or websocket
-      // For now, we just set the status
       set((state) => ({
         nodes: state.nodes.map((node) =>
-          node.id === nodeId ? { ...node, data: { ...node.data, isRendering: false } } : node
+          node.id === nodeId
+            ? {
+                ...node,
+                data: {
+                  ...node.data,
+                  isRendering: true,
+                  renderStatus: 'PROCESSING',
+                  renderProgress: 0,
+                  activeRenderTaskId: response.taskId,
+                },
+              }
+            : node
         ),
       }));
 
       console.log('Render queued for node:', nodeId, 'taskId:', response.taskId);
+      get().pollRenderTask(nodeId, response.taskId);
     } catch (error) {
       console.error('Failed to render node:', error);
       set((state) => ({
@@ -467,6 +552,91 @@ export const useCreationStore = create<CreationStore>((set, get) => ({
         ),
         error: '渲染失败',
       }));
+    }
+  },
+
+  pollRenderTask: async (nodeId: string, taskId: string) => {
+    try {
+      const response = await creationApi.getRenderTaskStatus(taskId) as any;
+
+      const nextStatus = response?.renderStatus || response?.status || 'PROCESSING';
+      const nextProgress = Number(response?.progress ?? 0);
+      const videoUrl = response?.videoUrl || null;
+
+      set((state) => ({
+        nodes: state.nodes.map((node) =>
+          node.id === nodeId
+            ? {
+                ...node,
+                data: {
+                  ...node.data,
+                  renderStatus: nextStatus as RenderStatus,
+                  renderProgress: nextProgress,
+                  renderedVideoUrl: videoUrl || node.data.renderedVideoUrl,
+                  isRendering: nextStatus === 'PROCESSING' || nextStatus === 'PENDING',
+                  activeRenderTaskId:
+                    nextStatus === 'PROCESSING' || nextStatus === 'PENDING' ? taskId : null,
+                },
+              }
+            : node
+        ),
+      }));
+
+      if (nextStatus === 'COMPLETED' || nextStatus === 'FAILED') {
+        if (nextStatus === 'FAILED') {
+          set({ error: response?.error || '节点渲染失败' });
+        }
+        return;
+      }
+
+      setTimeout(() => get().pollRenderTask(nodeId, taskId), 1800);
+    } catch (error) {
+      console.error('Failed to poll render task:', error);
+      set((state) => ({
+        nodes: state.nodes.map((node) =>
+          node.id === nodeId
+            ? {
+                ...node,
+                data: {
+                  ...node.data,
+                  isRendering: false,
+                  renderStatus: 'FAILED',
+                },
+              }
+            : node
+        ),
+        error: '查询渲染状态失败',
+      }));
+    }
+  },
+
+  refineNodeCopy: async (nodeId: string, requirement: string) => {
+    const req = requirement.trim();
+    if (!req) return;
+    try {
+      const response = await creationApi.refineNodeCopy(nodeId, { requirement: req }) as any;
+      const node = response?.node;
+      if (!node?.id) return;
+      set((state) => ({
+        nodes: state.nodes.map((n) =>
+          n.id === node.id
+            ? {
+                ...n,
+                data: {
+                  ...n.data,
+                  prompt: node.prompt,
+                  scriptSegment: node.scriptSegment,
+                  firstFramePrompt: buildFirstFramePrompt(node.prompt, node.scriptSegment),
+                  lastFramePrompt: buildLastFramePrompt(node.prompt, node.scriptSegment),
+                  sceneFramePrompt: buildSceneFramePrompt(node.prompt, node.scriptSegment),
+                },
+              }
+            : n
+        ),
+      }));
+    } catch (error) {
+      console.error('Failed to refine node copy:', error);
+      set({ error: 'AI 调整文案失败' });
     }
   },
 

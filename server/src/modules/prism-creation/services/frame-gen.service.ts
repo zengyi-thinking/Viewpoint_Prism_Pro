@@ -42,6 +42,19 @@ export class FrameGenService {
       throw new NotFoundException('Node not found');
     }
 
+    const firstMainNode = await this.prisma.flowNode.findFirst({
+      where: {
+        flowProjectId: node.flowProjectId,
+        parentNodeId: null,
+      },
+      orderBy: { orderIndex: 'asc' },
+      select: { id: true },
+    });
+    const isFirstMainNode = firstMainNode?.id === node.id;
+    if (!isFirstMainNode && frameType === FrameType.LAST) {
+      throw new BadRequestException('仅首个节点支持生成落幅帧，其他节点只需生成画面帧');
+    }
+
     // Check if frame is locked
     const isLocked = frameType === FrameType.FIRST ? node.firstFrameLocked : node.lastFrameLocked;
     if (isLocked) {
@@ -55,7 +68,7 @@ export class FrameGenService {
     }
 
     // Enhance prompt based on frame type
-    const enhancedPrompt = this.enhancePrompt(prompt, frameType);
+    const enhancedPrompt = this.enhancePrompt(prompt, frameType, isFirstMainNode);
 
     this.logger.log(`Generating ${frameType} frame for node ${nodeId} with prompt: ${enhancedPrompt}`);
 
@@ -144,6 +157,19 @@ export class FrameGenService {
       throw new NotFoundException('Node not found');
     }
 
+    const firstMainNode = await this.prisma.flowNode.findFirst({
+      where: {
+        flowProjectId: node.flowProjectId,
+        parentNodeId: null,
+      },
+      orderBy: { orderIndex: 'asc' },
+      select: { id: true },
+    });
+    const isFirstMainNode = firstMainNode?.id === node.id;
+    if (!isFirstMainNode && frameType === FrameType.LAST) {
+      throw new BadRequestException('非首个节点不存在落幅帧锁定操作');
+    }
+
     // Update lock status
     const updateData = frameType === FrameType.FIRST
       ? { firstFrameLocked: locked }
@@ -166,7 +192,10 @@ export class FrameGenService {
   /**
    * Enhance prompt based on frame type
    */
-  private enhancePrompt(prompt: string, frameType: FrameType): string {
+  private enhancePrompt(prompt: string, frameType: FrameType, isFirstMainNode: boolean): string {
+    if (!isFirstMainNode) {
+      return `${prompt}, scene key frame, cinematic still, composition-focused, 16:9, high quality`;
+    }
     if (frameType === FrameType.FIRST) {
       return `${prompt}, opening shot, beginning scene, first frame, high quality, detailed`;
     } else {

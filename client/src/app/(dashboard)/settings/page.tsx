@@ -1,8 +1,13 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useApiKeysStore, AIProvider } from '@/stores/api-keys.store';
+import {
+  settingsApi,
+  type SafeUserSettings,
+  type UpdateSettingsPayload,
+} from '@/services/settings.api';
 
 const PROVIDER_ICONS: Record<AIProvider, React.ReactNode> = {
   openai: (
@@ -51,20 +56,162 @@ export default function SettingsPage() {
   const [tempApiKey, setTempApiKey] = useState('');
   const [tempBaseUrl, setTempBaseUrl] = useState('');
   const [showDefaultNotice, setShowDefaultNotice] = useState(true);
+  const [serverSettings, setServerSettings] = useState<SafeUserSettings | null>(null);
+  const [isLoadingSettings, setIsLoadingSettings] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
 
-  const handleSave = () => {
-    if (editingProvider) {
-      setApiKey(editingProvider, tempApiKey, tempBaseUrl || undefined);
-      setEditingProvider(null);
-      setTempApiKey('');
-      setTempBaseUrl('');
+  const activeProviderPack = useMemo(() => {
+    if (!serverSettings) return 'unknown';
+    const asr = serverSettings.preferredAsr || 'seedance';
+    const llm = serverSettings.preferredLlm || 'seedance';
+    const image = serverSettings.preferredImageGen || 'seedance';
+    const video = serverSettings.preferredVideoGen || 'seedance';
+    const tts = serverSettings.preferredTts || 'seedance';
+
+    if (
+      asr === 'gemini' &&
+      llm === 'gemini' &&
+      image === 'gemini' &&
+      tts === 'gemini' &&
+      video === 'seedance'
+    ) {
+      return 'google_premium_hybrid';
     }
+
+    if (
+      asr === 'seedance' &&
+      llm === 'seedance' &&
+      image === 'seedance' &&
+      video === 'seedance' &&
+      tts === 'seedance'
+    ) {
+      return 'siliconflow';
+    }
+
+    return 'custom';
+  }, [serverSettings]);
+
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const payload = await settingsApi.get();
+        setServerSettings(payload.settings);
+      } catch (error) {
+        setStatusMessage(error instanceof Error ? error.message : '加载设置失败');
+      } finally {
+        setIsLoadingSettings(false);
+      }
+    };
+
+    void load();
+  }, []);
+
+  const updateServerSettings = async (
+    payload: UpdateSettingsPayload,
+    successMessage: string,
+  ) => {
+    setIsSaving(true);
+    setStatusMessage(null);
+    try {
+      const response = await settingsApi.update(payload);
+      setServerSettings(response.settings);
+      setStatusMessage(successMessage);
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : '保存失败');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const mapProviderToSettingsField = (
+    provider: AIProvider,
+    apiKey: string,
+  ): UpdateSettingsPayload | null => {
+    switch (provider) {
+      case 'openai':
+      case 'whisper':
+        return { openaiKey: apiKey };
+      case 'gemini':
+        return { geminiKey: apiKey };
+      case 'seedance':
+        return { seedanceKey: apiKey };
+      case 'midjourney':
+        return { midjourneyKey: apiKey };
+      case 'elevenlabs':
+        return { elevenlabsKey: apiKey };
+      default:
+        return null;
+    }
+  };
+
+  const applyProviderPack = async (pack: 'siliconflow' | 'google_premium_hybrid') => {
+    if (pack === 'siliconflow') {
+      await updateServerSettings(
+        {
+          preferredAsr: 'seedance',
+          preferredLlm: 'seedance',
+          preferredImageGen: 'seedance',
+          preferredVideoGen: 'seedance',
+          preferredTts: 'seedance',
+        },
+        '已切换为硅基流动默认套餐',
+      );
+      return;
+    }
+
+    await updateServerSettings(
+      {
+        preferredAsr: 'gemini',
+        preferredLlm: 'gemini',
+        preferredImageGen: 'gemini',
+        // 当前工程的视频生成链路仍优先保留 Seedance，避免播放 URL 鉴权问题。
+        preferredVideoGen: 'seedance',
+        preferredTts: 'gemini',
+      },
+      '已切换为 Google 高级套餐（视频生成保持 Seedance）',
+    );
+  };
+
+  const handleSave = async () => {
+    if (!editingProvider) return;
+
+    setApiKey(editingProvider, tempApiKey, tempBaseUrl || undefined);
+    const payload = mapProviderToSettingsField(editingProvider, tempApiKey);
+    if (payload) {
+      await updateServerSettings(payload, `${apiKeys[editingProvider].name} Key 已保存`);
+    } else {
+      setStatusMessage(`${apiKeys[editingProvider].name} 仅保存在本地（当前后端未持久化该 Provider）`);
+    }
+
+    setEditingProvider(null);
+    setTempApiKey('');
+    setTempBaseUrl('');
   };
 
   const handleCancel = () => {
     setEditingProvider(null);
     setTempApiKey('');
     setTempBaseUrl('');
+  };
+
+  const handleResetAll = async () => {
+    resetToDefaults();
+    await updateServerSettings(
+      {
+        openaiKey: '',
+        geminiKey: '',
+        seedanceKey: '',
+        midjourneyKey: '',
+        elevenlabsKey: '',
+        preferredAsr: 'seedance',
+        preferredLlm: 'seedance',
+        preferredImageGen: 'seedance',
+        preferredVideoGen: 'seedance',
+        preferredTts: 'seedance',
+      },
+      '已重置本地与服务端设置为默认',
+    );
   };
 
   return (
@@ -119,6 +266,55 @@ export default function SettingsPage() {
           </div>
         </div>
       )}
+
+      <div className="mx-auto mb-6 max-w-3xl rounded-xl border border-border-subtle bg-bg-panel px-4 py-4">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <h2 className="text-sm font-semibold text-text-primary">服务套餐一键切换</h2>
+            <p className="mt-1 text-xs text-text-tertiary">
+              直接切换 AI Router 的任务优先级（ASR / LLM / 多模态 / 生图 / TTS）。
+            </p>
+            <p className="mt-1 text-[11px] text-text-tertiary">
+              当前模式：
+              {activeProviderPack === 'siliconflow' && ' 硅基流动默认套餐'}
+              {activeProviderPack === 'google_premium_hybrid' && ' Google 高级套餐（视频生成保持 Seedance）'}
+              {activeProviderPack === 'custom' && ' 自定义'}
+              {activeProviderPack === 'unknown' && (isLoadingSettings ? ' 读取中...' : ' 未配置')}
+            </p>
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            <button
+              onClick={() => void applyProviderPack('siliconflow')}
+              disabled={isSaving || isLoadingSettings}
+              className={`rounded-lg px-3 py-2 text-xs font-medium transition ${
+                activeProviderPack === 'siliconflow'
+                  ? 'bg-accent-primary text-text-inverse'
+                  : 'bg-bg-panel-secondary text-text-secondary hover:text-text-primary'
+              } disabled:opacity-60`}
+            >
+              硅基默认
+            </button>
+            <button
+              onClick={() => void applyProviderPack('google_premium_hybrid')}
+              disabled={isSaving || isLoadingSettings}
+              className={`rounded-lg px-3 py-2 text-xs font-medium transition ${
+                activeProviderPack === 'google_premium_hybrid'
+                  ? 'bg-accent-primary text-text-inverse'
+                  : 'bg-bg-panel-secondary text-text-secondary hover:text-text-primary'
+              } disabled:opacity-60`}
+            >
+              Google 高级
+            </button>
+          </div>
+        </div>
+
+        {statusMessage && (
+          <p className="mt-3 rounded-md bg-bg-panel-secondary px-3 py-2 text-xs text-text-secondary">
+            {statusMessage}
+          </p>
+        )}
+      </div>
 
       {/* API Keys 配置列表 */}
       <div className="mx-auto max-w-3xl space-y-4">
@@ -219,10 +415,11 @@ export default function SettingsPage() {
                       取消
                     </button>
                     <button
-                      onClick={handleSave}
+                      onClick={() => void handleSave()}
+                      disabled={isSaving}
                       className="rounded-lg bg-accent-primary px-3 py-1.5 text-xs font-medium text-text-inverse transition hover:opacity-90"
                     >
-                      保存
+                      {isSaving ? '保存中...' : '保存'}
                     </button>
                   </div>
                 </div>
@@ -235,7 +432,7 @@ export default function SettingsPage() {
       {/* 底部操作 */}
       <div className="mx-auto mt-8 max-w-3xl">
         <button
-          onClick={resetToDefaults}
+          onClick={() => void handleResetAll()}
           className="text-xs text-text-tertiary transition hover:text-text-secondary"
         >
           重置所有配置为默认

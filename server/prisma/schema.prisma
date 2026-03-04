@@ -230,6 +230,36 @@ enum CrystalCardType {
   SUMMARY
 }
 
+enum PromptAssetType {
+  CRYSTAL_CARD = 'crystal_card'
+  MINDMAP = 'mindmap'
+  OUTLINE = 'outline'
+  FLASHCARD = 'flashcard'
+}
+
+model GenerationQuality {
+  id           String   @id @default(cuid())
+  userId       String
+  assetId      String?
+  cardId       String?
+  flashcardId  String?
+  generatedBy  String
+  templateId   String?
+  template     PromptTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  qualityScore Float
+  dimensions   Json
+  userFeedback String?
+  userRating   Int?
+  helpfulnessVotes Int @default(0)
+  createdAt    DateTime @default(now())
+
+  @@index([assetId])
+  @@index([cardId])
+  @@index([flashcardId])
+  @@index([qualityScore])
+  @@map("generation_quality")
+}
+
 model CrystalCard {
   id          String         @id @default(cuid())
   assetId     String
