@@ -47,6 +47,9 @@ export class VideoRenderService {
           : '当前节点需要先生成画面帧后再渲染',
       );
     }
+    if (!frameContext.isFirstMainNode && !frameContext.firstFrameUrl) {
+      throw new BadRequestException('请先为上一个节点生成画面帧（用于当前节点起始帧）');
+    }
 
     // Update node status to processing
     await this.prisma.flowNode.update({
@@ -236,19 +239,27 @@ export class VideoRenderService {
       };
     }
 
-    const previousNode = await this.prisma.flowNode.findFirst({
-      where: {
-        flowProjectId: node.flowProjectId,
-        orderIndex: { lt: node.orderIndex },
-      },
-      orderBy: { orderIndex: 'desc' },
-    });
+    // 非首主节点：优先使用父节点作为上一个节点；若不存在父节点，则按 orderIndex 找前序主线节点
+    let previousNode: any | null = null;
+    if (node.parentNodeId) {
+      previousNode = await this.prisma.flowNode.findUnique({
+        where: { id: node.parentNodeId },
+      });
+    }
+    if (!previousNode) {
+      previousNode = await this.prisma.flowNode.findFirst({
+        where: {
+          flowProjectId: node.flowProjectId,
+          orderIndex: { lt: node.orderIndex },
+        },
+        orderBy: { orderIndex: 'desc' },
+      });
+    }
 
+    // 约定：视频生成使用“上一节点画面 -> 当前节点画面”
     const firstFrameUrl =
       previousNode?.lastFrameUrl ||
       previousNode?.firstFrameUrl ||
-      node.firstFrameUrl ||
-      node.lastFrameUrl ||
       null;
     const lastFrameUrl = node.firstFrameUrl || node.lastFrameUrl || null;
 

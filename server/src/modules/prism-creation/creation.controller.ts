@@ -15,6 +15,7 @@ import {
   LockFrameDto,
   RenderQuality,
   RefineCopyDto,
+  GenerateNextNodeDto,
 } from './dto';
 
 @UseGuards(JwtAuthGuard)
@@ -39,6 +40,16 @@ export class CreationController {
     @Body() dto: CreateFlowNodeDto,
   ) {
     return this.creationService.createNode(userId, videoId, dto);
+  }
+
+  @Post('videos/:videoId/nodes/next')
+  @Post(':videoId/nodes/next')
+  generateNextNode(
+    @CurrentUser() userId: string,
+    @Param('videoId') videoId: string,
+    @Body() dto: GenerateNextNodeDto,
+  ) {
+    return this.creationService.generateNextNode(userId, videoId, dto);
   }
 
   @Patch('videos/:videoId/nodes/:nodeId')

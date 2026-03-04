@@ -68,12 +68,24 @@ export interface LockFramePayload {
   locked: boolean;
 }
 
+export interface GenerateNextNodePayload {
+  currentNodeId?: string;
+  idea: string;
+  branchName?: string;
+}
+
 export const creationApi = {
   getNodes: (videoId: string) =>
     apiFetch(`/api/prism/creation/videos/${videoId}/nodes`),
 
   createNode: (videoId: string, payload: CreateFlowNodePayload) =>
     apiFetch(`/api/prism/creation/videos/${videoId}/nodes`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+
+  generateNextNode: (videoId: string, payload: GenerateNextNodePayload) =>
+    apiFetch(`/api/prism/creation/videos/${videoId}/nodes/next`, {
       method: 'POST',
       body: JSON.stringify(payload),
     }),

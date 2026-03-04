@@ -191,6 +191,19 @@ export class RefineCopyDto {
   requirement: string;
 }
 
+export class GenerateNextNodeDto {
+  @IsOptional()
+  @IsString()
+  currentNodeId?: string;
+
+  @IsString()
+  idea: string;
+
+  @IsOptional()
+  @IsString()
+  branchName?: string;
+}
+
 export class LockFrameDto {
   @IsEnum(FrameType)
   frameType: FrameType;

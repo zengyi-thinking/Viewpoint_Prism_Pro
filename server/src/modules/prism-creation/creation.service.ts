@@ -27,6 +27,7 @@ import {
   LockFrameDto,
   FrameType,
   RefineCopyDto,
+  GenerateNextNodeDto,
 } from './dto';
 
 @Injectable()
@@ -333,6 +334,94 @@ ${adjustContext}
       userId,
       videoId,
       projectId: project.id,
+      node: this.toNodeDto(node),
+    };
+  }
+
+  /**
+   * 基于当前节点 + idea 自动生成下一个节点（Simple 模式）
+   */
+  async generateNextNode(userId: string, videoId: string, dto: GenerateNextNodeDto) {
+    const project = await this.getOrCreateProject(userId, videoId);
+
+    const idea = dto.idea?.trim();
+    if (!idea) {
+      throw new BadRequestException('idea is required');
+    }
+
+    let currentNode: any = null;
+    if (dto.currentNodeId) {
+      currentNode = await this.prisma.flowNode.findFirst({
+        where: {
+          id: dto.currentNodeId,
+          flowProjectId: project.id,
+        },
+      });
+      if (!currentNode) {
+        throw new NotFoundException('Current node not found in this project');
+      }
+    } else {
+      currentNode = await this.prisma.flowNode.findFirst({
+        where: { flowProjectId: project.id },
+        orderBy: { orderIndex: 'desc' },
+      });
+    }
+
+    const maxOrderIndex = await this.prisma.flowNode.aggregate({
+      where: { flowProjectId: project.id },
+      _max: { orderIndex: true },
+    });
+    const newOrderIndex = (maxOrderIndex._max.orderIndex ?? -1) + 1;
+
+    const generated = await this.generateNextNodeWithLLM(
+      userId,
+      idea,
+      currentNode
+        ? {
+            scriptSegment: currentNode.scriptSegment || '',
+            prompt: currentNode.prompt || '',
+            orderIndex: currentNode.orderIndex,
+          }
+        : null,
+    );
+
+    const baseX = Number(currentNode?.positionX ?? 80);
+    const baseY = Number(currentNode?.positionY ?? 120);
+    const nextX = baseX + 260;
+    const nextY = baseY + (currentNode ? 0 : (newOrderIndex % 3) * 110);
+
+    const node = await this.prisma.flowNode.create({
+      data: {
+        flowProjectId: project.id,
+        orderIndex: newOrderIndex,
+        prompt: generated.prompt,
+        scriptSegment: generated.scriptSegment,
+        parentNodeId: currentNode?.id ?? null,
+        branchName: dto.branchName?.trim() || null,
+        positionX: nextX,
+        positionY: nextY,
+        renderStatus: TaskStatus.PENDING,
+      },
+      include: {
+        parentNode: true,
+      },
+    });
+
+    await this.prisma.prismFlowProject.update({
+      where: { id: project.id },
+      data: { status: TaskStatus.PROCESSING },
+    });
+
+    this.logger.log(
+      `Generated next node ${node.id} from ${currentNode?.id ?? 'project-start'} in project ${project.id}`,
+    );
+
+    return {
+      userId,
+      videoId,
+      projectId: project.id,
+      mode: 'simple',
+      sourceNodeId: currentNode?.id ?? null,
       node: this.toNodeDto(node),
     };
   }
@@ -1055,5 +1144,66 @@ ${adjustContext}
       scriptSegment: fallbackSegment,
       prompt: fallbackPrompt || fallbackSegment,
     };
+  }
+
+  private async generateNextNodeWithLLM(
+    userId: string,
+    idea: string,
+    current: { scriptSegment: string; prompt: string; orderIndex: number } | null,
+  ) {
+    const userPayload = {
+      task: '基于当前节点续写下一个视频节点',
+      idea,
+      currentNode: current
+        ? {
+            orderIndex: current.orderIndex,
+            scriptSegment: current.scriptSegment,
+            prompt: current.prompt,
+          }
+        : null,
+    };
+
+    const fallbackSegment = current
+      ? `延续上一节点并推进剧情：${idea}`
+      : `故事开场：${idea}`;
+    const fallbackPrompt = current
+      ? `${current.prompt || current.scriptSegment || '连续镜头'}，推进到新场景：${idea}`
+      : `${idea}，电影感镜头，16:9`;
+
+    try {
+      const response = await this.aiRouter.execute(
+        AITaskType.LLM_CHAT,
+        {
+          messages: [
+            {
+              role: 'system',
+              content:
+                '你是短视频分镜导演助手。请只返回 JSON 对象，不要 markdown 代码块。JSON 字段必须是 scriptSegment 和 prompt。scriptSegment 为 1-3 句镜头文案，prompt 为可直接用于生成画面的高质量中文提示词。',
+            },
+            {
+              role: 'user',
+              content: JSON.stringify(userPayload, null, 2),
+            },
+          ],
+          temperature: 0.7,
+        },
+        userId,
+      );
+
+      const content =
+        (response as any)?.choices?.[0]?.message?.content ??
+        (response as any)?.content ??
+        '';
+
+      return this.parseRefineCopyResult(content, fallbackSegment, fallbackPrompt);
+    } catch (error: any) {
+      this.logger.warn(
+        `Generate next node fallback: ${error?.message || 'unknown error'}`,
+      );
+      return {
+        scriptSegment: fallbackSegment,
+        prompt: fallbackPrompt,
+      };
+    }
   }
 }

@@ -35,6 +35,9 @@ interface CreationCanvasProps {
 export function CreationCanvas({ videoId, onTimeClick }: CreationCanvasProps) {
   const [showScriptInput, setShowScriptInput] = useState(false);
   const [showStitchPanel, setShowStitchPanel] = useState(false);
+  const [creationMode, setCreationMode] = useState<'split' | 'simple'>('split');
+  const [simpleIdea, setSimpleIdea] = useState('');
+  const [isGeneratingNext, setIsGeneratingNext] = useState(false);
 
   const {
     nodes: storeNodes,
@@ -44,6 +47,7 @@ export function CreationCanvas({ videoId, onTimeClick }: CreationCanvasProps) {
     error,
     loadNodes,
     createNode,
+    generateNextNode,
     updateNode,
     deleteNode,
     selectNode,
@@ -134,6 +138,33 @@ export function CreationCanvas({ videoId, onTimeClick }: CreationCanvasProps) {
     });
   }, [createNode, storeNodes.length]);
 
+  const handleGenerateNextNode = useCallback(async () => {
+    const idea = simpleIdea.trim();
+    if (!idea) {
+      window.alert('请输入 idea 后再生成下一节点');
+      return;
+    }
+
+    const fallbackNodeId =
+      selectedNodeId ||
+      [...storeNodes]
+        .sort((a, b) => Number(a.data.orderIndex || 0) - Number(b.data.orderIndex || 0))
+        .at(-1)?.id;
+
+    setIsGeneratingNext(true);
+    try {
+      await generateNextNode({
+        currentNodeId: fallbackNodeId,
+        idea,
+      });
+      setSimpleIdea('');
+    } catch (error) {
+      console.error('Failed to generate next node in simple mode:', error);
+    } finally {
+      setIsGeneratingNext(false);
+    }
+  }, [simpleIdea, selectedNodeId, storeNodes, generateNextNode]);
+
   // 加载状态
   if (isLoading && storeNodes.length === 0) {
     return (
@@ -212,13 +243,62 @@ export function CreationCanvas({ videoId, onTimeClick }: CreationCanvasProps) {
 
       {/* 底部工具栏 */}
       <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-2">
-        <button
-          onClick={() => setShowScriptInput(true)}
-          className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-[#E91E8C] to-[#9C27B0] px-4 py-2 text-sm font-medium text-white shadow-lg shadow-[#E91E8C]/30 transition hover:opacity-90"
-        >
-          <Sparkles className="h-4 w-4" />
-          AI 文案拆分
-        </button>
+        <div className="flex items-center gap-1 rounded-xl border border-[#2D2D3A] bg-[#1E1E24] p-1">
+          <button
+            onClick={() => setCreationMode('split')}
+            className={[
+              'rounded-lg px-3 py-1.5 text-xs transition',
+              creationMode === 'split'
+                ? 'bg-[#E91E8C] text-white'
+                : 'text-[#9CA3AF] hover:bg-[#2D2D3A] hover:text-white',
+            ].join(' ')}
+          >
+            批量拆分
+          </button>
+          <button
+            onClick={() => setCreationMode('simple')}
+            className={[
+              'rounded-lg px-3 py-1.5 text-xs transition',
+              creationMode === 'simple'
+                ? 'bg-[#E91E8C] text-white'
+                : 'text-[#9CA3AF] hover:bg-[#2D2D3A] hover:text-white',
+            ].join(' ')}
+          >
+            Simple 续写
+          </button>
+        </div>
+
+        {creationMode === 'split' ? (
+          <button
+            onClick={() => setShowScriptInput(true)}
+            className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-[#E91E8C] to-[#9C27B0] px-4 py-2 text-sm font-medium text-white shadow-lg shadow-[#E91E8C]/30 transition hover:opacity-90"
+          >
+            <Sparkles className="h-4 w-4" />
+            AI 文案拆分
+          </button>
+        ) : (
+          <div className="flex items-center gap-2 rounded-xl border border-[#2D2D3A] bg-[#1E1E24] px-2 py-1.5">
+            <input
+              value={simpleIdea}
+              onChange={(e) => setSimpleIdea(e.target.value)}
+              placeholder={
+                selectedNodeId
+                  ? '基于当前选中节点，输入续写 idea...'
+                  : '输入 idea（将接在最后一个节点后）...'
+              }
+              className="w-[280px] rounded-md border border-[#2D2D3A] bg-[#121218] px-2 py-1 text-xs text-white outline-none focus:border-[#E91E8C]"
+            />
+            <button
+              onClick={handleGenerateNextNode}
+              disabled={isGeneratingNext || !simpleIdea.trim()}
+              className="flex items-center gap-1 rounded-lg bg-[#E91E8C] px-3 py-1.5 text-xs font-medium text-white transition hover:bg-[#D11B7A] disabled:opacity-50"
+            >
+              {isGeneratingNext ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+              AI 续写下一节点
+            </button>
+          </div>
+        )}
+
         <button
           onClick={handleAddNode}
           className="flex items-center gap-2 rounded-xl bg-[#1E1E24] border border-[#2D2D3A] px-4 py-2 text-sm font-medium text-white shadow-lg transition hover:bg-[#2D2D3A]"
@@ -256,7 +336,7 @@ export function CreationCanvas({ videoId, onTimeClick }: CreationCanvasProps) {
 
       {/* 快捷操作提示 */}
       <div className="absolute top-4 right-4 rounded-lg bg-[#1E1E24]/80 px-3 py-1.5 text-[10px] text-[#6B7280] backdrop-blur-sm">
-        双击节点编辑 | 拖拽调整位置
+        双击节点编辑 | 拖拽调整位置 | Simple 模式支持逐节点续写
       </div>
     </div>
   );

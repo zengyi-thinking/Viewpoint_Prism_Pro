@@ -2,7 +2,13 @@
 
 import { create } from 'zustand';
 import { Node, Edge } from '@xyflow/react';
-import { creationApi, CreateFlowNodePayload, StitchFlowPayload, ExportProjectPayload } from '@/services/creation.api';
+import {
+  creationApi,
+  CreateFlowNodePayload,
+  StitchFlowPayload,
+  ExportProjectPayload,
+  GenerateNextNodePayload,
+} from '@/services/creation.api';
 
 export type RenderStatus = 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED';
 
@@ -100,6 +106,7 @@ interface CreationStore {
   // Actions
   loadNodes: (videoId: string) => Promise<void>;
   createNode: (payload: CreateFlowNodePayload) => Promise<void>;
+  generateNextNode: (payload: GenerateNextNodePayload) => Promise<void>;
   createNodesFromSegments: (videoId: string, segments: Array<{ segment: string; prompt: string; estimatedDuration?: number }>) => Promise<void>;
   createBranch: (sourceNodeId: string, branchName: string, promptOverride?: string) => Promise<void>;
   mergeBranch: (branchNodeId: string) => Promise<void>;
@@ -320,6 +327,83 @@ export const useCreationStore = create<CreationStore>((set, get) => ({
     } catch (error) {
       console.error('Failed to create nodes from segments:', error);
       set({ error: '批量创建节点失败', isLoading: false });
+    }
+  },
+
+  // Simple mode: generate next node from current node + idea
+  generateNextNode: async (payload: GenerateNextNodePayload) => {
+    const { currentVideoId } = get();
+    if (!currentVideoId) return;
+
+    set({ isLoading: true, error: null });
+    try {
+      const response = await creationApi.generateNextNode(currentVideoId, payload) as any;
+      const createdNode = extractSingleNode(response);
+
+      if (!createdNode?.id) {
+        await get().loadNodes(currentVideoId);
+        return;
+      }
+
+      const parentNode = payload.currentNodeId
+        ? get().nodes.find((n) => n.id === payload.currentNodeId)
+        : null;
+
+      const newNode: FlowNode = {
+        id: createdNode.id,
+        type: 'flowNodeCard',
+        position: {
+          x: createdNode.positionX ?? (parentNode ? parentNode.position.x + 260 : 180),
+          y: createdNode.positionY ?? (parentNode ? parentNode.position.y : 160),
+        },
+        data: {
+          orderIndex: createdNode.orderIndex,
+          prompt: createdNode.prompt,
+          scriptSegment: createdNode.scriptSegment,
+          parentNodeId: createdNode.parentNodeId ?? null,
+          branchName: createdNode.branchName ?? null,
+          isMerged: Boolean(createdNode.isMerged),
+          childBranchCount: Array.isArray(createdNode.childBranches) ? createdNode.childBranches.length : 0,
+          firstFrameUrl: createdNode.firstFrameUrl,
+          lastFrameUrl: createdNode.lastFrameUrl,
+          renderedVideoUrl: createdNode.renderedVideoUrl,
+          renderStatus: createdNode.renderStatus || 'PENDING',
+          renderProgress: createdNode.renderProgress ?? 0,
+          activeRenderTaskId: createdNode.activeRenderTaskId ?? null,
+          latestRenderTaskStatus: createdNode.latestRenderTaskStatus ?? null,
+          latestRenderTaskVideoUrl: createdNode.latestRenderTaskVideoUrl ?? null,
+          isFirstScene: Boolean(createdNode.isFirstScene),
+          firstFrameLocked: createdNode.firstFrameLocked,
+          lastFrameLocked: createdNode.lastFrameLocked,
+          firstFramePrompt: buildFirstFramePrompt(createdNode.prompt, createdNode.scriptSegment),
+          lastFramePrompt: buildLastFramePrompt(createdNode.prompt, createdNode.scriptSegment),
+          sceneFramePrompt: buildSceneFramePrompt(createdNode.prompt, createdNode.scriptSegment),
+        },
+      };
+
+      set((state) => ({
+        nodes: [...state.nodes, newNode],
+        edges: newNode.data.parentNodeId
+          ? [
+              ...state.edges,
+              {
+                id: `edge-${newNode.data.parentNodeId}-${newNode.id}`,
+                source: newNode.data.parentNodeId,
+                target: newNode.id,
+                animated: true,
+                style: {
+                  stroke: '#9C27B0',
+                  strokeWidth: 1.5,
+                  strokeDasharray: '4 3',
+                },
+              },
+            ]
+          : state.edges,
+        isLoading: false,
+      }));
+    } catch (error) {
+      console.error('Failed to generate next node:', error);
+      set({ error: 'AI 续写节点失败', isLoading: false });
     }
   },
 
