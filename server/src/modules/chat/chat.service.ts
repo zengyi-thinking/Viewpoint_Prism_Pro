@@ -143,12 +143,21 @@ export class ChatService {
         : session;
 
     // 检查是否需要画面分析
-    const metadata = dto.metadata || {};
+    const metadata = (dto.metadata || {}) as Record<string, unknown>;
     const frameBase64 = metadata.frameBase64 as string | undefined;
     const timestamp = (metadata.timestamp as number | undefined) ?? 0;
+    const includeFrameContext = Boolean(metadata.includeFrameContext);
+    const frameContextMode =
+      String(metadata.frameContextMode || '').toLowerCase() === 'deep'
+        ? 'deep'
+        : 'quick';
+    const isVideoPaused = Boolean(metadata.isVideoPaused);
+    const isMidPlayback = Boolean(metadata.isMidPlayback);
     const regionClicks = metadata.regionClicks as Array<{ x: number; y: number; timestamp: number }> | undefined;
-    const needsFrameAnalysis =
-      frameBase64 && resolvedVideoId && resolvedPrism === ChatPrismType.KNOWLEDGE;
+    const shouldUseVisualContext = Boolean(includeFrameContext && resolvedVideoId);
+    const needsFrameAnalysis = Boolean(shouldUseVisualContext && frameBase64);
+
+    const userMetadata = this.buildUserMessageMetadata(metadata, resolvedVideoId);
 
     // 创建用户消息
     const userMessage = await this.prisma.chatMessage.create({
@@ -156,15 +165,13 @@ export class ChatService {
         sessionId,
         role: DbMessageRole.USER,
         content: dto.content,
-        metadata: {
-          ...(dto.metadata ?? {}),
-          videoId: resolvedVideoId,
-        } as any,
+        metadata: userMetadata as any,
       },
     });
 
     // 推送用户消息
     this.wsGateway.emitChatMessage(updatedSession.projectId, {
+      id: userMessage.id,
       projectId: updatedSession.projectId,
       sessionId,
       role: 'user',
@@ -175,32 +182,69 @@ export class ChatService {
 
     // 画面分析处理
     let frameAnalysisContext: string | null = null;
-    let frameImage: string | null = null;
+    let frameImage: string | null = needsFrameAnalysis ? (frameBase64 as string) : null;
+    let frameTimestampForReply: number | null = shouldUseVisualContext
+      ? Math.max(0, Number(timestamp || 0))
+      : null;
 
-    if (needsFrameAnalysis && resolvedVideoId) {
+    if (shouldUseVisualContext && resolvedVideoId) {
       try {
-        // 分析当前帧
-        const frameAnalysis = await this.frameAnalysisService.analyzeFrame({
-          userId,
-          videoId: resolvedVideoId,
-          timestamp: timestamp || 0,
-          frameBase64: frameBase64 as string,
-        });
+        if (needsFrameAnalysis) {
+          // 分析当前帧
+          const frameAnalysis = await this.frameAnalysisService.analyzeFrame({
+            userId,
+            videoId: resolvedVideoId,
+            timestamp: timestamp || 0,
+            frameBase64: frameBase64 as string,
+          });
 
-        frameAnalysisContext = `[${Math.round(frameAnalysis.timestamp)}秒]: ${frameAnalysis.description}`;
-        frameImage = frameAnalysis.imageUrl || frameBase64 as string;
+          frameAnalysisContext = `[${Math.round(frameAnalysis.timestamp)}秒]: ${frameAnalysis.description}`;
+          frameImage = frameAnalysis.imageUrl || (frameBase64 as string);
+          frameTimestampForReply = frameAnalysis.timestamp;
+        } else {
+          const fallbackVisual = await this.buildVisualContextFromNearestKeyframe(
+            userId,
+            resolvedVideoId,
+            timestamp || 0,
+          );
+          frameAnalysisContext = fallbackVisual.context;
+          frameImage = fallbackVisual.imageUrl;
+          frameTimestampForReply = fallbackVisual.timestamp;
+        }
+
+        if (frameContextMode === 'deep') {
+          const deepVisualContext = await this.buildDeepVisualContext(
+            resolvedVideoId,
+            frameTimestampForReply ?? timestamp ?? 0,
+          );
+          if (deepVisualContext) {
+            frameAnalysisContext = [
+              frameAnalysisContext,
+              '',
+              '【深度视觉上下文】',
+              deepVisualContext,
+            ]
+              .filter(Boolean)
+              .join('\n');
+          }
+        }
 
         // 推送帧分析结果（用于前端显示图片）
         this.wsGateway.emitFrameAnalysis(updatedSession.projectId, {
           sessionId,
-          imageUrl: frameImage,
-          timestamp: frameAnalysis.timestamp,
-          description: frameAnalysis.description,
-          detectedObjects: frameAnalysis.detectedObjects,
+          imageUrl: frameImage || '',
+          timestamp: frameTimestampForReply ?? 0,
+          description: frameAnalysisContext || '已附加视觉上下文',
+          detectedObjects: [],
         });
 
         // 处理区域点击分析
-        if (regionClicks && Array.isArray(regionClicks) && regionClicks.length >= 3) {
+        if (
+          needsFrameAnalysis &&
+          regionClicks &&
+          Array.isArray(regionClicks) &&
+          regionClicks.length >= 3
+        ) {
           const regionAnalysis = await this.frameAnalysisService.analyzeRegionClicks(
             userId,
             resolvedVideoId,
@@ -243,19 +287,35 @@ export class ChatService {
         : await this.buildAssistantReplyFromModel(
             userId,
             sessionId,
-            resolvedPrism,
+            shouldUseVisualContext && resolvedVideoId
+              ? ChatPrismType.KNOWLEDGE
+              : resolvedPrism,
             resolvedVideoId,
             dto.content,
             prismAction,
             hasVideoSwitched,
             frameAnalysisContext,
+            frameTimestampForReply,
           );
+
+    const assistantMetadata = this.buildAssistantMessageMetadata({
+      sourceMetadata: metadata,
+      videoId: resolvedVideoId,
+      frameImage,
+      frameTimestamp: frameTimestampForReply,
+      frameAnalysisContext,
+      includeFrameContext,
+      frameContextMode,
+      isVideoPaused,
+      isMidPlayback,
+    });
 
     const assistantMessage = await this.prisma.chatMessage.create({
       data: {
         sessionId,
         role: DbMessageRole.ASSISTANT,
         content: assistantContent,
+        metadata: assistantMetadata as any,
         prismAction:
           prismAction === PrismActionType.NONE ? null : prismAction,
         prismPayload: prismPayload as any,
@@ -296,11 +356,12 @@ export class ChatService {
     }
 
     this.wsGateway.emitChatMessage(updatedSession.projectId, {
+      id: assistantMessage.id,
       projectId: updatedSession.projectId,
       sessionId,
       role: 'assistant',
       content: assistantMessage.content,
-      metadata: {
+      metadata: (assistantMessage.metadata as Record<string, unknown> | null) ?? {
         prismAction:
           prismAction === PrismActionType.NONE ? null : prismAction,
         prismPayload,
@@ -520,6 +581,7 @@ export class ChatService {
     action: PrismActionType,
     ignoreHistory = false,
     frameAnalysisContext: string | null = null,
+    frameTimestamp: number | null = null,
   ) {
     let transcriptContext: string | null = null;
     let behaviorContext: string | null = null;
@@ -529,9 +591,9 @@ export class ChatService {
 
     if (prism === ChatPrismType.KNOWLEDGE && videoId) {
       [transcriptContext, behaviorContext, knowledgeAssetContext, qaContext, userProfileContext] = await Promise.all([
-        this.getKnowledgeTranscriptContext(videoId),
+        this.getKnowledgeTranscriptContext(videoId, frameTimestamp),
         this.getBehaviorInsightContext(userId, videoId),
-        this.getKnowledgeAssetContext(videoId),
+        this.getKnowledgeAssetContext(videoId, frameTimestamp),
         this.getKnowledgeQaContext(videoId),
         this.getUserProfileContext(userId),
       ]);
@@ -546,13 +608,7 @@ export class ChatService {
     }
 
     try {
-      const history = ignoreHistory
-        ? []
-        : await this.prisma.chatMessage.findMany({
-            where: { sessionId },
-            orderBy: { createdAt: 'desc' },
-            take: 8,
-          });
+      const history = await this.collectHistoryForLlm(sessionId, ignoreHistory);
 
       const systemPrompt = this.buildSystemPrompt(
         prism,
@@ -563,11 +619,11 @@ export class ChatService {
         qaContext,
         userProfileContext,
         frameAnalysisContext,
+        frameTimestamp,
       );
       const chatMessages = [
         { role: 'system', content: systemPrompt },
         ...history
-          .reverse()
           .map((m) => ({
             role: m.role === DbMessageRole.USER ? 'user' : 'assistant',
             content: m.content,
@@ -596,6 +652,172 @@ export class ChatService {
       const message = error instanceof Error ? error.message : String(error);
       throw new BadRequestException(`模型调用失败: ${message}`);
     }
+  }
+
+  private async collectHistoryForLlm(sessionId: string, ignoreHistory: boolean) {
+    if (ignoreHistory) return [];
+
+    const rows = await this.prisma.chatMessage.findMany({
+      where: { sessionId },
+      orderBy: { createdAt: 'desc' },
+      take: 16,
+      select: {
+        role: true,
+        content: true,
+      },
+    });
+
+    const ordered = rows.reverse();
+    const maxChars = 4800;
+    let budget = maxChars;
+    const selected: Array<{ role: DbMessageRole; content: string }> = [];
+
+    for (let idx = ordered.length - 1; idx >= 0; idx -= 1) {
+      const item = ordered[idx];
+      const compact = this.compactWhitespace(item.content);
+      if (!compact) continue;
+
+      const clipped = compact.length > 900 ? `${compact.slice(0, 900)}...` : compact;
+      const cost = clipped.length;
+      if (cost > budget && selected.length > 0) continue;
+      if (cost > budget && selected.length === 0) {
+        selected.unshift({ role: item.role, content: clipped.slice(0, Math.max(220, budget)) });
+        break;
+      }
+
+      selected.unshift({ role: item.role, content: clipped });
+      budget -= cost;
+      if (budget <= 0) break;
+    }
+
+    return selected;
+  }
+
+  private compactWhitespace(input: string) {
+    return String(input || '').replace(/\s+/g, ' ').trim();
+  }
+
+  private async buildDeepVisualContext(videoId: string, timestamp: number) {
+    const anchor = Math.max(0, Math.floor(timestamp));
+
+    const [nearbyKeyframes, transcript] = await Promise.all([
+      this.prisma.keyframe.findMany({
+        where: {
+          videoId,
+          timestamp: {
+            gte: Math.max(0, anchor - 120),
+            lte: anchor + 120,
+          },
+        },
+        orderBy: { timestamp: 'asc' },
+        take: 6,
+        select: {
+          timestamp: true,
+          frameType: true,
+          description: true,
+        },
+      }),
+      this.prisma.transcript.findFirst({
+        where: { videoId },
+        orderBy: { createdAt: 'desc' },
+        select: { segments: true },
+      }),
+    ]);
+
+    const frameLines = nearbyKeyframes
+      .map((item) => {
+        const summary = this.compactWhitespace(item.description || '');
+        if (!summary) return null;
+        return `- [${this.formatSeconds(item.timestamp)}] (${item.frameType}) ${summary.slice(0, 140)}`;
+      })
+      .filter(Boolean) as string[];
+
+    const segments = ((transcript?.segments as Array<any>) || [])
+      .filter((seg) => {
+        const start = Number(seg?.start ?? 0);
+        const end = Number(seg?.end ?? start);
+        return end >= anchor - 45 && start <= anchor + 45;
+      })
+      .slice(0, 8)
+      .map((seg) => {
+        const start = Number(seg?.start ?? 0);
+        const text = this.compactWhitespace(String(seg?.text || ''));
+        if (!text) return null;
+        return `- [${this.formatSeconds(start)}] ${text.slice(0, 160)}`;
+      })
+      .filter(Boolean) as string[];
+
+    const parts: string[] = [];
+    if (frameLines.length > 0) {
+      parts.push('邻近关键帧：');
+      parts.push(...frameLines);
+    }
+    if (segments.length > 0) {
+      if (parts.length > 0) parts.push('');
+      parts.push('邻近转写片段：');
+      parts.push(...segments);
+    }
+
+    return parts.join('\n').trim() || null;
+  }
+
+  private formatSeconds(sec: number) {
+    const total = Math.max(0, Math.floor(sec));
+    const mm = Math.floor(total / 60);
+    const ss = total % 60;
+    return `${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}`;
+  }
+
+  private buildUserMessageMetadata(
+    metadata: Record<string, unknown>,
+    videoId: string | null,
+  ) {
+    const { frameBase64, ...rest } = metadata;
+    void frameBase64;
+    return {
+      ...rest,
+      videoId,
+      hasFrameSnapshot: Boolean(metadata.frameBase64),
+    };
+  }
+
+  private buildAssistantMessageMetadata(params: {
+    sourceMetadata: Record<string, unknown>;
+    videoId: string | null;
+    frameImage: string | null;
+    frameTimestamp: number | null;
+    frameAnalysisContext: string | null;
+    includeFrameContext: boolean;
+    frameContextMode: 'quick' | 'deep';
+    isVideoPaused: boolean;
+    isMidPlayback: boolean;
+  }) {
+    const {
+      sourceMetadata,
+      videoId,
+      frameImage,
+      frameTimestamp,
+      frameAnalysisContext,
+      includeFrameContext,
+      frameContextMode,
+      isVideoPaused,
+      isMidPlayback,
+    } = params;
+
+    const { frameBase64, ...rest } = sourceMetadata;
+    void frameBase64;
+
+    return {
+      ...rest,
+      videoId,
+      includeFrameContext,
+      frameContextMode,
+      isVideoPaused,
+      isMidPlayback,
+      frameImage: frameImage ?? undefined,
+      frameTimestamp: frameTimestamp ?? undefined,
+      frameAnalysisContext: frameAnalysisContext ?? undefined,
+    };
   }
 
   private extractLlmText(llm: any) {
@@ -631,15 +853,57 @@ export class ChatService {
     return '';
   }
 
-  private async getKnowledgeTranscriptContext(videoId: string) {
+  private async getKnowledgeTranscriptContext(
+    videoId: string,
+    frameTimestamp?: number | null,
+  ) {
     const transcript = await this.prisma.transcript.findFirst({
       where: { videoId },
       orderBy: { createdAt: 'desc' },
       select: { segments: true },
     });
 
-    const segments = (transcript?.segments as Array<{ text?: string }>) ?? [];
-    return segments.slice(0, 10).map((s) => s.text ?? '').join('\n');
+    const segments =
+      (transcript?.segments as Array<{
+        start?: number;
+        end?: number;
+        text?: string;
+      }>) ?? [];
+    if (segments.length === 0) return '';
+
+    if (frameTimestamp == null) {
+      return segments
+        .slice(0, 10)
+        .map((s) => this.compactWhitespace(s.text ?? ''))
+        .filter(Boolean)
+        .join('\n');
+    }
+
+    const anchor = Math.max(0, Number(frameTimestamp));
+    const nearby = segments
+      .filter((seg) => {
+        const start = Number(seg.start ?? 0);
+        const end = Number(seg.end ?? start);
+        return end >= anchor - 60 && start <= anchor + 60;
+      })
+      .slice(0, 14)
+      .map((seg) => {
+        const start = Number(seg.start ?? 0);
+        const text = this.compactWhitespace(seg.text ?? '');
+        if (!text) return null;
+        return `- [${this.formatSeconds(start)}] ${text.slice(0, 200)}`;
+      })
+      .filter(Boolean) as string[];
+
+    if (nearby.length > 0) {
+      return nearby.join('\n');
+    }
+
+    return segments
+      .slice(0, 8)
+      .map((s) => this.compactWhitespace(s.text ?? ''))
+      .filter(Boolean)
+      .join('\n');
   }
 
   private buildSystemPrompt(
@@ -651,6 +915,7 @@ export class ChatService {
     qaContext: string | null,
     userProfileContext: string | null,
     frameAnalysisContext: string | null = null,
+    frameTimestamp: number | null = null,
   ) {
     const base =
       '你是 Viewpoint Prism Pro 的工作台助手。回答必须简洁、可执行，优先给结构化结论。';
@@ -664,6 +929,7 @@ export class ChatService {
         transcriptContext ? `**视频转写片段**:\n${transcriptContext.slice(0, 800)}` : '',
         knowledgeAssetContext ? `**知识资产摘要**:\n${knowledgeAssetContext.slice(0, 600)}` : '',
         qaContext ? `**历史Q&A补充**:\n${qaContext.slice(0, 400)}` : '',
+        frameTimestamp != null ? `**当前提问锚点**: ${this.formatSeconds(frameTimestamp)}` : '',
         frameAnalysisContext ? `**画面分析**:\n${frameAnalysisContext}` : '',
         userProfileContext ? `**用户画像**:\n${userProfileContext}` : '',
         behaviorContext ? `**用户观看行为线索**:\n${behaviorContext}` : '',
@@ -671,6 +937,7 @@ export class ChatService {
         '## 回答要求',
         '1. 基于提供的上下文信息，给出具体、有见地的回答',
         '2. 如果有画面分析，优先引用视觉证据进行解释',
+        '2.1 当画面分析存在时，不要要求用户再次提供视频链接或画面截图。',
         '3. 优先使用视频中的实际内容，避免泛泛而谈',
         '4. 回答结构清晰，使用列表、分段等方式提高可读性',
         '5. 避免模板化语言，如"根据视频内容"、"一般来说"等套话',
@@ -697,7 +964,7 @@ export class ChatService {
     return base;
   }
 
-  private async getKnowledgeAssetContext(videoId: string) {
+  private async getKnowledgeAssetContext(videoId: string, frameTimestamp?: number | null) {
     const [asset, keyframes] = await Promise.all([
       this.prisma.knowledgeAsset.findFirst({
         where: { videoId },
@@ -707,14 +974,27 @@ export class ChatService {
       this.prisma.keyframe.findMany({
         where: { videoId },
         orderBy: { timestamp: 'asc' },
-        take: 5,
+        take: 12,
         select: { timestamp: true, description: true },
       }),
     ]);
 
     const outline = (asset?.outlineMarkdown ?? '').slice(0, 1200);
     const notes = (asset?.notesMarkdown ?? '').slice(0, 600);
-    const keyframeText = keyframes
+    const anchor = frameTimestamp != null ? Math.max(0, Number(frameTimestamp)) : null;
+    const picked = anchor == null
+      ? keyframes.slice(0, 5)
+      : keyframes
+          .slice()
+          .sort(
+            (a, b) =>
+              Math.abs(Number(a.timestamp) - anchor) -
+              Math.abs(Number(b.timestamp) - anchor),
+          )
+          .slice(0, 5)
+          .sort((a, b) => Number(a.timestamp) - Number(b.timestamp));
+
+    const keyframeText = picked
       .map((kf) => `- ${Math.round(kf.timestamp)}s: ${kf.description ?? ''}`)
       .join('\n');
 
@@ -725,6 +1005,96 @@ export class ChatService {
     ].filter(Boolean);
 
     return parts.length > 0 ? parts.join('\n\n') : null;
+  }
+
+  private async buildVisualContextFromNearestKeyframe(
+    userId: string,
+    videoId: string,
+    timestamp: number,
+  ): Promise<{ context: string | null; imageUrl: string | null; timestamp: number | null }> {
+    const anchor = Math.max(0, Math.floor(timestamp));
+    let candidates = await this.prisma.keyframe.findMany({
+      where: {
+        videoId,
+        timestamp: {
+          gte: Math.max(0, anchor - 120),
+          lte: anchor + 120,
+        },
+      },
+      orderBy: { timestamp: 'asc' },
+      take: 20,
+      select: {
+        timestamp: true,
+        description: true,
+        storagePath: true,
+      },
+    });
+
+    // 若邻域内无关键帧，回退为全视频范围中“距离当前时间最近”的关键帧，
+    // 避免始终落到固定起始帧或直接无图。
+    if (candidates.length === 0) {
+      candidates = await this.prisma.keyframe.findMany({
+        where: { videoId },
+        orderBy: { timestamp: 'asc' },
+        take: 120,
+        select: {
+          timestamp: true,
+          description: true,
+          storagePath: true,
+        },
+      });
+    }
+
+    if (candidates.length === 0) {
+      return { context: null, imageUrl: null, timestamp: anchor };
+    }
+
+    const nearest = candidates.reduce((best, item) => {
+      const bestGap = Math.abs(Number(best.timestamp) - anchor);
+      const currentGap = Math.abs(Number(item.timestamp) - anchor);
+      return currentGap < bestGap ? item : best;
+    }, candidates[0]);
+
+    const imageUrl = nearest.storagePath || null;
+    if (!imageUrl) {
+      const fallbackText = this.compactWhitespace(nearest.description || '');
+      return {
+        context: fallbackText ? `[${Math.round(nearest.timestamp)}秒]: ${fallbackText}` : null,
+        imageUrl: null,
+        timestamp: nearest.timestamp,
+      };
+    }
+
+    try {
+      const result = await this.aiRouter.execute(
+        AITaskType.MULTIMODAL,
+        {
+          prompt:
+            '你在分析一个学习视频关键帧。请给出1-2句精炼中文描述，并指出该画面最可能对应的讲解主题。',
+          imageUrl,
+          temperature: 0.2,
+          maxTokens: 280,
+        },
+        userId,
+      );
+      const text = this.extractLlmText(result);
+      if (text) {
+        return {
+          context: `[${Math.round(nearest.timestamp)}秒]: ${text}`,
+          imageUrl,
+          timestamp: nearest.timestamp,
+        };
+      }
+    } catch {
+      // 回退到关键帧已有描述（不阻断聊天主链路）
+    }
+
+    const fallbackText = this.compactWhitespace(nearest.description || '');
+    return {
+      context: fallbackText ? `[${Math.round(nearest.timestamp)}秒]: ${fallbackText}` : null,
+      imageUrl,
+      timestamp: nearest.timestamp,
+    };
   }
 
   private async getKnowledgeQaContext(videoId: string) {

@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect, useRef, type ReactNode } from 'react';
-import Image from 'next/image';
 import { chatApi, type QuickPrompt } from '@/services/chat.api';
 import { getToken } from '@/services/api';
 import { io } from 'socket.io-client';
@@ -48,17 +47,14 @@ export function ChatDock({ projectId, height, videoPlayerRef, onFrameAnalysisReq
   const [messages, setMessages] = useState<Message[]>([]);
   const [isSending, setIsSending] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
+  const [attachPausedFrame, setAttachPausedFrame] = useState(true);
+  const [frameContextMode, setFrameContextMode] = useState<'quick' | 'deep'>('quick');
 
-  // 画面分析相关状态
   const [analyzingFrame, setAnalyzingFrame] = useState(false);
-  const [frameAnalysisResult, setFrameAnalysisResult] = useState<{
-    timestamp: number;
-    description: string;
-    imageUrl: string | null;
-  } | null>(null);
   const [regionAnalysis, setRegionAnalysis] = useState<string | null>(null);
   const activePrism = useWorkbenchStore((s) => s.activePrism);
   const currentVideo = useWorkbenchStore((s) => s.currentVideo);
+  const currentPlaybackTime = useWorkbenchStore((s) => s.currentPlaybackTime);
   const prismForChat = (activePrism ?? (currentVideo ? 'knowledge' : null)) as
     | 'knowledge'
     | 'creation'
@@ -68,14 +64,37 @@ export function ChatDock({ projectId, height, videoPlayerRef, onFrameAnalysisReq
 
   const messageListRef = useRef<HTMLDivElement>(null);
 
+  const waitForVideoFrame = async (videoEl: HTMLVideoElement) => {
+    await new Promise<void>((resolve) => {
+      let done = false;
+      const finish = () => {
+        if (done) return;
+        done = true;
+        resolve();
+      };
+
+      const rvfc = (videoEl as any).requestVideoFrameCallback as
+        | ((cb: (now: number, metadata: unknown) => void) => number)
+        | undefined;
+      if (typeof rvfc === 'function') {
+        videoEl.requestVideoFrameCallback(() => finish());
+      } else {
+        requestAnimationFrame(() => requestAnimationFrame(() => finish()));
+      }
+
+      setTimeout(finish, 160);
+    });
+  };
+
   // 提取当前视频帧用于画面分析
-  const captureCurrentFrame = (): string | null => {
+  const captureCurrentFrame = async (): Promise<string | null> => {
     const videoEl = videoPlayerRef?.current;
-    if (!videoEl || videoEl.readyState !== 4) {
-      return null; // HAVE_ENOUGH_DATA
+    if (!videoEl || videoEl.readyState < 2) {
+      return null; // HAVE_CURRENT_DATA
     }
 
     try {
+      await waitForVideoFrame(videoEl);
       const canvas = document.createElement('canvas');
       canvas.width = videoEl.videoWidth || 1280;
       canvas.height = videoEl.videoHeight || 720;
@@ -91,16 +110,76 @@ export function ChatDock({ projectId, height, videoPlayerRef, onFrameAnalysisReq
     }
   };
 
+  const getPlaybackState = () => {
+    const videoEl = videoPlayerRef?.current;
+    const currentTime = Number(videoEl?.currentTime ?? currentPlaybackTime ?? 0);
+    const duration = Number(videoEl?.duration ?? 0);
+    const isPaused = Boolean(videoEl?.paused);
+    const hasDuration = Number.isFinite(duration) && duration > 0.5;
+    const isMidPlayback = isPaused && currentTime > 0.5 && (!hasDuration || currentTime < duration - 0.5);
+
+    return {
+      currentTime,
+      duration,
+      isPaused,
+      isMidPlayback,
+    };
+  };
+
   const appendMessageUnique = (incoming: Message) => {
     setMessages((prev) => {
+      if (incoming.id) {
+        const sameIdIndex = prev.findIndex((item) => item.id === incoming.id);
+        if (sameIdIndex >= 0) {
+          const existing = prev[sameIdIndex];
+          const merged: Message = {
+            ...existing,
+            ...incoming,
+            metadata: {
+              ...(existing.metadata || {}),
+              ...(incoming.metadata || {}),
+            },
+          };
+          const next = [...prev];
+          next[sameIdIndex] = merged;
+          return next;
+        }
+      }
+
       const normalizedIncoming = incoming.content.trim();
-      const duplicate = prev.some(
-        (item) =>
-          item.role === incoming.role &&
-          item.content.trim() === normalizedIncoming &&
-          Math.abs(new Date(item.createdAt || Date.now()).getTime() - new Date(incoming.createdAt || Date.now()).getTime()) < 3000,
+      const incomingTs = Number(incoming.metadata?.frameTimestamp ?? -1);
+      const duplicateIndex = prev.findIndex(
+        (item) => {
+          if (item.role !== incoming.role) return false;
+          if (item.content.trim() !== normalizedIncoming) return false;
+          const dt =
+            Math.abs(
+              new Date(item.createdAt || Date.now()).getTime() -
+                new Date(incoming.createdAt || Date.now()).getTime(),
+            ) < 800;
+          if (!dt) return false;
+          const existingTs = Number(item.metadata?.frameTimestamp ?? -1);
+          // 不同时间点的回答不应被去重合并
+          if (incomingTs >= 0 && existingTs >= 0 && Math.abs(incomingTs - existingTs) > 1) {
+            return false;
+          }
+          return true;
+        },
       );
-      if (duplicate) return prev;
+      if (duplicateIndex >= 0) {
+        const existing = prev[duplicateIndex];
+        const merged: Message = {
+          ...existing,
+          ...incoming,
+          metadata: {
+            ...(existing.metadata || {}),
+            ...(incoming.metadata || {}),
+          },
+        };
+        const next = [...prev];
+        next[duplicateIndex] = merged;
+        return next;
+      }
       return [...prev, incoming];
     });
   };
@@ -188,7 +267,13 @@ export function ChatDock({ projectId, height, videoPlayerRef, onFrameAnalysisReq
             {frameTimestamp !== undefined && (
               <div className="mb-1 text-xs text-blue-300">时间点: {Math.floor(frameTimestamp)}秒</div>
             )}
-            <Image src={frameImage} alt="分析的画面" width={320} height={180} className="rounded-md" />
+            <img
+              src={frameImage}
+              alt="分析的画面"
+              width={320}
+              height={180}
+              className="rounded-md max-w-full object-contain"
+            />
           </div>
         )}
         <div className="space-y-2">
@@ -247,20 +332,10 @@ export function ChatDock({ projectId, height, videoPlayerRef, onFrameAnalysisReq
         }
       });
 
-      // 处理画面分析事件
-      socket.on('frame:analysis', (payload: any) => {
+      // 画面分析状态通过消息 metadata 展示，这里只更新 loading 状态。
+      socket.on('frame:analysis', (_payload: any) => {
         if (cancelled) return;
-
-        try {
-          setFrameAnalysisResult({
-            timestamp: payload.timestamp,
-            description: payload.description,
-            imageUrl: payload.imageUrl,
-          });
-          setAnalyzingFrame(false);
-        } catch (error) {
-          console.error('Frame analysis event error:', error);
-        }
+        setAnalyzingFrame(false);
       });
 
       // 处理区域分析事件
@@ -327,10 +402,12 @@ export function ChatDock({ projectId, height, videoPlayerRef, onFrameAnalysisReq
     if (!messageContent) return;
 
     // 提取当前视频帧用于画面分析
-    const frameBase64 = captureCurrentFrame();
-    const currentTime = (videoPlayerRef?.current as any)?.currentTime || 0;
-    setAnalyzingFrame(Boolean(frameBase64 && prismForChat === 'knowledge'));
-    setFrameAnalysisResult(null);
+    const playback = getPlaybackState();
+    const preciseTimestamp = Number((playback.currentTime || 0).toFixed(2));
+    const includeFrameContext = Boolean(attachPausedFrame && currentVideo?.id);
+    const shouldCaptureFrame = includeFrameContext;
+    setAnalyzingFrame(Boolean(shouldCaptureFrame));
+    const frameBase64 = shouldCaptureFrame ? await captureCurrentFrame() : null;
 
     setIsSending(true);
 
@@ -343,7 +420,11 @@ export function ChatDock({ projectId, height, videoPlayerRef, onFrameAnalysisReq
         activePrism: prismForChat ?? undefined,
         metadata: {
           frameBase64,
-          timestamp: currentTime,
+          timestamp: preciseTimestamp,
+          includeFrameContext,
+          frameContextMode,
+          isVideoPaused: playback.isPaused,
+          isMidPlayback: playback.isMidPlayback,
         },
       });
 
@@ -449,17 +530,6 @@ export function ChatDock({ projectId, height, videoPlayerRef, onFrameAnalysisReq
                 </div>
                 {renderMessageContent(msg.content, msg.metadata?.frameImage, msg.metadata?.frameTimestamp)}
 
-                {/* 画面分析结果显示 */}
-                {msg.role === 'assistant' && frameAnalysisResult?.timestamp === msg.metadata?.frameTimestamp && frameAnalysisResult && (
-                  <div className="mt-3 p-3 bg-blue-50/50 dark:bg-blue-900/20 rounded-lg border">
-                    <div className="text-xs text-blue-700 dark:text-blue-300 mb-2">
-                      画面分析结果 @{Math.floor(frameAnalysisResult.timestamp)}秒
-                    </div>
-                    <Image src={frameAnalysisResult.imageUrl || ''} alt="分析的画面" width={280} height={157} className="rounded-md max-w-[70%] w-full object-contain" />
-                    <div className="text-sm mt-2">{frameAnalysisResult.description}</div>
-                  </div>
-                )}
-
                 {/* 区域分析结果显示 */}
                 {regionAnalysis && msg.role === 'assistant' && (
                   <div className="mt-3 rounded-lg border border-purple-500/30 bg-purple-500/10 p-3">
@@ -486,9 +556,52 @@ export function ChatDock({ projectId, height, videoPlayerRef, onFrameAnalysisReq
             disabled={isSending}
           />
           <div className="mt-2 flex items-center justify-between px-1">
-            <span className="text-[11px] text-text-tertiary">
-              {analyzingFrame ? '正在分析当前画面...' : '支持基于当前播放画面与知识库回答'}
-            </span>
+            <div className="flex flex-col gap-1">
+              <label className="flex cursor-pointer items-center gap-2 text-[11px] text-text-secondary">
+                <input
+                  type="checkbox"
+                  checked={attachPausedFrame}
+                  onChange={(e) => setAttachPausedFrame(e.target.checked)}
+                  className="h-3.5 w-3.5 rounded border-border-subtle"
+                />
+                附带当前画面（按当前播放时间点分析）
+              </label>
+              {attachPausedFrame && (
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setFrameContextMode('quick')}
+                    className={`rounded-md px-2 py-0.5 text-[10px] transition ${
+                      frameContextMode === 'quick'
+                        ? 'bg-[#2D7FF9]/20 text-[#9bc1ff] border border-[#2D7FF9]/40'
+                        : 'bg-black/10 text-text-tertiary border border-border-subtle'
+                    }`}
+                  >
+                    快速附图
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setFrameContextMode('deep')}
+                    className={`rounded-md px-2 py-0.5 text-[10px] transition ${
+                      frameContextMode === 'deep'
+                        ? 'bg-[#FF6B35]/20 text-[#ffc1ad] border border-[#FF6B35]/40'
+                        : 'bg-black/10 text-text-tertiary border border-border-subtle'
+                    }`}
+                  >
+                    深度附图
+                  </button>
+                </div>
+              )}
+              <span className="text-[10px] text-text-tertiary">
+                {analyzingFrame
+                  ? '正在进行图片理解 + 视频上下文融合回答...'
+                  : attachPausedFrame
+                    ? frameContextMode === 'deep'
+                      ? '深度模式：融合当前画面 + 当前时间邻域关键帧/转写 + 历史上下文'
+                      : '快速模式：融合当前画面 + 当前时间点视频知识 + 历史对话'
+                    : '未附图：融合视频知识、历史对话与当前问题'}
+              </span>
+            </div>
             <button
               onClick={handleSend}
               disabled={isSending || !input.trim()}

@@ -267,6 +267,20 @@ export class VideoBehaviorService {
    * Get active session for a user and video
    */
   async getActiveSession(userId: string, videoId: string): Promise<VideoSessionResponseDto | null> {
+    if (!videoId) {
+      return null;
+    }
+
+    // 防御式校验：若视频不存在或不属于当前用户，直接返回 null，避免前端初始化追踪时报错。
+    const video = await this.prisma.videoSource.findUnique({
+      where: { id: videoId },
+      include: { project: true },
+    });
+
+    if (!video || video.project.userId !== userId) {
+      return null;
+    }
+
     const session = await this.prisma.videoSession.findFirst({
       where: {
         userId,

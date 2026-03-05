@@ -53,6 +53,7 @@ interface PrismActionPayload {
 }
 
 interface ChatMessagePayload {
+  id?: string;
   projectId: string;
   sessionId: string;
   role: 'user' | 'assistant' | 'system';

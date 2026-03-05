@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useWorkbenchStore } from '@/stores/workbench.store';
 import { getToken } from '@/services/api';
+import { videoApi } from '@/services/video.api';
 import { useVideoBehaviorTracking } from '@/hooks/useVideoBehaviorTracking';
 import { VideoEventType, VideoActionContext } from '@/types/video-behavior';
 
@@ -16,7 +17,8 @@ interface PlayerCenterProps {
 }
 
 export function PlayerCenter({ videoRef: externalVideoRef }: PlayerCenterProps = {}) {
-  const { currentVideo, seekRequest, clearSeekRequest } = useWorkbenchStore();
+  const { currentVideo, seekRequest, clearSeekRequest, setCurrentPlaybackTime } =
+    useWorkbenchStore();
   const tracking = useVideoBehaviorTracking({
     videoId: currentVideo?.id ?? '',
     enabled: !!currentVideo?.id,
@@ -26,83 +28,156 @@ export function PlayerCenter({ videoRef: externalVideoRef }: PlayerCenterProps =
   const pendingSeekRef = useRef<number | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // 同步外部 videoRef（用于 ChatDock 的帧捕获）
-  useEffect(() => {
-    if (externalVideoRef && videoRef.current) {
-      // 更新外部 ref 指向内部的 video 元素
-      (externalVideoRef as any).current = videoRef.current;
+  const bindVideoRef = (el: HTMLVideoElement | null) => {
+    videoRef.current = el;
+    if (externalVideoRef) {
+      (externalVideoRef as any).current = el;
     }
-  }, [externalVideoRef]);
+  };
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [volume, setVolume] = useState(1);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [resolvedVideoUrl, setResolvedVideoUrl] = useState('');
+  const [videoCandidates, setVideoCandidates] = useState<string[]>([]);
+  const [candidateIndex, setCandidateIndex] = useState(0);
 
-  // Get full video URL with token
-  const getVideoUrl = (video: typeof currentVideo) => {
-    if (!video) return '';
+  // Build candidate URLs for robust playback fallback
+  const buildVideoCandidates = async (video: typeof currentVideo) => {
+    if (!video) return [] as string[];
+    const token = getToken();
+    const urls: string[] = [];
+
+    // 对本地上传视频，优先走后端受保护 stream 端点，避免 MinIO 直链跨域导致播放失败。
+    if (video.sourceType === 'LOCAL_UPLOAD' && video.id) {
+      const base = API_BASE.endsWith('/') ? API_BASE.slice(0, -1) : API_BASE;
+      const qs = new URLSearchParams();
+      if (token) qs.set('token', token);
+      qs.set('_ts', video.updatedAt || video.createdAt || '');
+      urls.push(`${base}/api/videos/${video.id}/stream?${qs.toString()}`);
+    }
 
     // If videoUrl is already a full URL (http/https), use it directly
     if (video.videoUrl && (video.videoUrl.startsWith('http://') || video.videoUrl.startsWith('https://'))) {
-      return video.videoUrl;
+      urls.push(video.videoUrl);
     }
 
     // If videoUrl is empty or not a full URL, try sourceUrl
     if (video.sourceUrl && (video.sourceUrl.startsWith('http://') || video.sourceUrl.startsWith('https://'))) {
-      return video.sourceUrl;
+      urls.push(video.sourceUrl);
     }
 
     // For relative paths (stream endpoint), prepend API base and add token
     const relativePath = video.videoUrl || video.storagePath || '';
-    if (!relativePath) return '';
+    if (relativePath) {
+      const baseUrl = API_BASE.endsWith('/') ? API_BASE : `${API_BASE}/`;
+      const path = relativePath.startsWith('/') ? relativePath.slice(1) : relativePath;
+      const separator = path.includes('?') ? '&' : '?';
+      urls.push(`${baseUrl}${path}${separator}token=${encodeURIComponent(token || '')}`);
+    }
 
-    // 确保正确拼接 URL（添加斜杠）
-    const baseUrl = API_BASE.endsWith('/') ? API_BASE : `${API_BASE}/`;
-    const path = relativePath.startsWith('/') ? relativePath.slice(1) : relativePath;
+    // 最后补一个后端签名播放地址，增强兼容性（MinIO 私有桶/直链失效时可用）。
+    if (video.id) {
+      try {
+        const play = await videoApi.getPlayUrl(video.id);
+        if (play?.url) urls.push(play.url);
+      } catch {
+        console.warn('Failed to get signed play url, continue fallback candidates');
+      }
+    }
 
-    const token = getToken();
-    const separator = path.includes('?') ? '&' : '?';
-    return `${baseUrl}${path}${separator}token=${encodeURIComponent(token || '')}`;
+    const unique = Array.from(new Set(urls.filter(Boolean)));
+    return unique;
+  };
+
+  const loadVideoAt = (urls: string[], index: number) => {
+    if (!videoRef.current) return;
+    const target = urls[index] || '';
+    setResolvedVideoUrl(target);
+    videoRef.current.src = target;
+    videoRef.current.load();
   };
 
   // Reset state when video changes
   useEffect(() => {
-    if (videoRef.current && currentVideo) {
+    let cancelled = false;
+
+    const bootstrap = async () => {
+      if (!videoRef.current || !currentVideo) {
+        setResolvedVideoUrl('');
+        setVideoCandidates([]);
+        setCandidateIndex(0);
+        return;
+      }
+
       setError(null);
-      const fullUrl = getVideoUrl(currentVideo);
-      console.log('Loading video:', fullUrl);
-      videoRef.current.src = fullUrl;
       setIsPlaying(false);
       setCurrentTime(0);
-    }
+
+      const candidates = await buildVideoCandidates(currentVideo);
+      if (cancelled) return;
+
+      setVideoCandidates(candidates);
+      setCandidateIndex(0);
+
+      if (candidates.length > 0) {
+        console.log('Loading video candidate:', candidates[0]);
+        loadVideoAt(candidates, 0);
+      } else {
+        setError('未找到可播放的视频地址');
+      }
+    };
+
+    void bootstrap();
+    return () => {
+      cancelled = true;
+    };
   }, [currentVideo]);
 
   // Handle video error
   const handleVideoError = () => {
-    if (videoRef.current) {
-      const err = videoRef.current.error;
-      let errorMsg = '视频加载失败';
-      if (err) {
-        switch (err.code) {
-          case err.MEDIA_ERR_ABORTED:
-            errorMsg = '视频加载被中断';
-            break;
-          case err.MEDIA_ERR_NETWORK:
-            errorMsg = '网络错误，无法加载视频';
-            break;
-          case err.MEDIA_ERR_DECODE:
-            errorMsg = '视频解码失败';
-            break;
-          case err.MEDIA_ERR_SRC_NOT_SUPPORTED:
-            errorMsg = '不支持的视频格式';
-            break;
-        }
+    if (!videoRef.current) return;
+
+    const err = videoRef.current.error;
+    let errorMsg = '视频加载失败';
+    if (err) {
+      switch (err.code) {
+        case err.MEDIA_ERR_ABORTED:
+          errorMsg = '视频加载被中断';
+          break;
+        case err.MEDIA_ERR_NETWORK:
+          errorMsg = '网络错误，无法加载视频';
+          break;
+        case err.MEDIA_ERR_DECODE:
+          errorMsg = '视频解码失败';
+          break;
+        case err.MEDIA_ERR_SRC_NOT_SUPPORTED:
+          errorMsg = '不支持的视频格式';
+          break;
       }
-      setError(errorMsg);
-      console.error('Video error:', err, 'URL:', getVideoUrl(currentVideo));
     }
+
+    const nextIndex = candidateIndex + 1;
+    if (nextIndex < videoCandidates.length) {
+      console.warn('Video candidate failed, trying next source', {
+        current: resolvedVideoUrl,
+        next: videoCandidates[nextIndex],
+        code: err?.code,
+      });
+      setCandidateIndex(nextIndex);
+      loadVideoAt(videoCandidates, nextIndex);
+      return;
+    }
+
+    setError(errorMsg);
+    console.warn('Video load warning:', {
+      code: err?.code,
+      message: errorMsg,
+      url: resolvedVideoUrl,
+      candidates: videoCandidates,
+    });
   };
 
   // Toggle play/pause
@@ -119,7 +194,9 @@ export function PlayerCenter({ videoRef: externalVideoRef }: PlayerCenterProps =
   // Handle time update
   const handleTimeUpdate = () => {
     if (videoRef.current) {
-      setCurrentTime(videoRef.current.currentTime);
+      const t = videoRef.current.currentTime;
+      setCurrentTime(t);
+      setCurrentPlaybackTime(t);
     }
   };
 
@@ -128,6 +205,7 @@ export function PlayerCenter({ videoRef: externalVideoRef }: PlayerCenterProps =
     if (videoRef.current) {
       setDuration(videoRef.current.duration);
       setError(null);
+      setCurrentPlaybackTime(videoRef.current.currentTime || 0);
 
       // Apply deferred seek if node jump happened before metadata was ready.
       if (pendingSeekRef.current !== null) {
@@ -159,6 +237,7 @@ export function PlayerCenter({ videoRef: externalVideoRef }: PlayerCenterProps =
       const previousTime = videoRef.current.currentTime;
       videoRef.current.currentTime = time;
       setCurrentTime(time);
+      setCurrentPlaybackTime(time);
       tracking.trackEvent(VideoEventType.SEEK, {
         previousTime,
         currentTime: time,
@@ -188,6 +267,7 @@ export function PlayerCenter({ videoRef: externalVideoRef }: PlayerCenterProps =
     const previousTime = player.currentTime;
     player.currentTime = target;
     setCurrentTime(target);
+    setCurrentPlaybackTime(target);
     tracking.trackEvent(VideoEventType.SEEK, {
       previousTime,
       currentTime: target,
@@ -197,8 +277,8 @@ export function PlayerCenter({ videoRef: externalVideoRef }: PlayerCenterProps =
 
   // Handle volume change
   const handleVolumeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const vol = parseFloat(e.target.value);
-    if (videoRef.current) {
+      const vol = parseFloat(e.target.value);
+      if (videoRef.current) {
       videoRef.current.volume = vol;
       setVolume(vol);
       tracking.trackEvent(VideoEventType.VOLUME_CHANGE, {
@@ -323,13 +403,13 @@ export function PlayerCenter({ videoRef: externalVideoRef }: PlayerCenterProps =
                 <path d="M12 8v4M12 16h.01" />
               </svg>
               <p className="text-xs text-text-secondary">{error}</p>
-              <p className="mt-1 text-[10px] text-text-tertiary break-all">{getVideoUrl(currentVideo)}</p>
+              <p className="mt-1 text-[10px] text-text-tertiary break-all">{resolvedVideoUrl}</p>
             </div>
           </div>
         ) : (
           <div className="relative h-full w-full flex items-center justify-center">
             <video
-              ref={videoRef}
+              ref={bindVideoRef}
               className="max-h-full max-w-full object-contain"
               style={{ aspectRatio: '16/9' }}
               onTimeUpdate={handleTimeUpdate}

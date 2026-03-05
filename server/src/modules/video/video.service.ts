@@ -396,12 +396,46 @@ export class VideoService {
     }
 
     const stream = await this.storage.downloadStream(video.storagePath);
+    const meta = await this.storage
+      .getMetadata(video.storagePath)
+      .catch(() => null as any);
+    const metaMap = (meta?.metaData ?? {}) as Record<string, string>;
+    const metaContentType =
+      metaMap['content-type'] ||
+      metaMap['Content-Type'] ||
+      metaMap['x-amz-meta-content-type'] ||
+      null;
+    const contentType = metaContentType || this.guessContentType(video.storagePath);
 
     return {
       stream,
       filename: `${video.title}.mp4`,
-      contentType: 'video/mp4',
+      contentType,
     };
+  }
+
+  private guessContentType(storagePath: string): string {
+    const ext = path.extname(storagePath || '').toLowerCase();
+    switch (ext) {
+      case '.webm':
+        return 'video/webm';
+      case '.ogg':
+      case '.ogv':
+        return 'video/ogg';
+      case '.mov':
+        return 'video/quicktime';
+      case '.avi':
+        return 'video/x-msvideo';
+      case '.mkv':
+        return 'video/x-matroska';
+      case '.wmv':
+        return 'video/x-ms-wmv';
+      case '.flv':
+        return 'video/x-flv';
+      case '.mp4':
+      default:
+        return 'video/mp4';
+    }
   }
 
   /**

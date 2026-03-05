@@ -130,7 +130,9 @@ export function useVideoBehaviorTracking(
         }
         setIsTracking(true);
       } catch (error) {
-        console.error('Failed to initialize tracking session:', error);
+        // 追踪初始化失败时不影响主流程（播放/聊天/分析），仅降级关闭行为追踪。
+        console.warn('Video behavior tracking disabled for current video:', error);
+        setIsTracking(false);
       }
     };
 
@@ -171,7 +173,7 @@ export function useVideoBehaviorTracking(
   // Track single event
   const trackEvent = useCallback(
     async (eventType: VideoEventType, data?: Partial<VideoTrackingState>) => {
-      if (!enabled || !videoId) return;
+      if (!enabled || !videoId || !isTracking) return;
 
       const now = Date.now();
       const state = trackingStateRef.current;
@@ -214,7 +216,7 @@ export function useVideoBehaviorTracking(
         await flushEvents();
       }
     },
-    [enabled, videoId, context, maxBatchSize, flushEvents],
+    [enabled, videoId, context, maxBatchSize, flushEvents, isTracking],
   );
 
   // Create bookmark

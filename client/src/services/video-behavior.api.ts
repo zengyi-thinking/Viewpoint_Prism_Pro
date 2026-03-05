@@ -29,8 +29,26 @@ export const trackBulkEvents = (events: TrackEventDto[]) =>
   });
 
 // Sessions
-export const getActiveSession = (videoId: string) =>
-  apiFetch<VideoSession | null>(`/api/video-behavior/sessions/active?videoId=${videoId}`);
+export const getActiveSession = async (videoId: string) => {
+  if (!videoId) return null;
+
+  try {
+    return await apiFetch<VideoSession | null>(
+      `/api/video-behavior/sessions/active?videoId=${videoId}`,
+    );
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error || '');
+    // 追踪会话属于辅助能力，初始化失败时降级为空会话，避免干扰主播放链路。
+    if (
+      /Internal Server Error|请求失败|You do not have access to this video|Forbidden/i.test(
+        message,
+      )
+    ) {
+      return null;
+    }
+    throw error;
+  }
+};
 
 export const endSession = (sessionId: string, finalPosition: number) =>
   apiFetch<VideoSession>('/api/video-behavior/sessions/end', {

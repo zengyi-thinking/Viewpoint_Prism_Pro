@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { createHash } from 'crypto';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { AITaskType } from '../../../infrastructure/ai-router/ai-router.interface';
 import { AiRouterService } from '../../../infrastructure/ai-router/ai-router.service';
@@ -64,36 +65,52 @@ export class FrameAnalysisService {
     timestamp,
     frameBase64,
   }: FrameAnalysisRequest): Promise<FrameAnalysisResult> {
-    // 1. 检查缓存（同一时间戳只分析一次）
-    const flooredTimestamp = Math.floor(timestamp);
-    const existing = await this.prisma.frameAnalysis.findUnique({
-      where: {
-        videoId_timestamp: {
-          videoId,
-          timestamp: flooredTimestamp,
-        },
-      },
-    });
-
-    if (existing) {
-      this.logger.log(
-        `Using cached frame analysis for video ${videoId} @ ${timestamp}s`,
-      );
-      return this.toDto(existing);
-    }
-
-    this.logger.log(`Analyzing frame for video ${videoId} @ ${timestamp}s`);
+    // 1. 标准化时间戳，避免浮点抖动
+    const normalizedTimestamp = Number(Math.max(0, timestamp).toFixed(2));
 
     // 2. 清理 Base64 前缀（如果是 data URL）
     let imageBase64 = frameBase64;
     if (frameBase64.startsWith('data:')) {
       imageBase64 = frameBase64.split(',')[1] || frameBase64;
     }
+    const frameHash = this.computeFrameHash(imageBase64);
 
-    // 3. 构建 AI 分析提示词
+    // 3. 检查缓存（同一时间戳 + 同一帧哈希才复用）
+    const existing = await this.prisma.frameAnalysis.findUnique({
+      where: {
+        videoId_timestamp: {
+          videoId,
+          timestamp: normalizedTimestamp,
+        },
+      },
+    });
+
+    if (existing) {
+      const existingHash =
+        existing.metadata &&
+        typeof existing.metadata === 'object' &&
+        'frameHash' in (existing.metadata as Record<string, unknown>)
+          ? String((existing.metadata as Record<string, unknown>).frameHash || '')
+          : '';
+
+      if (existingHash && existingHash === frameHash) {
+        this.logger.log(
+          `Using cached frame analysis for video ${videoId} @ ${normalizedTimestamp}s`,
+        );
+        return this.toDto(existing);
+      }
+
+      this.logger.warn(
+        `Frame changed at same timestamp (${normalizedTimestamp}s), re-analyzing. oldHash=${existingHash.slice(0, 8)} newHash=${frameHash.slice(0, 8)}`,
+      );
+    }
+
+    this.logger.log(`Analyzing frame for video ${videoId} @ ${normalizedTimestamp}s`);
+
+    // 4. 构建 AI 分析提示词
     const analysisPrompt = this.buildAnalysisPrompt(timestamp);
 
-    // 4. 调用多模态 AI 进行画面分析
+    // 5. 调用多模态 AI 进行画面分析
     const llmResult = await this.aiRouter.execute(
       AITaskType.MULTIMODAL,
       {
@@ -113,19 +130,40 @@ export class FrameAnalysisService {
     }
     const detectedObjects = this.extractDetectedObjects(description);
 
-    // 5. 持久化分析结果
-    const analysis = await this.prisma.frameAnalysis.create({
-      data: {
-        videoId,
-        timestamp: flooredTimestamp,
-        description,
-        metadata: {
-          analyzedAt: new Date().toISOString(),
-          aiProvider: llmResult?.provider || 'unknown',
-          aiModel: llmResult?.model || 'unknown',
-        },
-      },
-    });
+    // 6. 持久化分析结果（同时间戳存在则更新，避免重复主键冲突）
+    const analysis = existing
+      ? await this.prisma.frameAnalysis.update({
+          where: {
+            videoId_timestamp: {
+              videoId,
+              timestamp: normalizedTimestamp,
+            },
+          },
+          data: {
+            description,
+            detectedObjects: detectedObjects as any,
+            metadata: {
+              analyzedAt: new Date().toISOString(),
+              aiProvider: llmResult?.provider || 'unknown',
+              aiModel: llmResult?.model || 'unknown',
+              frameHash,
+            } as any,
+          },
+        })
+      : await this.prisma.frameAnalysis.create({
+          data: {
+            videoId,
+            timestamp: normalizedTimestamp,
+            description,
+            detectedObjects: detectedObjects as any,
+            metadata: {
+              analyzedAt: new Date().toISOString(),
+              aiProvider: llmResult?.provider || 'unknown',
+              aiModel: llmResult?.model || 'unknown',
+              frameHash,
+            },
+          },
+        });
 
     this.logger.log(
       `Created frame analysis ${analysis.id} for video ${videoId} @ ${timestamp}s`,
@@ -140,6 +178,10 @@ export class FrameAnalysisService {
       detectedObjects,
       metadata: analysis.metadata as Record<string, unknown>,
     };
+  }
+
+  private computeFrameHash(base64Data: string): string {
+    return createHash('sha1').update(base64Data).digest('hex');
   }
 
   /**
