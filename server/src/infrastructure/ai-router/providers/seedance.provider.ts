@@ -53,10 +53,11 @@ export class SeedanceProvider extends BaseProvider {
 
   private async executeChat(taskType: AITaskType, payload: any, apiKey: string): Promise<any> {
     const baseUrl = this.resolveBaseUrl();
-    const model =
-      payload?.model ||
-      this.configService.get<string>('SILICONFLOW_MODEL_LLM') ||
-      'deepseek-ai/DeepSeek-V3';
+    const defaultModel =
+      taskType === AITaskType.MULTIMODAL
+        ? this.configService.get<string>('SILICONFLOW_MODEL_VLM')
+        : this.configService.get<string>('SILICONFLOW_MODEL_LLM');
+    const model = payload?.model || defaultModel || 'deepseek-ai/DeepSeek-V3';
 
     const messages: any[] = payload?.messages || [];
 
@@ -70,13 +71,20 @@ export class SeedanceProvider extends BaseProvider {
           role: 'user',
           content: `请将以下文本翻译成${payload?.targetLang || '中文'}：\n\n${payload?.text || payload?.content || ''}`,
         });
-      } else if (taskType === AITaskType.MULTIMODAL && payload?.imageUrl) {
+      } else if (taskType === AITaskType.MULTIMODAL && (payload?.image || payload?.imageUrl)) {
+        const imageUrl = await this.resolveMultimodalImage(payload);
+        if (!imageUrl) {
+          throw new Error('SiliconFlow multimodal requires a valid image/imageUrl payload');
+        }
+        this.logger.log(
+          `Preparing multimodal image payload as ${imageUrl.startsWith('data:image/') ? 'data_url' : 'remote_url'}`,
+        );
         messages.push({
           role: 'user',
           content: [
             {
               type: 'image_url',
-              image_url: { url: payload.imageUrl },
+              image_url: { url: imageUrl },
             },
             {
               type: 'text',
@@ -106,6 +114,8 @@ export class SeedanceProvider extends BaseProvider {
     }
     if (typeof payload?.max_tokens === 'number') {
       requestBody.max_tokens = payload.max_tokens;
+    } else if (typeof payload?.maxTokens === 'number') {
+      requestBody.max_tokens = payload.maxTokens;
     }
     if (typeof payload?.top_p === 'number') {
       requestBody.top_p = payload.top_p;
@@ -289,6 +299,10 @@ export class SeedanceProvider extends BaseProvider {
    */
   private async executeASR(payload: any, apiKey: string): Promise<any> {
     const baseUrl = this.resolveBaseUrl();
+    const model =
+      payload?.model ||
+      this.configService.get<string>('SILICONFLOW_MODEL_ASR') ||
+      'FunAudioLLM/SenseVoiceSmall';
 
     this.logger.log('Calling SiliconFlow ASR API, audioUrl=' + String((payload?.audioUrl || 'file').substring(0, 50)) + '...');
 
@@ -296,11 +310,31 @@ export class SeedanceProvider extends BaseProvider {
       const formData = new FormData();
       if (payload?.audioFile) {
         formData.append('file', payload.audioFile);
+      } else if (payload?.audio) {
+        const rawAudio = String(payload.audio).trim();
+        const dataUrlMatch = rawAudio.match(/^data:([^;]+);base64,(.+)$/);
+        const audioBase64 = dataUrlMatch ? dataUrlMatch[2] : rawAudio;
+        const mimeType =
+          dataUrlMatch?.[1] ||
+          (payload?.format ? `audio/${String(payload.format).replace(/^\./, '')}` : 'audio/mpeg');
+        const format = String(payload?.format || 'mp3').replace(/^\./, '');
+        const audioBuffer = Buffer.from(audioBase64, 'base64');
+        const arrayBuffer = audioBuffer.buffer.slice(
+          audioBuffer.byteOffset,
+          audioBuffer.byteOffset + audioBuffer.byteLength,
+        ) as ArrayBuffer;
+        formData.append('file', new Blob([arrayBuffer], { type: mimeType }), `audio.${format}`);
       } else if (payload?.audioUrl) {
         this.logger.log('Audio URL provided, downloading...');
         const audioBuffer = await this.downloadBinary(payload.audioUrl);
         const arrayBuffer = audioBuffer.buffer.slice(audioBuffer.byteOffset, audioBuffer.byteOffset + audioBuffer.byteLength) as ArrayBuffer;
         formData.append('file', new Blob([arrayBuffer], { type: 'audio/mpeg' }), 'audio.mp3');
+      } else {
+        throw new Error('ASR payload missing audioFile/audio/audioUrl');
+      }
+      formData.append('model', model);
+      if (payload?.language && String(payload.language).trim() && payload.language !== 'auto') {
+        formData.append('language', String(payload.language).trim());
       }
 
       const response = await fetch(`${baseUrl}/audio/transcriptions`, {
@@ -312,7 +346,10 @@ export class SeedanceProvider extends BaseProvider {
       });
 
       if (!response.ok) {
-        throw new Error(`SiliconFlow ASR request failed (${response.status})`);
+        const errText = await response.text();
+        throw new Error(
+          `SiliconFlow ASR request failed (${response.status}): ${errText || 'empty body'}`,
+        );
       }
 
       const result = await response.json();
@@ -323,7 +360,7 @@ export class SeedanceProvider extends BaseProvider {
         language: result?.language || result?.result?.language || 'zh',
         duration: result?.duration || result?.result?.duration || 0,
         usage: result?.usage,
-        model: 'FunAudioLLM/SenseVoiceSmall',
+        model,
       };
     } catch (error: any) {
       this.logger.error(`SiliconFlow ASR request failed: ${error.message}`);
@@ -491,6 +528,47 @@ export class SeedanceProvider extends BaseProvider {
       return candidate;
     }
     return `data:image/png;base64,${candidate}`;
+  }
+
+  private async resolveMultimodalImage(payload: any): Promise<string | undefined> {
+    const image = typeof payload?.image === 'string' ? payload.image.trim() : '';
+    const imageUrl = typeof payload?.imageUrl === 'string' ? payload.imageUrl.trim() : '';
+
+    // Multimodal 优先使用 base64，避免云端服务无法访问本地/内网 URL。
+    if (image) {
+      return this.normalizeImageLikeInput(image, 'image/jpeg');
+    }
+    if (imageUrl) {
+      return this.normalizeImageLikeInput(imageUrl, 'image/jpeg');
+    }
+    return undefined;
+  }
+
+  private async normalizeImageLikeInput(
+    value: string,
+    defaultMimeType = 'image/jpeg',
+  ): Promise<string> {
+    const normalized = String(value || '').trim();
+    if (!normalized) {
+      throw new Error('Empty image payload');
+    }
+
+    if (normalized.startsWith('data:image/')) {
+      return normalized;
+    }
+
+    if (normalized.startsWith('http://') || normalized.startsWith('https://')) {
+      if (this.shouldEmbedAsDataUrl(normalized)) {
+        return this.downloadAsDataUrl(normalized);
+      }
+      return normalized;
+    }
+
+    const base64Body = normalized
+      .replace(/^data:[^;]+;base64,/i, '')
+      .replace(/^base64,/i, '')
+      .replace(/\s+/g, '');
+    return `data:${defaultMimeType};base64,${base64Body}`;
   }
 
   private shouldEmbedAsDataUrl(url: string): boolean {

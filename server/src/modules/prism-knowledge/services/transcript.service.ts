@@ -1,5 +1,4 @@
 import { Injectable } from '@nestjs/common';
-import { Logger } from '@nestjs/common';
 import { promises as fs } from 'fs';
 import * as os from 'os';
 import * as path from 'path';
@@ -11,8 +10,6 @@ import { PrismaService } from '../../../prisma/prisma.service';
 
 @Injectable()
 export class TranscriptService {
-  private readonly logger = new Logger(TranscriptService.name);
-
   constructor(
     private readonly prisma: PrismaService,
     private readonly aiRouter: AiRouterService,
@@ -60,39 +57,50 @@ export class TranscriptService {
     });
     await options.onStatus?.('processing');
 
-    const segments = await this.tryAsrOrFallback(video, userId);
-    const segmentItems = (segments as Array<{
-      start: number;
-      end: number;
-      text: string;
-      confidence?: number;
-    }>) ?? [];
+    try {
+      const segments = await this.runAsr(video, userId);
+      const segmentItems = (segments as Array<{
+        start: number;
+        end: number;
+        text: string;
+        confidence?: number;
+      }>) ?? [];
 
-    const transcript = await this.prisma.transcript.create({
-      data: {
-        videoId: video.id,
-        language: 'auto',
-        provider: segments.provider,
-        segments: segments as any,
-      },
-    });
+      const transcript = await this.prisma.transcript.create({
+        data: {
+          videoId: video.id,
+          language: 'auto',
+          provider: segments.provider,
+          segments: segments as any,
+        },
+      });
 
-    await this.prisma.videoSource.update({
-      where: { id: video.id },
-      data: { transcriptStatus: 'COMPLETED' },
-    });
-    await options.onStatus?.('streaming', { segmentCount: segmentItems.length });
+      await this.prisma.videoSource.update({
+        where: { id: video.id },
+        data: { transcriptStatus: 'COMPLETED' },
+      });
+      await options.onStatus?.('streaming', { segmentCount: segmentItems.length });
 
-    const streamLimit = Math.min(segmentItems.length, 40);
-    for (let i = 0; i < streamLimit; i += 1) {
-      await options.onSegment?.(segmentItems[i], i, streamLimit);
+      const streamLimit = Math.min(segmentItems.length, 40);
+      for (let i = 0; i < streamLimit; i += 1) {
+        await options.onSegment?.(segmentItems[i], i, streamLimit);
+      }
+      await options.onStatus?.('completed', { segmentCount: segmentItems.length });
+
+      return transcript;
+    } catch (error) {
+      await this.prisma.videoSource.update({
+        where: { id: video.id },
+        data: { transcriptStatus: 'FAILED' },
+      });
+      await options.onStatus?.('failed', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      throw error;
     }
-    await options.onStatus?.('completed', { segmentCount: segmentItems.length });
-
-    return transcript;
   }
 
-  private async tryAsrOrFallback(
+  private async runAsr(
     video: {
       id: string;
       title: string;
@@ -102,12 +110,12 @@ export class TranscriptService {
     },
     userId: string,
   ) {
-    try {
-      if (video.sourceType !== 'LOCAL_UPLOAD' || !video.storagePath) {
-        throw new Error('non-local source currently uses fallback');
-      }
+    if (video.sourceType !== 'LOCAL_UPLOAD' || !video.storagePath) {
+      throw new Error('当前仅支持对本地上传视频执行转写');
+    }
 
-      const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'vp-asr-'));
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'vp-asr-'));
+    try {
       const videoExt = await this.inferExtForTempVideo(video.storagePath);
       const tempVideoPath = path.join(tempDir, `${video.id}${videoExt}`);
       const tempAudioPath = path.join(tempDir, `${video.id}.mp3`);
@@ -127,10 +135,11 @@ export class TranscriptService {
         userId,
       );
 
-      await fs.rm(tempDir, { recursive: true, force: true });
-
       const hasSegments =
         Array.isArray(asrResult?.segments) && asrResult.segments.length > 0;
+      if (!hasSegments && !(asrResult?.text ?? '').trim()) {
+        throw new Error('ASR 返回为空，无法生成转写');
+      }
       const rawSegments = hasSegments
         ? asrResult.segments
         : this.wrapTextToSegments(asrResult?.text ?? '', video.duration ?? 120);
@@ -144,43 +153,16 @@ export class TranscriptService {
         })),
         { provider: asrResult?.provider || asrResult?.providerName || 'asr' },
       );
-    } catch (error) {
-      this.logger.warn(`ASR fallback triggered for video ${video.id}: ${error.message}`);
-      const fallback = this.buildMockSegments(video.title, video.duration ?? 120);
-      return Object.assign(fallback, { provider: 'mock-asr' });
+    } finally {
+      await fs.rm(tempDir, { recursive: true, force: true });
     }
-  }
-
-  private buildMockSegments(title: string, duration: number) {
-    const safeDuration = Math.max(30, Math.floor(duration));
-    const segmentCount = Math.max(3, Math.min(12, Math.ceil(safeDuration / 45)));
-    const segDuration = safeDuration / segmentCount;
-
-    const ideas = [
-      '背景与问题定义',
-      '关键概念与术语说明',
-      '核心方法拆解',
-      '示例与案例说明',
-      '常见误区与纠正',
-      '行动建议与总结',
-    ];
-
-    return Array.from({ length: segmentCount }, (_, idx) => {
-      const start = Number((idx * segDuration).toFixed(2));
-      const end = Number(Math.min(safeDuration, (idx + 1) * segDuration).toFixed(2));
-      const idea = ideas[idx % ideas.length];
-      return {
-        start,
-        end,
-        text: `【${title}】第 ${idx + 1} 段：${idea}。`,
-        confidence: 0.94,
-      };
-    });
   }
 
   private wrapTextToSegments(text: string, duration: number) {
     const clean = text.trim();
-    if (!clean) return this.buildMockSegments('视频', duration);
+    if (!clean) {
+      throw new Error('ASR 未返回可用文本');
+    }
 
     const clauses = clean
       .split(/[。！？\n]/)

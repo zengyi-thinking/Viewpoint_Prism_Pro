@@ -98,12 +98,18 @@ export function VideoSourcePanel({
       }
 
       alert(
-        `分析完成：成功 ${batchResult.completed} 个，失败 ${batchResult.failed} 个。`,
+        batchResult.failed > 0
+          ? `分析完成：成功 ${batchResult.completed} 个，失败 ${batchResult.failed} 个。\n\n失败详情：\n${batchResult.results
+              .filter((item) => item.status === 'failed')
+              .map((item) => `- ${item.videoId}: ${item.error || '未知错误'}`)
+              .join('\n')}`
+          : `分析完成：成功 ${batchResult.completed} 个，失败 ${batchResult.failed} 个。`,
       );
       clearVideoSelection();
     } catch (error) {
       console.error('Failed to analyze videos:', error);
-      alert('分析启动失败，请重试');
+      const message = error instanceof Error ? error.message : '分析启动失败';
+      alert(`分析失败：${message}`);
     } finally {
       setIsAnalyzing(false);
     }

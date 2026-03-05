@@ -1,640 +1,504 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, type ReactNode } from 'react';
+import Image from 'next/image';
 import { chatApi, type QuickPrompt } from '@/services/chat.api';
 import { getToken } from '@/services/api';
+import { io } from 'socket.io-client';
 import { useWorkbenchStore } from '@/stores/workbench.store';
 
 interface Message {
   id: string;
   role: 'user' | 'assistant' | 'system';
   content: string;
+  createdAt?: string;
+  metadata?: {
+    frameImage?: string;
+    frameTimestamp?: number;
+    [key: string]: unknown;
+  };
 }
 
 interface ChatDockProps {
   projectId?: string;
-  height?: number; // Keep for compatibility but unused
+  height?: number;
+  videoPlayerRef?: React.RefObject<HTMLVideoElement | null> | null;
+  onFrameAnalysisRequest?: (timestamp: number, frameBase64: string) => void;
 }
-
-const DEFAULT_QUICK_PROMPTS_BY_PRISM: Record<string, QuickPrompt[]> = {
-  knowledge: [
-    {
-      id: 'mindmap',
-      type: 'mindmap',
-      label: '生成思维导图',
-      icon: '🧠',
-      promptTemplate: '/mindmap 生成当前视频的结构化思维导图，包括主线、分支和关键结论。',
-    },
-    {
-      id: 'summary',
-      type: 'summary',
-      label: '智能总结',
-      icon: '📝',
-      promptTemplate: '/summarize 总结当前视频核心观点和关键结论。',
-    },
-    {
-      id: 'crystal_card',
-      type: 'crystal_card',
-      label: '生成晶体卡片',
-      icon: '💎',
-      promptTemplate: '/summarize 生成可学习的晶体卡片并给出复习路径。',
-    },
-    {
-      id: 'explain',
-      type: 'explain',
-      label: '通俗解释',
-      icon: '💡',
-      promptTemplate: '请用通俗易懂的方式解释当前视频内容，并给一个生活化例子。',
-    },
-  ],
-  creation: [
-    {
-      id: 'creation_split_script',
-      type: 'creation_script_split',
-      label: '拆分产品脚本',
-      icon: '✂️',
-      promptTemplate: '请把这段产品脚本按镜头拆分，并给出每段可执行的画面提示词。',
-    },
-    {
-      id: 'creation_refine_prompt',
-      type: 'creation_prompt_refine',
-      label: '优化生成提示词',
-      icon: '🎬',
-      promptTemplate: '请把当前产品创意改写成更适合视频生成的提示词，强调镜头、动作、风格。',
-    },
-    {
-      id: 'creation_storyboard',
-      type: 'creation_storyboard',
-      label: '生成分镜结构',
-      icon: '🧩',
-      promptTemplate: '请输出一个 5 段式产品短视频分镜结构，每段包含目标、画面、台词和节奏。',
-    },
-  ],
-  translation: [
-    {
-      id: 'translation_refine',
-      type: 'translation_refine',
-      label: '润色字幕语气',
-      icon: '🌐',
-      promptTemplate: '请润色当前字幕，使语气更自然并保持术语一致。',
-    },
-  ],
-  diffraction: [
-    {
-      id: 'diffraction_xhs',
-      type: 'diffraction_rewrite',
-      label: '生成小红书文案',
-      icon: '📱',
-      promptTemplate: '请把当前内容改写成小红书风格文案，包含标题、正文和标签建议。',
-    },
-  ],
-};
 
 const DEFAULT_QUICK_PROMPTS: QuickPrompt[] = [
   {
-    id: 'mindmap',
-    type: 'mindmap',
-    label: '生成思维导图',
-    icon: '🧠',
-    promptTemplate: '/mindmap 生成当前视频的结构化思维导图，包括主线、分支和关键结论。',
+    id: 'explain',
+    type: 'explain',
+    label: '通俗解释',
+    icon: '💡',
+    promptTemplate: '请用通俗易懂的方式解释当前内容，并给一个生活化例子。',
   },
   {
     id: 'summary',
     type: 'summary',
     label: '智能总结',
     icon: '📝',
-    promptTemplate: '/summarize 总结当前视频核心观点和关键结论。',
-  },
-  {
-    id: 'crystal_card',
-    type: 'crystal_card',
-    label: '生成晶体卡片',
-    icon: '💎',
-    promptTemplate: '/summarize 生成可学习的晶体卡片并给出复习路径。',
-  },
-  {
-    id: 'explain',
-    type: 'explain',
-    label: '通俗解释',
-    icon: '💡',
-    promptTemplate: '请用通俗易懂的方式解释当前视频内容，并给一个生活化例子。',
+    promptTemplate: '请总结核心观点和关键结论。',
   },
 ];
 
-export function ChatDock({ projectId, height }: ChatDockProps) {
-  const { activePrism, currentVideo } = useWorkbenchStore();
+export function ChatDock({ projectId, height, videoPlayerRef, onFrameAnalysisRequest }: ChatDockProps) {
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState<Message[]>([]);
-  const [quickPrompts, setQuickPrompts] = useState<QuickPrompt[]>([]);
-  const [isLoadingPrompts, setIsLoadingPrompts] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
-  const [sessionVideoId, setSessionVideoId] = useState<string | null>(null);
-  const [sessionPrism, setSessionPrism] = useState<string | null>(null);
-  const effectivePrism = activePrism ?? (currentVideo?.id ? 'knowledge' : undefined);
-  const contextKey = currentVideo?.id ?? '__project__';
-  const sessionByContextRef = useRef<Record<string, string>>({});
-  const messagesByContextRef = useRef<Record<string, Message[]>>({});
+
+  // 画面分析相关状态
+  const [analyzingFrame, setAnalyzingFrame] = useState(false);
+  const [frameAnalysisResult, setFrameAnalysisResult] = useState<{
+    timestamp: number;
+    description: string;
+    imageUrl: string | null;
+  } | null>(null);
+  const [regionAnalysis, setRegionAnalysis] = useState<string | null>(null);
+  const activePrism = useWorkbenchStore((s) => s.activePrism);
+  const currentVideo = useWorkbenchStore((s) => s.currentVideo);
+  const prismForChat = (activePrism ?? (currentVideo ? 'knowledge' : null)) as
+    | 'knowledge'
+    | 'creation'
+    | 'translation'
+    | 'diffraction'
+    | null;
+
   const messageListRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    const fallbackPrompts =
-      DEFAULT_QUICK_PROMPTS_BY_PRISM[effectivePrism || 'knowledge'] ?? DEFAULT_QUICK_PROMPTS;
-
-    const fetchQuickPrompts = async () => {
-      if (!getToken()) {
-        setQuickPrompts(fallbackPrompts);
-        return;
-      }
-
-      setIsLoadingPrompts(true);
-      try {
-        const data = await chatApi.getQuickPrompts(
-          (effectivePrism as any) || 'knowledge',
-        );
-        setQuickPrompts(data.prompts?.length ? data.prompts : fallbackPrompts);
-      } catch (error) {
-        console.warn('Failed to fetch quick prompts, use local fallback.', error);
-        setQuickPrompts(fallbackPrompts);
-      } finally {
-        setIsLoadingPrompts(false);
-      }
-    };
-
-    fetchQuickPrompts();
-  }, [effectivePrism]);
-
-  const createSessionForContext = async () => {
-    if (!projectId) {
-      setSessionId(null);
-      setSessionVideoId(null);
-      setSessionPrism(null);
-      setMessages([]);
-      return null;
+  // 提取当前视频帧用于画面分析
+  const captureCurrentFrame = (): string | null => {
+    const videoEl = videoPlayerRef?.current;
+    if (!videoEl || videoEl.readyState !== 4) {
+      return null; // HAVE_ENOUGH_DATA
     }
 
-    const created = await chatApi.createSession({
-      projectId,
-      videoId: currentVideo?.id,
-      activePrism: effectivePrism,
-    });
-    setSessionId(created.session.id);
-    setSessionVideoId(created.session.videoId ?? null);
-    setSessionPrism(created.session.activePrism ?? null);
-    sessionByContextRef.current[contextKey] = created.session.id;
+    try {
+      const canvas = document.createElement('canvas');
+      canvas.width = videoEl.videoWidth || 1280;
+      canvas.height = videoEl.videoHeight || 720;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.drawImage(videoEl, 0, 0);
+        return canvas.toDataURL('image/jpeg', 0.8);
+      }
+      return null;
+    } catch (error) {
+      console.error('Failed to capture frame:', error);
+      return null;
+    }
+  };
 
-    const history = await chatApi.getMessages(created.session.id, { limit: 50 });
-    const mapped = history.items.map((item) => ({
-      id: item.id,
-      role: item.role,
-      content: item.content,
-    }));
-    setMessages(mapped);
-    messagesByContextRef.current[contextKey] = mapped;
+  const appendMessageUnique = (incoming: Message) => {
+    setMessages((prev) => {
+      const normalizedIncoming = incoming.content.trim();
+      const duplicate = prev.some(
+        (item) =>
+          item.role === incoming.role &&
+          item.content.trim() === normalizedIncoming &&
+          Math.abs(new Date(item.createdAt || Date.now()).getTime() - new Date(incoming.createdAt || Date.now()).getTime()) < 3000,
+      );
+      if (duplicate) return prev;
+      return [...prev, incoming];
+    });
+  };
+
+  const renderInline = (text: string): ReactNode[] => {
+    const parts = text.split(/(\*\*[^*]+\*\*|`[^`]+`)/g).filter(Boolean);
+    return parts.map((part, idx) => {
+      if (part.startsWith('**') && part.endsWith('**')) {
+        return (
+          <strong key={idx} className="font-semibold text-foreground">
+            {part.slice(2, -2)}
+          </strong>
+        );
+      }
+      if (part.startsWith('`') && part.endsWith('`')) {
+        return (
+          <code key={idx} className="rounded bg-black/10 px-1.5 py-0.5 text-[12px]">
+            {part.slice(1, -1)}
+          </code>
+        );
+      }
+      return <span key={idx}>{part}</span>;
+    });
+  };
+
+  const renderTextBlock = (block: string, key: string) => {
+    const lines = block.split('\n').filter((line) => line.trim().length > 0);
+    return lines.map((line, idx) => {
+      const trimmed = line.trim();
+      const rowKey = `${key}-${idx}`;
+
+      if (/^###\s+/.test(trimmed)) {
+        return (
+          <h4 key={rowKey} className="mt-2 text-[13px] font-semibold text-foreground">
+            {renderInline(trimmed.replace(/^###\s+/, ''))}
+          </h4>
+        );
+      }
+      if (/^##\s+/.test(trimmed)) {
+        return (
+          <h3 key={rowKey} className="mt-2 text-[14px] font-semibold text-foreground">
+            {renderInline(trimmed.replace(/^##\s+/, ''))}
+          </h3>
+        );
+      }
+      if (/^#\s+/.test(trimmed)) {
+        return (
+          <h2 key={rowKey} className="mt-2 text-[15px] font-bold text-foreground">
+            {renderInline(trimmed.replace(/^#\s+/, ''))}
+          </h2>
+        );
+      }
+      if (/^[-*]\s+/.test(trimmed)) {
+        return (
+          <div key={rowKey} className="flex items-start gap-2 text-[13px] leading-6">
+            <span className="mt-2 inline-block h-1.5 w-1.5 rounded-full bg-current opacity-70" />
+            <span>{renderInline(trimmed.replace(/^[-*]\s+/, ''))}</span>
+          </div>
+        );
+      }
+      if (/^\d+\.\s+/.test(trimmed)) {
+        const num = trimmed.match(/^(\d+)\.\s+/)?.[1] ?? '';
+        return (
+          <div key={rowKey} className="flex items-start gap-2 text-[13px] leading-6">
+            <span className="min-w-5 text-right font-medium opacity-80">{num}.</span>
+            <span>{renderInline(trimmed.replace(/^\d+\.\s+/, ''))}</span>
+          </div>
+        );
+      }
+      return (
+        <p key={rowKey} className="text-[13px] leading-6 whitespace-pre-wrap">
+          {renderInline(trimmed)}
+        </p>
+      );
+    });
+  };
+
+  const renderMessageContent = (content: string, frameImage?: string, frameTimestamp?: number) => {
+    const blocks = content.split(/```/);
+
+    return (
+      <div className="max-w-none break-words">
+        {frameImage && (
+          <div className="mb-3 rounded-lg border border-blue-500/20 bg-blue-500/10 p-2">
+            {frameTimestamp !== undefined && (
+              <div className="mb-1 text-xs text-blue-300">时间点: {Math.floor(frameTimestamp)}秒</div>
+            )}
+            <Image src={frameImage} alt="分析的画面" width={320} height={180} className="rounded-md" />
+          </div>
+        )}
+        <div className="space-y-2">
+          {blocks.map((block, idx) =>
+            idx % 2 === 1 ? (
+              <pre key={`code-${idx}`} className="overflow-x-auto rounded-lg bg-black/25 p-3 text-[12px] leading-5 text-blue-100">
+                <code>{block.trim()}</code>
+              </pre>
+            ) : (
+              <div key={`text-${idx}`}>{renderTextBlock(block, `text-${idx}`)}</div>
+            ),
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  // 创建会话
+  const ensureSession = async () => {
+    if (sessionId) return sessionId;
+
+    const created = await chatApi.createSession({
+      projectId: projectId || '',
+      videoId: currentVideo?.id,
+      activePrism: prismForChat ?? undefined,
+    });
+
+    setSessionId(created.session.id);
     return created.session.id;
   };
 
-  // 同步当前上下文消息缓存，切换视频后可恢复
+  // WebSocket 连接
   useEffect(() => {
-    messagesByContextRef.current[contextKey] = messages;
-  }, [contextKey, messages]);
+    if (!projectId) return;
 
-  useEffect(() => {
     let cancelled = false;
-    const bootstrapSession = async () => {
-      if (!projectId) {
-        setSessionId(null);
-        setSessionVideoId(null);
-        setSessionPrism(null);
-        setMessages([]);
-        return;
-      }
+    let socket: any = null;
 
-      if (!getToken()) {
-        setSessionId(null);
-        setSessionVideoId(null);
-        setSessionPrism(null);
-        setMessages([]);
-        return;
-      }
+    const connectSocket = () => {
+      const wsUrl = process.env.NEXT_PUBLIC_WS_URL || 'http://localhost:3001';
 
-      const cachedMessages = messagesByContextRef.current[contextKey];
-      setMessages(cachedMessages ?? []);
+      socket = io(`${wsUrl}/ws`, {
+        transports: ['websocket'],
+        reconnection: true,
+        reconnectionDelay: 1000,
+        reconnectionAttempts: 5,
+        auth: {
+          token: getToken(),
+        },
+      });
 
-      const cachedSessionId = sessionByContextRef.current[contextKey];
-      if (cachedSessionId) {
-        setSessionId(cachedSessionId);
-        setSessionVideoId(currentVideo?.id ?? null);
-        setSessionPrism(effectivePrism ?? null);
-        try {
-          const history = await chatApi.getMessages(cachedSessionId, { limit: 50 });
-          if (cancelled) return;
-          const mapped = history.items.map((item) => ({
-            id: item.id,
-            role: item.role,
-            content: item.content,
-          }));
-          setMessages(mapped);
-          messagesByContextRef.current[contextKey] = mapped;
-          return;
-        } catch (error) {
-          console.warn('Failed to load cached session history:', error);
+      socket.on('connect', () => {
+        console.log('Socket.IO connected');
+        if (projectId) {
+          socket.emit('join:project', { projectId });
         }
-      }
+      });
 
-      try {
-        await createSessionForContext();
-      } catch (error) {
-        console.warn('Failed to initialize chat session:', error);
-      }
+      // 处理画面分析事件
+      socket.on('frame:analysis', (payload: any) => {
+        if (cancelled) return;
+
+        try {
+          setFrameAnalysisResult({
+            timestamp: payload.timestamp,
+            description: payload.description,
+            imageUrl: payload.imageUrl,
+          });
+          setAnalyzingFrame(false);
+        } catch (error) {
+          console.error('Frame analysis event error:', error);
+        }
+      });
+
+      // 处理区域分析事件
+      socket.on('frame:region-analysis', (payload: any) => {
+        if (cancelled) return;
+
+        try {
+          setRegionAnalysis(payload.analysis);
+          setTimeout(() => setRegionAnalysis(null), 3000);
+        } catch (error) {
+          console.error('Region analysis event error:', error);
+        }
+      });
+
+      // 处理常规消息事件
+      socket.on('chat:message', (payload: any) => {
+        if (cancelled) return;
+        if (payload?.sessionId !== sessionId) return;
+
+        try {
+          const newMessage: Message = {
+            id: payload.id || `${payload.role}-${Date.now()}`,
+            role: payload.role,
+            content: payload.content,
+            createdAt: payload.timestamp,
+            metadata: payload.metadata,
+          };
+          appendMessageUnique(newMessage);
+        } catch (error) {
+          console.error('Chat message event error:', error);
+        }
+      });
+
+      socket.on('connected', (data: any) => {
+        console.log('Socket connection confirmed:', data.socketId);
+      });
+
+      socket.on('error', (error: any) => {
+        console.error('Socket.IO error:', error);
+      });
+
+      socket.on('disconnect', () => {
+        console.log('Socket.IO disconnected');
+        if (!cancelled) {
+          setTimeout(() => {
+            if (!cancelled) connectSocket();
+          }, 5000);
+        }
+      });
     };
 
-    bootstrapSession();
+    connectSocket();
+
     return () => {
       cancelled = true;
+      if (socket) {
+        socket.disconnect();
+      }
     };
-  }, [projectId, contextKey, effectivePrism]);
+  }, [projectId, sessionId]);
 
-  const ensureSession = async () => {
-    const currentVideoId = currentVideo?.id ?? null;
-    const currentPrism = effectivePrism ?? null;
-    const cachedSessionId = sessionByContextRef.current[contextKey];
-    if (cachedSessionId && (!sessionId || sessionId !== cachedSessionId)) {
-      setSessionId(cachedSessionId);
-      setSessionVideoId(currentVideoId);
-      setSessionPrism(currentPrism);
-      return cachedSessionId;
-    }
-    if (
-      sessionId &&
-      sessionVideoId === currentVideoId &&
-      sessionPrism === currentPrism
-    ) {
-      return sessionId;
-    }
-    if (!projectId) throw new Error('No project selected');
-    const sid = await createSessionForContext();
-    if (!sid) throw new Error('Failed to create chat session');
-    return sid;
-  };
+  const handleSend = async () => {
+    const messageContent = input.trim();
+    if (!messageContent) return;
 
-  const handleSend = async (content: string) => {
-    const messageContent = content || input;
-    if (!messageContent.trim() || isSending) return;
-    if (!getToken()) {
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: Date.now().toString(),
-          role: 'assistant',
-          content: '登录状态已失效，请重新登录后再使用对话功能。',
-        },
-      ]);
-      return;
-    }
+    // 提取当前视频帧用于画面分析
+    const frameBase64 = captureCurrentFrame();
+    const currentTime = (videoPlayerRef?.current as any)?.currentTime || 0;
+    setAnalyzingFrame(Boolean(frameBase64 && prismForChat === 'knowledge'));
+    setFrameAnalysisResult(null);
 
-    const normalized = messageContent.trim().toLowerCase();
-    const knowledgeIntent =
-      normalized.startsWith('/mindmap') ||
-      normalized.startsWith('/summarize') ||
-      /思维导图|脑图|mind\s*map|mindmap|总结|概括|摘要|梳理|复盘|要点|文章/i.test(
-        messageContent,
-      );
-    const requiresVideoContext =
-      effectivePrism === 'knowledge' && knowledgeIntent;
-
-    if (requiresVideoContext && !currentVideo?.id) {
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: Date.now().toString(),
-          role: 'assistant',
-          content: '请先在左侧点击一个视频（不是只勾选），再发送总结/导图指令。',
-        },
-      ]);
-      return;
-    }
-
-    const targetPrism = effectivePrism;
-
-    const userMsg: Message = {
-      id: Date.now().toString(),
-      role: 'user',
-      content: messageContent.trim(),
-    };
-    setMessages((prev) => [...prev, userMsg]);
-    setInput('');
     setIsSending(true);
 
     try {
       const sid = await ensureSession();
+
       const response = await chatApi.sendMessage(sid, {
         content: messageContent.trim(),
         videoId: currentVideo?.id,
-        activePrism: targetPrism,
+        activePrism: prismForChat ?? undefined,
+        metadata: {
+          frameBase64,
+          timestamp: currentTime,
+        },
       });
 
-      setMessages((prev) => {
-        const replyMsg: Message = {
-          id: response.reply.id,
-          role: response.reply.role as Message['role'],
-          content: response.reply.content,
-        };
-        const next = [
-          ...prev,
-          replyMsg,
-        ];
-        messagesByContextRef.current[contextKey] = next;
-        return next;
+      appendMessageUnique({
+        id: response.message.id || `user-${Date.now()}`,
+        role: response.message.role as Message['role'],
+        content: response.message.content,
+        createdAt: response.message.createdAt,
+        metadata: response.message.metadata as any,
       });
-    } catch (error) {
-      const errorText = error instanceof Error ? error.message : '未知错误';
-      console.warn('Failed to send message:', error);
-      setMessages((prev) => {
-        const errorMsg: Message = {
-          id: (Date.now() + 1).toString(),
-          role: 'assistant',
-          content: `消息发送失败：${errorText}`,
-        };
-        const next = [
-          ...prev,
-          errorMsg,
-        ];
-        messagesByContextRef.current[contextKey] = next;
-        return next;
+      appendMessageUnique({
+        id: response.reply.id || `assistant-${Date.now()}`,
+        role: response.reply.role as Message['role'],
+        content: response.reply.content,
+        createdAt: response.reply.createdAt,
+        metadata: response.reply.metadata as any,
       });
-    } finally {
+      setInput('');
       setIsSending(false);
+      setAnalyzingFrame(false);
+    } catch (error) {
+      console.error('Failed to send message:', error);
+      const message = error instanceof Error ? error.message : '消息发送失败';
+      appendMessageUnique({
+        id: `err-${Date.now()}`,
+        role: 'assistant',
+        content: `模型错误：${message}`,
+      });
+      setIsSending(false);
+      setAnalyzingFrame(false);
     }
   };
 
-  const handleFormSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    handleSend(input);
-  };
-
-  const handleQuickPrompt = (prompt: QuickPrompt) => {
-    if (prompt.type === 'mindmap') {
-      handleSend('/mindmap 生成当前视频的结构化思维导图，输出主线、分支和关键结论。');
-      return;
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSend();
     }
+  };
 
-    if (prompt.type === 'summary' || prompt.type === 'crystal_card') {
-      handleSend('/summarize 基于当前视频生成学习总结，并产出可复习的晶体卡片。');
-      return;
+  const handleQuickPrompt = async (promptTemplate: string) => {
+    setInput(promptTemplate + ' ');
+  };
+
+  // 滚动到底部
+  useEffect(() => {
+    if (messageListRef.current) {
+      messageListRef.current.scrollTop = messageListRef.current.scrollHeight;
     }
-
-    handleSend(prompt.promptTemplate);
-  };
-
-  const renderInlineMarkdown = (text: string) => {
-    const nodes: React.ReactNode[] = [];
-    let rest = text;
-    let key = 0;
-
-    while (rest.length > 0) {
-      const boldMatch = rest.match(/\*\*(.+?)\*\*/);
-      const codeMatch = rest.match(/`([^`]+?)`/);
-      const match =
-        boldMatch && codeMatch
-          ? boldMatch.index! < codeMatch.index!
-            ? { type: 'bold' as const, raw: boldMatch[0], inner: boldMatch[1], index: boldMatch.index! }
-            : { type: 'code' as const, raw: codeMatch[0], inner: codeMatch[1], index: codeMatch.index! }
-          : boldMatch
-          ? { type: 'bold' as const, raw: boldMatch[0], inner: boldMatch[1], index: boldMatch.index! }
-          : codeMatch
-          ? { type: 'code' as const, raw: codeMatch[0], inner: codeMatch[1], index: codeMatch.index! }
-          : null;
-
-      if (!match) {
-        nodes.push(<span key={`t-${key++}`}>{rest}</span>);
-        break;
-      }
-
-      if (match.index > 0) {
-        nodes.push(<span key={`t-${key++}`}>{rest.slice(0, match.index)}</span>);
-      }
-
-      if (match.type === 'bold') {
-        nodes.push(
-          <strong key={`b-${key++}`} className="font-semibold text-text-primary">
-            {match.inner}
-          </strong>,
-        );
-      } else {
-        nodes.push(
-          <code
-            key={`c-${key++}`}
-            className="rounded bg-bg-panel-tertiary px-1 py-0.5 text-[12px]"
-          >
-            {match.inner}
-          </code>,
-        );
-      }
-
-      rest = rest.slice(match.index + match.raw.length);
-    }
-
-    return nodes;
-  };
-
-  const renderMessageContent = (content: string) => {
-    const lines = content.split('\n');
-    const blocks: React.ReactNode[] = [];
-    let listItems: string[] = [];
-    let key = 0;
-
-    const flushList = () => {
-      if (!listItems.length) return;
-      blocks.push(
-        <ul key={`ul-${key++}`} className="list-disc pl-5 space-y-1">
-          {listItems.map((item, idx) => (
-            <li key={`li-${idx}`}>{renderInlineMarkdown(item)}</li>
-          ))}
-        </ul>,
-      );
-      listItems = [];
-    };
-
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (/^[-*]\s+/.test(trimmed)) {
-        listItems.push(trimmed.replace(/^[-*]\s+/, ''));
-        continue;
-      }
-
-      flushList();
-
-      if (!trimmed) {
-        blocks.push(<div key={`sp-${key++}`} className="h-1.5" />);
-        continue;
-      }
-
-      const heading = trimmed.match(/^(#{1,3})\s+(.+)$/);
-      if (heading) {
-        const level = heading[1].length;
-        const headingClass =
-          level === 1
-            ? 'mt-1 text-[15px] font-semibold tracking-tight text-text-primary'
-            : level === 2
-            ? 'mt-1 text-[14px] font-semibold text-text-primary'
-            : 'mt-1 text-[13px] font-semibold text-text-secondary';
-        blocks.push(
-          <p key={`h-${key++}`} className={headingClass}>
-            {renderInlineMarkdown(heading[2])}
-          </p>,
-        );
-        continue;
-      }
-
-      blocks.push(
-        <p key={`p-${key++}`} className="leading-6 whitespace-pre-wrap">
-          {renderInlineMarkdown(line)}
-        </p>,
-      );
-    }
-
-    flushList();
-    return blocks;
-  };
-
-  const handleMessageWheel = (e: React.WheelEvent<HTMLDivElement>) => {
-    const el = messageListRef.current;
-    if (!el) return;
-
-    const isScrollable = el.scrollHeight > el.clientHeight;
-    if (!isScrollable) return;
-
-    // Force wheel events to scroll chat history itself,
-    // instead of bubbling to outer containers.
-    el.scrollTop += e.deltaY;
-    e.preventDefault();
-    e.stopPropagation();
-  };
+  }, [messages]);
 
   return (
-    <div className="panel flex h-full flex-1 min-h-0 flex-col overflow-hidden rounded-none border-x-0 border-b-0">
+    <div className="panel flex h-full flex-1 min-h-0 flex-col overflow-hidden rounded-none border-x-0 border-b-0 bg-gradient-to-b from-black/5 via-transparent to-transparent" style={{ height }}>
       {/* Header */}
-      <div className="shrink-0 flex items-center justify-between border-b border-border-subtle px-3 py-2">
+      <div className="shrink-0 flex items-center justify-between border-b border-border-subtle/80 px-4 py-2.5">
         <div className="flex items-center gap-2">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-text-tertiary">
-            <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" />
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-[#FF6B35]">
+            <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012 2h14a2 2 0 012 2z" />
           </svg>
-          <h3 className="wb-section-title">对话窗口</h3>
+          <h3 className="text-sm font-semibold tracking-wide">对话窗口</h3>
         </div>
-        <span className="wb-meta">跨棱镜编排器</span>
-      </div>
-
-      {/* Context hint */}
-      <div className="shrink-0 border-b border-border-subtle px-3 py-2">
-        {!currentVideo ? (
-          <p className="wb-meta">
-            当前未绑定视频。请点击左侧视频卡片后再进行智能问答。
-          </p>
-        ) : activePrism !== 'knowledge' ? (
-          <p className="wb-meta">
-            当前棱镜：{activePrism || '未选择'}。视频智能问答建议切换到知识棱镜。
-          </p>
-        ) : currentVideo.transcriptStatus !== 'COMPLETED' || currentVideo.keyframeStatus !== 'COMPLETED' ? (
-          <p className="wb-meta">
-            视频已绑定：{currentVideo.title}。请先“确认导入”完成分析，回答会更准确。
-          </p>
-        ) : (
-          <p className="wb-meta">
-            已连接视频上下文：<span className="wb-emphasis">{currentVideo.title}</span>
-          </p>
-        )}
+        <span className="rounded-full border border-border-subtle px-2 py-0.5 text-[11px] text-text-secondary">跨棱镜编排器</span>
       </div>
 
       {/* Messages */}
       <div
         ref={messageListRef}
-        onWheel={handleMessageWheel}
-        className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 py-3"
+        className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 py-4"
       >
         {messages.length === 0 ? (
-          <div className="flex h-full flex-col items-center justify-center gap-3">
-            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-text-tertiary opacity-30">
-              <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" />
+          <div className="flex h-full flex-col items-center justify-center gap-4 rounded-xl border border-dashed border-border-subtle/70 bg-black/5 px-4">
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-text-tertiary opacity-60">
+              <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012 2h14a2 2 0 012 2z" />
             </svg>
             <div className="text-center">
-              <p className="wb-meta mb-2">快速指令</p>
+              <p className="mb-2 text-xs tracking-wide text-text-tertiary">快速指令</p>
               <div className="flex flex-wrap justify-center gap-2">
-                {['/summarize', '/mindmap', '/translate'].map((cmd) => (
+                {DEFAULT_QUICK_PROMPTS.map((prompt) => (
                   <button
-                    key={cmd}
-                    onClick={() => setInput(cmd + ' ')}
-                    className="badge text-[10px]"
+                    key={prompt.id}
+                    onClick={() => handleQuickPrompt(prompt.promptTemplate)}
+                    className="rounded-full border border-border-subtle bg-black/10 px-3 py-1 text-[11px] transition-colors hover:border-[#FF6B35]/50 hover:bg-[#FF6B35]/10"
                   >
-                    {cmd}
+                    {prompt.icon} {prompt.label}
                   </button>
                 ))}
               </div>
             </div>
           </div>
         ) : (
-          <div className="flex flex-col gap-3">
+          <div className="space-y-4">
             {messages.map((msg) => (
               <div
                 key={msg.id}
-                className={`max-w-[85%] rounded-2xl px-3 py-2 text-[13px] leading-6 ${
+                className={`max-w-[88%] rounded-2xl px-3.5 py-2.5 shadow-sm ${
                   msg.role === 'user'
-                    ? 'ml-auto bg-bg-panel-tertiary text-text-primary'
-                    : 'mr-auto border border-border-subtle bg-gradient-to-r from-[#FF6B35]/10 to-[#E91E8C]/10 text-text-primary'
+                    ? 'ml-auto border border-[#2D7FF9]/30 bg-[#2D7FF9]/12 text-text-primary'
+                    : 'mr-auto border border-border-subtle bg-linear-to-r from-[#FF6B35]/12 to-[#E91E8C]/10 text-text-primary'
                 }`}
               >
-                {renderMessageContent(msg.content)}
+                <div className="mb-1 text-[10px] uppercase tracking-wider text-text-tertiary">
+                  {msg.role === 'user' ? '你' : msg.role === 'assistant' ? '助手' : '系统'}
+                </div>
+                {renderMessageContent(msg.content, msg.metadata?.frameImage, msg.metadata?.frameTimestamp)}
+
+                {/* 画面分析结果显示 */}
+                {msg.role === 'assistant' && frameAnalysisResult?.timestamp === msg.metadata?.frameTimestamp && frameAnalysisResult && (
+                  <div className="mt-3 p-3 bg-blue-50/50 dark:bg-blue-900/20 rounded-lg border">
+                    <div className="text-xs text-blue-700 dark:text-blue-300 mb-2">
+                      画面分析结果 @{Math.floor(frameAnalysisResult.timestamp)}秒
+                    </div>
+                    <Image src={frameAnalysisResult.imageUrl || ''} alt="分析的画面" width={280} height={157} className="rounded-md max-w-[70%] w-full object-contain" />
+                    <div className="text-sm mt-2">{frameAnalysisResult.description}</div>
+                  </div>
+                )}
+
+                {/* 区域分析结果显示 */}
+                {regionAnalysis && msg.role === 'assistant' && (
+                  <div className="mt-3 rounded-lg border border-purple-500/30 bg-purple-500/10 p-3">
+                    <div className="mb-2 text-xs text-purple-300">区域点击分析</div>
+                    <div className="text-[13px]">{regionAnalysis}</div>
+                  </div>
+                )}
               </div>
             ))}
-            {isSending && (
-              <div className="mr-auto max-w-[85%] rounded-2xl bg-gradient-to-r from-[#FF6B35]/10 to-[#E91E8C]/10 px-3 py-2 text-xs text-text-tertiary">
-                正在思考...
-              </div>
-            )}
           </div>
         )}
       </div>
 
-      {/* Quick Prompt Buttons */}
-      {!isLoadingPrompts && quickPrompts.length > 0 && (
-        <div className="shrink-0 border-t border-border-subtle px-3 py-2">
-          <div className="flex gap-2 overflow-x-auto">
-            {quickPrompts.map((prompt) => (
-              <button
-                key={prompt.id}
-                onClick={() => handleQuickPrompt(prompt)}
-                disabled={isSending}
-                className="flex shrink-0 items-center gap-1.5 rounded-lg bg-bg-panel-tertiary px-2.5 py-1.5 text-[11px] text-text-secondary transition hover:bg-bg-panel-secondary hover:text-text-primary disabled:opacity-50"
-                title={prompt.promptTemplate}
-              >
-                <span className="text-xs">{prompt.icon}</span>
-                <span className="whitespace-nowrap">{prompt.label}</span>
-              </button>
-            ))}
+      {/* Input area */}
+      <div className="shrink-0 border-t border-border-subtle/80 bg-black/10 p-3">
+        <div className="rounded-xl border border-border-subtle bg-background/80 p-2">
+          <textarea
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder="输入问题，按 Enter 发送（Shift + Enter 换行）"
+            className="min-h-[74px] w-full resize-none bg-transparent px-2 py-1 text-sm leading-6 focus:outline-none"
+            rows={3}
+            disabled={isSending}
+          />
+          <div className="mt-2 flex items-center justify-between px-1">
+            <span className="text-[11px] text-text-tertiary">
+              {analyzingFrame ? '正在分析当前画面...' : '支持基于当前播放画面与知识库回答'}
+            </span>
+            <button
+              onClick={handleSend}
+              disabled={isSending || !input.trim()}
+              className="rounded-lg bg-[#2D7FF9] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#2468cf] disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {isSending ? '发送中...' : '发送'}
+            </button>
           </div>
         </div>
-      )}
-
-      {/* Input */}
-      <form onSubmit={handleFormSubmit} className="shrink-0 flex items-center gap-2 border-t border-border-subtle px-3 py-2">
-        <input
-          type="text"
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          placeholder="输入消息或指令..."
-          className="input flex-1 px-3 py-2 text-xs"
-          disabled={isSending}
-        />
-        <button
-          type="submit"
-          disabled={!input.trim() || isSending}
-          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-r from-[#FF6B35] to-[#E91E8C] text-text-inverse transition hover:opacity-90 disabled:opacity-30"
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M22 2L11 13" /><path d="M22 2L15 22l-4-9-9-4z" />
-          </svg>
-        </button>
-      </form>
+      </div>
     </div>
   );
 }

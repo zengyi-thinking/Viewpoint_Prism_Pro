@@ -63,6 +63,7 @@ export function useVideoBehaviorTracking(
   const [loadingBookmarks, setLoadingBookmarks] = useState(false);
   const [loadingNotes, setLoadingNotes] = useState(false);
   const [loadingHighlights, setLoadingHighlights] = useState(false);
+  const latestVideoIdRef = useRef(videoId);
 
   // Tracking state
   const trackingStateRef = useRef<VideoTrackingState>({
@@ -88,6 +89,19 @@ export function useVideoBehaviorTracking(
     deviceId: '',
     userAgent: '',
   });
+
+  // Initialize device info
+  useEffect(() => {
+    latestVideoIdRef.current = videoId;
+  }, [videoId]);
+
+  const isAccessDeniedError = (error: unknown) => {
+    const message = error instanceof Error ? error.message : String(error || '');
+    return /You do not have access to this video/i.test(message);
+  };
+
+  const isStaleRequest = (requestVideoId: string) =>
+    latestVideoIdRef.current !== requestVideoId;
 
   // Initialize device info
   useEffect(() => {
@@ -267,42 +281,72 @@ export function useVideoBehaviorTracking(
   // Refresh bookmarks
   const refreshBookmarks = useCallback(async () => {
     if (!videoId) return;
+    const requestVideoId = videoId;
     setLoadingBookmarks(true);
     try {
-      const data = await videoBehaviorApi.listBookmarks(videoId);
+      const data = await videoBehaviorApi.listBookmarks(requestVideoId);
+      if (isStaleRequest(requestVideoId)) return;
       setBookmarks(data);
     } catch (error) {
+      if (isAccessDeniedError(error)) {
+        if (!isStaleRequest(requestVideoId)) {
+          setBookmarks([]);
+        }
+        return;
+      }
       console.error('Failed to load bookmarks:', error);
     } finally {
-      setLoadingBookmarks(false);
+      if (!isStaleRequest(requestVideoId)) {
+        setLoadingBookmarks(false);
+      }
     }
   }, [videoId]);
 
   // Refresh notes
   const refreshNotes = useCallback(async () => {
     if (!videoId) return;
+    const requestVideoId = videoId;
     setLoadingNotes(true);
     try {
-      const data = await videoBehaviorApi.listNotes(videoId);
+      const data = await videoBehaviorApi.listNotes(requestVideoId);
+      if (isStaleRequest(requestVideoId)) return;
       setNotes(data);
     } catch (error) {
+      if (isAccessDeniedError(error)) {
+        if (!isStaleRequest(requestVideoId)) {
+          setNotes([]);
+        }
+        return;
+      }
       console.error('Failed to load notes:', error);
     } finally {
-      setLoadingNotes(false);
+      if (!isStaleRequest(requestVideoId)) {
+        setLoadingNotes(false);
+      }
     }
   }, [videoId]);
 
   // Refresh highlights
   const refreshHighlights = useCallback(async () => {
     if (!videoId) return;
+    const requestVideoId = videoId;
     setLoadingHighlights(true);
     try {
-      const data = await videoBehaviorApi.listHighlights(videoId);
+      const data = await videoBehaviorApi.listHighlights(requestVideoId);
+      if (isStaleRequest(requestVideoId)) return;
       setHighlights(data);
     } catch (error) {
+      if (isAccessDeniedError(error)) {
+        if (!isStaleRequest(requestVideoId)) {
+          setHighlights([]);
+        }
+        return;
+      }
       console.error('Failed to load highlights:', error);
     } finally {
-      setLoadingHighlights(false);
+      if (!isStaleRequest(requestVideoId)) {
+        setLoadingHighlights(false);
+      }
     }
   }, [videoId]);
 

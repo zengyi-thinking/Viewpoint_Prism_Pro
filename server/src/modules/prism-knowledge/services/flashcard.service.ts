@@ -43,21 +43,16 @@ export class FlashcardService {
       return [];
     }
 
-    const aiCards =
-      userId
-        ? await this.generateWithAi({
-            userId,
-            videoTitle,
-            outlineMarkdown,
-            transcriptSegments,
-            maxCards,
-          })
-        : [];
-
-    const seeds =
-      aiCards.length > 0
-        ? aiCards
-        : this.buildFallbackSeeds(transcriptSegments, Math.min(8, maxCards));
+    if (!userId) {
+      throw new Error('生成闪卡需要有效的 userId');
+    }
+    const seeds = await this.generateWithAi({
+      userId,
+      videoTitle,
+      outlineMarkdown,
+      transcriptSegments,
+      maxCards,
+    });
 
     const created: any[] = [];
     for (let idx = 0; idx < seeds.length; idx += 1) {
@@ -98,74 +93,68 @@ export class FlashcardService {
     maxCards: number;
   }) {
     const { userId, videoTitle, outlineMarkdown, transcriptSegments, maxCards } = params;
-    try {
-      const compactSegments = transcriptSegments.slice(0, 40).map((seg, idx) => ({
-        idx,
-        start: seg.start ?? idx * 15,
-        end: seg.end ?? (idx + 1) * 15,
-        text: this.truncate(seg.text, 180),
-      }));
-
-      const llm = await this.aiRouter.execute(
-        AITaskType.LLM_CHAT,
-        {
-          messages: [
-            {
-              role: 'system',
-              content: [
-                '你是学习设计专家，要基于视频内容生成高质量学习闪卡。',
-                '输出必须是 JSON 数组，每项字段：front, back, chapter, difficulty。',
-                `卡片数量不超过 ${maxCards}，不少于 ${Math.max(6, Math.floor(maxCards * 0.7))}。`,
-                'front 是问题句，back 是简明但具体的答案，必须有可执行或可复述信息。',
-                'difficulty 取值 1-5。',
-                '禁止输出 markdown 代码块。',
-              ].join('\n'),
-            },
-            {
-              role: 'user',
-              content: JSON.stringify(
-                {
-                  title: videoTitle,
-                  outline: this.truncate(outlineMarkdown, 2200),
-                  transcriptSegments: compactSegments,
-                },
-                null,
-                2,
-              ),
-            },
-          ],
-          temperature: 0.45,
-          maxTokens: 3200,
-        },
-        userId,
-      );
-
-      const text = String(llm?.text ?? '').trim();
-      if (!text) return [];
-
-      const parsed = this.parseJsonArray(text);
-      return parsed
-        .map((item) => ({
-          front: this.asText(item?.front),
-          back: this.asText(item?.back),
-          chapter: this.asText(item?.chapter) || '核心知识',
-          difficulty: Number(item?.difficulty),
-        }))
-        .filter((item) => item.front && item.back)
-        .slice(0, maxCards);
-    } catch (error) {
-      this.logger.warn(`Flashcard AI generation fallback: ${error?.message || 'unknown error'}`);
-      return [];
-    }
-  }
-
-  private buildFallbackSeeds(segments: FlashcardSegment[], maxCards: number) {
-    return segments.slice(0, maxCards).map((seg, idx) => ({
-      front: `第 ${idx + 1} 段的核心观点是什么？`,
-      back: seg.text,
-      chapter: `章节 ${idx + 1}`,
-      difficulty: Math.min(5, 1 + (idx % 5)),
+    const compactSegments = transcriptSegments.slice(0, 40).map((seg, idx) => ({
+      idx,
+      start: seg.start ?? idx * 15,
+      end: seg.end ?? (idx + 1) * 15,
+      text: this.truncate(seg.text, 180),
     }));
+
+    const llm = await this.aiRouter.execute(
+      AITaskType.LLM_CHAT,
+      {
+        messages: [
+          {
+            role: 'system',
+            content: [
+              '你是学习设计专家，要基于视频内容生成高质量学习闪卡。',
+              '输出必须是 JSON 数组，每项字段：front, back, chapter, difficulty。',
+              `卡片数量不超过 ${maxCards}，不少于 ${Math.max(6, Math.floor(maxCards * 0.7))}。`,
+              'front 是问题句，back 是简明但具体的答案，必须有可执行或可复述信息。',
+              'difficulty 取值 1-5。',
+              '禁止输出 markdown 代码块。',
+            ].join('\n'),
+          },
+          {
+            role: 'user',
+            content: JSON.stringify(
+              {
+                title: videoTitle,
+                outline: this.truncate(outlineMarkdown, 2200),
+                transcriptSegments: compactSegments,
+              },
+              null,
+              2,
+            ),
+          },
+        ],
+        temperature: 0.45,
+        maxTokens: 3200,
+      },
+      userId,
+    );
+
+    const text = this.extractLlmText(llm);
+    if (!text) {
+      const provider = String(llm?.provider ?? 'unknown');
+      const model = String(llm?.model ?? 'unknown');
+      throw new Error(`闪卡模型未返回内容(provider=${provider}, model=${model})`);
+    }
+
+    const parsed = this.parseJsonArray(text);
+    const cards = parsed
+      .map((item) => ({
+        front: this.asText(item?.front),
+        back: this.asText(item?.back),
+        chapter: this.asText(item?.chapter) || '核心知识',
+        difficulty: Number(item?.difficulty),
+      }))
+      .filter((item) => item.front && item.back)
+      .slice(0, maxCards);
+    if (cards.length === 0) {
+      throw new Error('闪卡模型返回格式无效');
+    }
+    return cards;
   }
 
   private parseJsonArray(raw: string): any[] {
@@ -179,7 +168,8 @@ export class FlashcardService {
       if (!candidate) continue;
       try {
         const parsed = JSON.parse(candidate);
-        if (Array.isArray(parsed)) return parsed;
+        const extracted = this.extractCardArray(parsed);
+        if (extracted) return extracted;
       } catch {
         // continue
       }
@@ -188,15 +178,80 @@ export class FlashcardService {
     const match = raw.match(/\[[\s\S]*\]/);
     if (match) {
       const parsed = JSON.parse(match[0]);
-      if (Array.isArray(parsed)) return parsed;
+      const extracted = this.extractCardArray(parsed);
+      if (extracted) return extracted;
     }
 
-    throw new Error('Invalid flashcard JSON');
+    const objectMatch = raw.match(/\{[\s\S]*\}/);
+    if (objectMatch) {
+      try {
+        const parsed = JSON.parse(objectMatch[0]);
+        const extracted = this.extractCardArray(parsed);
+        if (extracted) return extracted;
+      } catch {
+        // continue
+      }
+    }
+
+    this.logger.error(
+      `Invalid flashcard JSON payload: ${this.truncate(raw, 400)}`,
+    );
+    throw new Error('Invalid flashcard JSON: expected array or object with cards/items/flashcards');
+  }
+
+  private extractCardArray(parsed: any): any[] | null {
+    if (Array.isArray(parsed)) return parsed;
+    if (!parsed || typeof parsed !== 'object') return null;
+
+    const possibleKeys = ['cards', 'items', 'flashcards', 'data', 'result'];
+    for (const key of possibleKeys) {
+      const value = parsed[key];
+      if (Array.isArray(value)) return value;
+      if (value && typeof value === 'object') {
+        if (Array.isArray(value.cards)) return value.cards;
+        if (Array.isArray(value.items)) return value.items;
+        if (Array.isArray(value.flashcards)) return value.flashcards;
+      }
+    }
+    return null;
   }
 
   private asText(value: unknown) {
     if (typeof value !== 'string') return '';
     return value.trim();
+  }
+
+  private extractLlmText(llm: any) {
+    const candidates: unknown[] = [
+      llm?.text,
+      llm?.content,
+      llm?.description,
+      llm?.message?.content,
+      llm?.result?.text,
+      llm?.result?.content,
+    ];
+
+    for (const candidate of candidates) {
+      if (typeof candidate === 'string') {
+        const text = candidate.trim();
+        if (text) return text;
+      }
+      if (Array.isArray(candidate)) {
+        const joined = candidate
+          .map((part) => {
+            if (typeof part === 'string') return part;
+            if (part && typeof part === 'object' && typeof (part as any).text === 'string') {
+              return (part as any).text;
+            }
+            return '';
+          })
+          .join('\n')
+          .trim();
+        if (joined) return joined;
+      }
+    }
+
+    return '';
   }
 
   private truncate(text: string, maxLength: number) {

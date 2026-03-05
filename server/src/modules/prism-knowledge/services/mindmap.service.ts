@@ -258,9 +258,11 @@ export class MindmapService {
         userId,
       );
 
-      const text = String(llm?.text ?? '').trim();
+      const text = this.extractLlmText(llm);
       if (!text) {
-        throw new Error('AI 返回空内容');
+        const provider = String(llm?.provider ?? 'unknown');
+        const model = String(llm?.model ?? 'unknown');
+        throw new Error(`AI 返回空内容(provider=${provider}, model=${model})`);
       }
 
       // 容错解析 AI 返回的 JSON（支持 ```json 包裹和前后噪声文本）
@@ -343,6 +345,39 @@ export class MindmapService {
     throw new Error(
       `无法解析思维导图 JSON，返回内容片段: ${raw.slice(0, 180)}`,
     );
+  }
+
+  private extractLlmText(llm: any) {
+    const candidates: unknown[] = [
+      llm?.text,
+      llm?.content,
+      llm?.description,
+      llm?.message?.content,
+      llm?.result?.text,
+      llm?.result?.content,
+    ];
+
+    for (const candidate of candidates) {
+      if (typeof candidate === 'string') {
+        const text = candidate.trim();
+        if (text) return text;
+      }
+      if (Array.isArray(candidate)) {
+        const joined = candidate
+          .map((part) => {
+            if (typeof part === 'string') return part;
+            if (part && typeof part === 'object' && typeof (part as any).text === 'string') {
+              return (part as any).text;
+            }
+            return '';
+          })
+          .join('\n')
+          .trim();
+        if (joined) return joined;
+      }
+    }
+
+    return '';
   }
 
   /**

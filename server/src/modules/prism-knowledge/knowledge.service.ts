@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { CrystalCardType, TaskStatus } from '../../../generated/prisma/enums';
 import { WsGateway } from '../../infrastructure/websocket/ws.gateway';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -28,6 +28,8 @@ import { ExportService } from './services/export.service';
 
 @Injectable()
 export class KnowledgeService {
+  private readonly logger = new Logger(KnowledgeService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly wsGateway: WsGateway,
@@ -364,10 +366,15 @@ export class KnowledgeService {
         const result = await this.analyze(userId, videoId, options);
         results.push({ videoId, status: 'completed', result });
       } catch (error: any) {
+        const message = error?.message || 'Unknown error';
+        this.logger.error(
+          `Analyze batch failed for video ${videoId}: ${message}`,
+          error?.stack,
+        );
         results.push({
           videoId,
           status: 'failed',
-          error: error?.message || 'Unknown error',
+          error: message,
         });
       }
     }

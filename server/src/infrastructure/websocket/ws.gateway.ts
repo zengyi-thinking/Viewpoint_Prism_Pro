@@ -136,6 +136,23 @@ interface VideoHighlightPayload {
   timestamp: string;
 }
 
+// ============================================================
+// Frame Analysis Payloads
+// ============================================================
+
+interface FrameAnalysisPayload {
+  sessionId: string;
+  imageUrl: string;
+  timestamp: number;
+  description: string;
+  detectedObjects: string[];
+}
+
+interface FrameRegionAnalysisPayload {
+  sessionId: string;
+  analysis: string;
+}
+
 @WebSocketGateway({
   cors: {
     origin: '*',
@@ -371,6 +388,16 @@ export class WsGateway implements OnGatewayInit, OnGatewayConnection, OnGatewayD
   // Send highlight event
   emitVideoHighlight(userId: string, payload: VideoHighlightPayload) {
     this.emitToUser(userId, 'video:highlight', payload);
+  }
+
+  // Send frame analysis event
+  emitFrameAnalysis(projectId: string, payload: FrameAnalysisPayload) {
+    this.emitToProject(projectId, 'frame:analysis', payload);
+  }
+
+  // Send frame region analysis event
+  emitFrameRegionAnalysis(projectId: string, payload: FrameRegionAnalysisPayload) {
+    this.emitToProject(projectId, 'frame:region-analysis', payload);
   }
 
   // Broadcast session update to project room

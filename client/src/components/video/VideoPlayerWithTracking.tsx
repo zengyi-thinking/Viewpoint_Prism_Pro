@@ -11,6 +11,10 @@ interface VideoPlayerWithTrackingProps {
   onBookmark?: () => void;
   onNote?: () => void;
   onHighlight?: () => void;
+  // 画面分析相关回调
+  onPauseForAnalysis?: (timestamp: number) => void;
+  onSeekForAnalysis?: (fromTime: number, toTime: number) => void;
+  onRegionClick?: (clicks: Array<{x: number; y: number; timestamp: number}>) => void;
 }
 
 export const VideoPlayerWithTracking: React.FC<VideoPlayerWithTrackingProps> = ({
@@ -21,7 +25,14 @@ export const VideoPlayerWithTracking: React.FC<VideoPlayerWithTrackingProps> = (
   onBookmark,
   onNote,
   onHighlight,
+  onPauseForAnalysis,
+  onSeekForAnalysis,
+  onRegionClick,
 }) => {
+  // 区域点击跟踪状态
+  const [regionClicks, setRegionClicks] = React.useState<Array<{x: number; y: number; timestamp: number}>>([]);
+  const [clickTimeout, setClickTimeout] = React.useState<NodeJS.Timeout | null>(null);
+
   const {
     videoRef,
     playerState,
@@ -39,10 +50,29 @@ export const VideoPlayerWithTracking: React.FC<VideoPlayerWithTrackingProps> = (
     batchInterval: 5000,
     maxBatchSize: 10,
     onPlay: () => console.log('Video played'),
-    onPause: () => console.log('Video paused'),
-    onSeek: (time) => console.log('Seeked to', time),
+    onPause: () => {
+      console.log('Video paused');
+      onPauseForAnalysis?.(playerState.currentTime);
+    },
+    onSeek: (time) => {
+      console.log('Seeked to', time);
+      // 跳跃超过 5 秒才触发分析
+      const previousTime = playerState.currentTime;
+      if (Math.abs(time - previousTime) > 5) {
+        onSeekForAnalysis?.(previousTime, time);
+      }
+    },
     onEnd: () => console.log('Video ended'),
   });
+
+  // 清理点击 timeout
+  useEffect(() => {
+    return () => {
+      if (clickTimeout) {
+        clearTimeout(clickTimeout);
+      }
+    };
+  }, [clickTimeout]);
 
   const formatTime = (seconds: number): string => {
     const mins = Math.floor(seconds / 60);
@@ -94,6 +124,37 @@ export const VideoPlayerWithTracking: React.FC<VideoPlayerWithTrackingProps> = (
     }
   };
 
+  // 处理视频画面点击，用于区域分析
+  const handleVideoClick = (e: React.MouseEvent<HTMLVideoElement>) => {
+    if (!videoRef.current) return;
+
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = ((e.clientX - rect.left) / rect.width) * 100;
+    const y = ((e.clientY - rect.top) / rect.height) * 100;
+    const timestamp = playerState.currentTime;
+
+    // 清理之前的 timeout
+    if (clickTimeout) {
+      clearTimeout(clickTimeout);
+    }
+
+    // 添加新点击
+    const newClicks = [...regionClicks, { x, y, timestamp }];
+    setRegionClicks(newClicks);
+
+    // 设置新的 timeout，如果 2 秒内没有更多点击则重置
+    const timeoutId = setTimeout(() => {
+      setRegionClicks([]);
+    }, 2000);
+    setClickTimeout(timeoutId);
+
+    // 如果累积 3 次点击，触发区域分析
+    if (newClicks.length >= 3) {
+      onRegionClick?.(newClicks);
+      setRegionClicks([]); // 重置点击列表
+    }
+  };
+
   const progress = playerState.duration > 0
     ? (playerState.currentTime / playerState.duration) * 100
     : 0;
@@ -107,6 +168,7 @@ export const VideoPlayerWithTracking: React.FC<VideoPlayerWithTrackingProps> = (
           className="w-full h-full"
           controls={false}
           playsInline
+          onClick={handleVideoClick}
         />
 
         {/* Custom Controls */}

@@ -85,6 +85,7 @@ export class AiRouterService {
 
           if (!apiKey) {
             this.logger.warn(`No API key found for provider ${provider.name}, skipping`);
+            lastError = new Error(`No API key found for provider ${provider.name}`);
             continue;
           }
 
@@ -192,7 +193,19 @@ export class AiRouterService {
         return 0;
       });
 
-    return sorted;
+    const strictIsolation = this.isStrictIsolationEnabled();
+    if (!strictIsolation) {
+      return sorted;
+    }
+
+    // 严格隔离模式：只执行当前任务偏好的 Provider，不做跨服务商 fallback
+    const preferredProvider = sorted.find((p) => p.name === userPreference);
+    if (preferredProvider) {
+      return [preferredProvider];
+    }
+
+    // 如果偏好 Provider 不支持该任务，回退到该任务的默认首位
+    return sorted.length > 0 ? [sorted[0]] : [];
   }
 
   /**
@@ -254,7 +267,6 @@ export class AiRouterService {
       case 'whisper':
         return (
           this.configService.get<string>('OPENAI_API_KEY') ||
-          this.configService.get<string>('SILICONFLOW_API_KEY') ||
           this.configService.get<string>('OPENAI_PREMIUM_API_KEY') ||
           null
         );
@@ -274,7 +286,6 @@ export class AiRouterService {
         return (
           this.configService.get<string>('SEEDANCE_API_KEY') ||
           this.configService.get<string>('SILICONFLOW_API_KEY') ||
-          this.configService.get<string>('OPENAI_API_KEY') ||
           null
         );
       case 'elevenlabs':
@@ -332,5 +343,12 @@ export class AiRouterService {
     } catch (error) {
       this.logger.error(`Failed to log execution: ${error.message}`);
     }
+  }
+
+  private isStrictIsolationEnabled(): boolean {
+    // 默认开启严格隔离，确保“选谁就只用谁”
+    const raw = this.configService.get<string>('AI_ROUTER_STRICT_ISOLATION');
+    if (raw == null || raw === '') return true;
+    return raw !== 'false' && raw !== '0';
   }
 }

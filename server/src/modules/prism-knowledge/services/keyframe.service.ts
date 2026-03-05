@@ -79,7 +79,7 @@ export class KeyframeService {
       if (video.sourceType === 'LOCAL_UPLOAD' && video.storagePath) {
         created = await this.extractFromLocalUpload(video, userId, options);
       } else {
-        created = await this.createFallbackKeyframes(video);
+        throw new Error('当前仅支持对本地上传视频抽取关键帧');
       }
 
       await this.prisma.videoSource.update({
@@ -95,7 +95,7 @@ export class KeyframeService {
         data: { keyframeStatus: 'FAILED' },
       });
       await options.onStatus?.('failed', { error: error.message });
-      return [];
+      throw error;
     }
   }
 
@@ -155,8 +155,8 @@ export class KeyframeService {
         try {
           await this.ffmpeg.extractFrame(tempVideoPath, ts, tempFramePath);
         } catch (error) {
-          this.logger.warn(`Skip keyframe at ${ts}s for ${video.id}: ${error.message}`);
-          continue;
+          const message = error instanceof Error ? error.message : String(error);
+          throw new Error(`关键帧提取失败 @${ts}s: ${message}`);
         }
 
         const frameBuffer = await fs.readFile(tempFramePath);
@@ -221,11 +221,7 @@ export class KeyframeService {
       }
 
       if (created.length === 0) {
-        return this.createFallbackKeyframes({
-          id: video.id,
-          duration: Math.round(safeDuration),
-          thumbnailUrl: null,
-        });
+        throw new Error('关键帧抽取失败：未产出可用关键帧');
       }
 
       return created;
@@ -260,34 +256,29 @@ export class KeyframeService {
     userId: string,
     defaultFrameType: 'PPT' | 'WHITEBOARD' | 'CHART' | 'SCENE_CHANGE' | 'SPEAKER',
   ) {
-    try {
-      const result = await this.aiRouter.execute(
-        AITaskType.MULTIMODAL,
-        {
-          prompt:
-            '请识别这帧画面属于哪一类：PPT, WHITEBOARD, CHART, SCENE_CHANGE, SPEAKER。返回一行类别和一句中文描述。',
-          image: image.imageBase64,
-          imageUrl: image.imageUrl ?? undefined,
-        },
-        userId,
-      );
+    const result = await this.aiRouter.execute(
+      AITaskType.MULTIMODAL,
+      {
+        prompt:
+          '请识别这帧画面属于哪一类：PPT, WHITEBOARD, CHART, SCENE_CHANGE, SPEAKER。返回一行类别和一句中文描述。',
+        image: image.imageBase64,
+        imageUrl: image.imageUrl ?? undefined,
+      },
+      userId,
+    );
 
-      const description = String(
-        result?.description || result?.text || result?.content || '',
-      ).trim();
-      const frameType = this.inferFrameTypeFromText(description, defaultFrameType);
-
-      return {
-        frameType,
-        description: description || `关键帧自动识别：${frameType}`,
-      };
-    } catch (error) {
-      this.logger.warn(`Multimodal classify fallback: ${error.message}`);
-      return {
-        frameType: defaultFrameType,
-        description: `关键帧自动提取（${defaultFrameType}）`,
-      };
+    const description = String(
+      result?.description || result?.text || result?.content || '',
+    ).trim();
+    if (!description) {
+      throw new Error('多模态模型未返回关键帧描述');
     }
+    const frameType = this.inferFrameTypeFromText(description, defaultFrameType);
+
+    return {
+      frameType,
+      description,
+    };
   }
 
   private inferFrameTypeFromText(
@@ -301,35 +292,6 @@ export class KeyframeService {
     if (normalized.includes('SCENE_CHANGE') || normalized.includes('场景切换')) return 'SCENE_CHANGE';
     if (normalized.includes('PPT') || normalized.includes('幻灯片')) return 'PPT';
     return fallback;
-  }
-
-  private async createFallbackKeyframes(video: {
-    id: string;
-    duration: number | null;
-    thumbnailUrl: string | null;
-  }) {
-    const duration = Math.max(6, Math.round(video.duration ?? 60));
-    const timestamps = this.pickTimestamps(duration).slice(0, 4);
-    const created: any[] = [];
-
-    for (let idx = 0; idx < timestamps.length; idx += 1) {
-      const ts = timestamps[idx];
-      const record = await this.prisma.keyframe.create({
-        data: {
-          videoId: video.id,
-          timestamp: ts,
-          frameType: 'SCENE_CHANGE',
-          storagePath:
-            video.thumbnailUrl ??
-            `external://video/${video.id}/keyframe/${idx + 1}`,
-          description: `降级关键帧 ${idx + 1}`,
-          similarity: idx === 0 ? null : 0.8,
-        },
-      });
-      created.push(record);
-    }
-
-    return created;
   }
 
   private pickTimestamps(duration: number) {

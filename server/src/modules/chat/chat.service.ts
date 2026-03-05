@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import {
   CrystalCardType as DbCrystalCardType,
   MessageRole as DbMessageRole,
@@ -17,6 +17,7 @@ import {
   PrismActionType,
   SendChatMessageDto,
 } from './dto';
+import { FrameAnalysisService } from './services/frame-analysis.service';
 
 type ChatRole = 'user' | 'assistant' | 'system';
 
@@ -28,6 +29,7 @@ export class ChatService {
     private readonly knowledgeService: KnowledgeService,
     private readonly videoBehaviorService: VideoBehaviorService,
     private readonly aiRouter: AiRouterService,
+    private readonly frameAnalysisService: FrameAnalysisService,
   ) {}
 
   async createSession(userId: string, dto: CreateChatSessionDto) {
@@ -140,6 +142,15 @@ export class ChatService {
           })
         : session;
 
+    // 检查是否需要画面分析
+    const metadata = dto.metadata || {};
+    const frameBase64 = metadata.frameBase64 as string | undefined;
+    const timestamp = (metadata.timestamp as number | undefined) ?? 0;
+    const regionClicks = metadata.regionClicks as Array<{ x: number; y: number; timestamp: number }> | undefined;
+    const needsFrameAnalysis =
+      frameBase64 && resolvedVideoId && resolvedPrism === ChatPrismType.KNOWLEDGE;
+
+    // 创建用户消息
     const userMessage = await this.prisma.chatMessage.create({
       data: {
         sessionId,
@@ -151,6 +162,68 @@ export class ChatService {
         } as any,
       },
     });
+
+    // 推送用户消息
+    this.wsGateway.emitChatMessage(updatedSession.projectId, {
+      projectId: updatedSession.projectId,
+      sessionId,
+      role: 'user',
+      content: userMessage.content,
+      metadata: userMessage.metadata,
+      timestamp: userMessage.createdAt.toISOString(),
+    });
+
+    // 画面分析处理
+    let frameAnalysisContext: string | null = null;
+    let frameImage: string | null = null;
+
+    if (needsFrameAnalysis && resolvedVideoId) {
+      try {
+        // 分析当前帧
+        const frameAnalysis = await this.frameAnalysisService.analyzeFrame({
+          userId,
+          videoId: resolvedVideoId,
+          timestamp: timestamp || 0,
+          frameBase64: frameBase64 as string,
+        });
+
+        frameAnalysisContext = `[${Math.round(frameAnalysis.timestamp)}秒]: ${frameAnalysis.description}`;
+        frameImage = frameAnalysis.imageUrl || frameBase64 as string;
+
+        // 推送帧分析结果（用于前端显示图片）
+        this.wsGateway.emitFrameAnalysis(updatedSession.projectId, {
+          sessionId,
+          imageUrl: frameImage,
+          timestamp: frameAnalysis.timestamp,
+          description: frameAnalysis.description,
+          detectedObjects: frameAnalysis.detectedObjects,
+        });
+
+        // 处理区域点击分析
+        if (regionClicks && Array.isArray(regionClicks) && regionClicks.length >= 3) {
+          const regionAnalysis = await this.frameAnalysisService.analyzeRegionClicks(
+            userId,
+            resolvedVideoId,
+            regionClicks as any,
+            frameBase64 as string,
+          );
+
+          // 推送区域分析结果
+          this.wsGateway.emitFrameRegionAnalysis(updatedSession.projectId, {
+            sessionId,
+            analysis: regionAnalysis,
+          });
+        }
+      } catch (error) {
+        // 不阻断主对话链路，继续使用 transcript/knowledge 进行回答
+        this.wsGateway.emitToProject(updatedSession.projectId, 'chat:error', {
+          sessionId,
+          type: 'frame_analysis',
+          message: error instanceof Error ? error.message : String(error),
+          timestamp: new Date().toISOString(),
+        });
+      }
+    }
 
     const prismAction = this.inferPrismAction(resolvedPrism, dto.content);
     const prismPayload = this.buildPrismPayload(
@@ -175,6 +248,7 @@ export class ChatService {
             dto.content,
             prismAction,
             hasVideoSwitched,
+            frameAnalysisContext,
           );
 
     const assistantMessage = await this.prisma.chatMessage.create({
@@ -211,33 +285,15 @@ export class ChatService {
       }
 
       if (prismAction === PrismActionType.GENERATE_SUMMARY) {
-        try {
-          await this.knowledgeService.analyze(userId, resolvedVideoId, {});
-        } catch {
-          // Ignore re-analyze errors and continue to card generation attempt.
-        }
-
-        try {
-          await this.knowledgeService.regenerateCrystalCards(userId, resolvedVideoId, {
-            types: ['CONCEPT', 'TIMELINE', 'INSIGHT', 'SUMMARY'],
-            maxCards: 12,
-            includeKeyframes: true,
-            difficulty: 2,
-          });
-        } catch {
-          // Keep chat flow responsive even when card generation fails.
-        }
+        await this.knowledgeService.analyze(userId, resolvedVideoId, {});
+        await this.knowledgeService.regenerateCrystalCards(userId, resolvedVideoId, {
+          types: ['CONCEPT', 'TIMELINE', 'INSIGHT', 'SUMMARY'],
+          maxCards: 12,
+          includeKeyframes: true,
+          difficulty: 2,
+        });
       }
     }
-
-    this.wsGateway.emitChatMessage(updatedSession.projectId, {
-      projectId: updatedSession.projectId,
-      sessionId,
-      role: 'user',
-      content: userMessage.content,
-      metadata: userMessage.metadata,
-      timestamp: userMessage.createdAt.toISOString(),
-    });
 
     this.wsGateway.emitChatMessage(updatedSession.projectId, {
       projectId: updatedSession.projectId,
@@ -455,31 +511,6 @@ export class ChatService {
     );
   }
 
-  private buildAssistantAck(
-    action: PrismActionType,
-    prism: ChatPrismType | null,
-  ) {
-    switch (action) {
-      case PrismActionType.INJECT_QA_CARD:
-        return '已收到问题，正在生成并注入知识时间轴 Q&A 卡片。';
-      case PrismActionType.UPDATE_NODE_PROMPT:
-        return '已收到创作指令，正在更新当前节点 Prompt。';
-      case PrismActionType.REFINE_TRANSLATION_SEGMENT:
-        return '已收到译制润色请求，正在更新字幕语境。';
-      case PrismActionType.REGENERATE_PLATFORM_DRAFT:
-        return '已收到分发改写请求，正在重生成平台文案草稿。';
-      case PrismActionType.GENERATE_SUMMARY:
-        return '已收到总结指令，正在整理关键内容。';
-      case PrismActionType.GENERATE_MINDMAP:
-        return '已收到思维导图指令，正在构建内容结构。';
-      case PrismActionType.NONE:
-      default:
-        return prism
-          ? '已收到消息，正在按当前棱镜上下文处理。'
-          : '已收到消息，正在处理。';
-    }
-  }
-
   private async buildAssistantReplyFromModel(
     userId: string,
     sessionId: string,
@@ -488,6 +519,7 @@ export class ChatService {
     userContent: string,
     action: PrismActionType,
     ignoreHistory = false,
+    frameAnalysisContext: string | null = null,
   ) {
     let transcriptContext: string | null = null;
     let behaviorContext: string | null = null;
@@ -507,8 +539,9 @@ export class ChatService {
       const hasTranscript = Boolean(transcriptContext?.trim());
       const hasKnowledgeAsset = Boolean(knowledgeAssetContext?.trim());
       const hasQa = Boolean(qaContext?.trim());
-      if (!hasTranscript && !hasKnowledgeAsset && !hasQa) {
-        return '当前视频还没有可用的分析结果。请先点击“确认分析”，等待分析完成后再提问。';
+      // 如果没有传统分析结果，但有画面分析上下文，仍然可以回答
+      if (!hasTranscript && !hasKnowledgeAsset && !hasQa && !frameAnalysisContext) {
+        return '当前视频还没有可用的分析结果。请先点击”确认分析”，等待分析完成后再提问。';
       }
     }
 
@@ -529,6 +562,7 @@ export class ChatService {
         knowledgeAssetContext,
         qaContext,
         userProfileContext,
+        frameAnalysisContext,
       );
       const chatMessages = [
         { role: 'system', content: systemPrompt },
@@ -551,23 +585,50 @@ export class ChatService {
         userId,
       );
 
-      const text = String(llm?.text ?? '').trim();
-      if (text) return text;
-    } catch {
-      // fallback below
+      const text = this.extractLlmText(llm);
+      if (!text) {
+        const provider = String(llm?.provider ?? 'unknown');
+        const model = String(llm?.model ?? 'unknown');
+        throw new Error(`聊天模型未返回内容(provider=${provider}, model=${model})`);
+      }
+      return text;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      throw new BadRequestException(`模型调用失败: ${message}`);
+    }
+  }
+
+  private extractLlmText(llm: any) {
+    const candidates: unknown[] = [
+      llm?.text,
+      llm?.content,
+      llm?.description,
+      llm?.message?.content,
+      llm?.result?.text,
+      llm?.result?.content,
+    ];
+
+    for (const candidate of candidates) {
+      if (typeof candidate === 'string') {
+        const text = candidate.trim();
+        if (text) return text;
+      }
+      if (Array.isArray(candidate)) {
+        const joined = candidate
+          .map((part) => {
+            if (typeof part === 'string') return part;
+            if (part && typeof part === 'object' && typeof (part as any).text === 'string') {
+              return (part as any).text;
+            }
+            return '';
+          })
+          .join('\n')
+          .trim();
+        if (joined) return joined;
+      }
     }
 
-    if (prism === ChatPrismType.KNOWLEDGE) {
-      const contextualFallback = this.buildKnowledgeContextFallback(
-        userContent,
-        transcriptContext,
-        knowledgeAssetContext,
-        qaContext,
-      );
-      if (contextualFallback) return contextualFallback;
-    }
-
-    return this.buildAssistantAck(action, prism);
+    return '';
   }
 
   private async getKnowledgeTranscriptContext(videoId: string) {
@@ -589,6 +650,7 @@ export class ChatService {
     knowledgeAssetContext: string | null,
     qaContext: string | null,
     userProfileContext: string | null,
+    frameAnalysisContext: string | null = null,
   ) {
     const base =
       '你是 Viewpoint Prism Pro 的工作台助手。回答必须简洁、可执行，优先给结构化结论。';
@@ -596,13 +658,25 @@ export class ChatService {
     if (prism === ChatPrismType.KNOWLEDGE) {
       return [
         base,
-        '当前处于知识棱镜，请给学习者可理解的解释，并尽量对应视频上下文。',
-        `当前动作: ${action}`,
-        transcriptContext ? `视频转写片段:\n${transcriptContext}` : '',
-        knowledgeAssetContext ? `知识资产摘要:\n${knowledgeAssetContext}` : '',
-        qaContext ? `历史Q&A补充:\n${qaContext}` : '',
-        userProfileContext ? `用户画像:\n${userProfileContext}` : '',
-        behaviorContext ? `用户观看行为线索:\n${behaviorContext}` : '',
+        '当前处于知识棱镜，帮助用户深度理解和学习视频内容。',
+        '',
+        '## 上下文信息',
+        transcriptContext ? `**视频转写片段**:\n${transcriptContext.slice(0, 800)}` : '',
+        knowledgeAssetContext ? `**知识资产摘要**:\n${knowledgeAssetContext.slice(0, 600)}` : '',
+        qaContext ? `**历史Q&A补充**:\n${qaContext.slice(0, 400)}` : '',
+        frameAnalysisContext ? `**画面分析**:\n${frameAnalysisContext}` : '',
+        userProfileContext ? `**用户画像**:\n${userProfileContext}` : '',
+        behaviorContext ? `**用户观看行为线索**:\n${behaviorContext}` : '',
+        '',
+        '## 回答要求',
+        '1. 基于提供的上下文信息，给出具体、有见地的回答',
+        '2. 如果有画面分析，优先引用视觉证据进行解释',
+        '3. 优先使用视频中的实际内容，避免泛泛而谈',
+        '4. 回答结构清晰，使用列表、分段等方式提高可读性',
+        '5. 避免模板化语言，如"根据视频内容"、"一般来说"等套话',
+        '6. 如果引用时间点，使用格式 "[时间:ss]"',
+        '',
+        `## 当前动作\n${action}`,
       ]
         .filter(Boolean)
         .join('\n\n');
@@ -702,32 +776,6 @@ export class ChatService {
     }
 
     return segments.length > 0 ? segments.join('\n') : null;
-  }
-
-  private buildKnowledgeContextFallback(
-    userContent: string,
-    transcriptContext: string | null,
-    knowledgeAssetContext: string | null,
-    qaContext: string | null,
-  ) {
-    const context =
-      [knowledgeAssetContext, qaContext, transcriptContext]
-        .filter(Boolean)
-        .join('\n')
-        .trim() || '';
-
-    if (!context) return null;
-
-    const preview = context.split('\n').filter(Boolean).slice(0, 8).join('\n');
-    return [
-      '我已基于当前视频的已分析内容整理回答。',
-      `你的问题：${userContent}`,
-      '',
-      '相关内容摘录：',
-      preview,
-      '',
-      '如果你要更精确，我可以继续按“时间点 + 概念”方式展开。',
-    ].join('\n');
   }
 
   private async getBehaviorInsightContext(userId: string, videoId: string) {

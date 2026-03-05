@@ -9,6 +9,7 @@ describe('ChatService prism boundary', () => {
       {} as any,
       {} as any,
       {} as any,
+      {} as any,
     );
 
   it('should keep summarize intent inside knowledge prism only', () => {

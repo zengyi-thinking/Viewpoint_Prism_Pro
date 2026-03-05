@@ -20,6 +20,7 @@ export function WorkbenchShell({ projectName, projectId }: { projectName?: strin
   const requestSeekTo = useWorkbenchStore((s) => s.requestSeekTo);
   const activePrism = useWorkbenchStore((s) => s.activePrism);
   const containerRef = useRef<HTMLDivElement>(null);
+  const videoPlayerRef = useRef<HTMLVideoElement>(null); // 共享的视频引用，用于画面分析
   const [leftWidth, setLeftWidth] = useState(280);
   const [rightWidth, setRightWidth] = useState(320);
   const [leftCollapsed, setLeftCollapsed] = useState(false);
@@ -231,17 +232,17 @@ export function WorkbenchShell({ projectName, projectId }: { projectName?: strin
             {isCreationMode ? (
               <div className="absolute left-0 bottom-0 z-20 w-48 rounded-lg border border-border bg-bg-panel shadow-xl transition-all duration-500 hover:z-30"
                    style={{ width: '200px', height: '112px' }}>
-                <PlayerCenter />
+                <PlayerCenter videoRef={videoPlayerRef} />
               </div>
             ) : (
               <div className="grid min-w-0 min-h-0 flex-1 grid-rows-[minmax(220px,42svh)_1px_minmax(0,1fr)] overflow-hidden">
-                <PlayerCenter />
+                <PlayerCenter videoRef={videoPlayerRef} />
 
                 {/* Separator between Player and Chat */}
                 <div className="shrink-0 h-px bg-border-subtle" />
 
                 <div className="min-h-0">
-                  <ChatDock projectId={projectId} />
+                  <ChatDock projectId={projectId} videoPlayerRef={videoPlayerRef} />
                 </div>
               </div>
             )}
@@ -252,7 +253,7 @@ export function WorkbenchShell({ projectName, projectId }: { projectName?: strin
                 <div className="flex-1" />
                 <div className="h-px bg-border-subtle" />
                 <div className="pointer-events-auto h-[42%] min-h-[260px] max-h-[420px]">
-                  <ChatDock projectId={projectId} />
+                  <ChatDock projectId={projectId} videoPlayerRef={videoPlayerRef} />
                 </div>
               </div>
             )}

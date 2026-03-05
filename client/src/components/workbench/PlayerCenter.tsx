@@ -11,7 +11,11 @@ const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 // Default player height (can be adjusted via resize handle)
 const MIN_PLAYER_HEIGHT = 220;
 
-export function PlayerCenter() {
+interface PlayerCenterProps {
+  videoRef?: React.RefObject<HTMLVideoElement | null> | null;
+}
+
+export function PlayerCenter({ videoRef: externalVideoRef }: PlayerCenterProps = {}) {
   const { currentVideo, seekRequest, clearSeekRequest } = useWorkbenchStore();
   const tracking = useVideoBehaviorTracking({
     videoId: currentVideo?.id ?? '',
@@ -21,6 +25,14 @@ export function PlayerCenter() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const pendingSeekRef = useRef<number | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+
+  // 同步外部 videoRef（用于 ChatDock 的帧捕获）
+  useEffect(() => {
+    if (externalVideoRef && videoRef.current) {
+      // 更新外部 ref 指向内部的 video 元素
+      (externalVideoRef as any).current = videoRef.current;
+    }
+  }, [externalVideoRef]);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
