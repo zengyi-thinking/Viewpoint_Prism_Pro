@@ -202,6 +202,44 @@ export class GenerateNextNodeDto {
   @IsOptional()
   @IsString()
   branchName?: string;
+
+  @IsOptional()
+  @IsString()
+  scriptSegment?: string;
+
+  @IsOptional()
+  @IsString()
+  videoPrompt?: string;
+
+  @IsOptional()
+  @IsString()
+  sceneFramePrompt?: string;
+
+  @IsOptional()
+  @IsString()
+  firstFramePrompt?: string;
+
+  @IsOptional()
+  @IsString()
+  lastFramePrompt?: string;
+}
+
+export class GenerateNodeCandidatesDto {
+  @IsString()
+  currentNodeId: string;
+
+  @IsString()
+  idea: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(1)
+  count?: number = 3;
+
+  @IsOptional()
+  @IsString()
+  branchName?: string;
 }
 
 export class LockFrameDto {

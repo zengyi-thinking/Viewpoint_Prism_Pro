@@ -145,8 +145,13 @@ export function CreationCanvas({ videoId, onTimeClick }: CreationCanvasProps) {
       return;
     }
 
+    const validSelectedNodeId =
+      selectedNodeId && storeNodes.some((node) => node.id === selectedNodeId)
+        ? selectedNodeId
+        : undefined;
+
     const fallbackNodeId =
-      selectedNodeId ||
+      validSelectedNodeId ||
       [...storeNodes]
         .sort((a, b) => Number(a.data.orderIndex || 0) - Number(b.data.orderIndex || 0))
         .at(-1)?.id;

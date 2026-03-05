@@ -3,7 +3,9 @@ import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { AITaskType } from '../../../infrastructure/ai-router/ai-router.interface';
 import { AiRouterService } from '../../../infrastructure/ai-router/ai-router.service';
+import { StorageService } from '../../../infrastructure/storage/storage.service';
 import { TaskStatus, RenderQuality } from '../dto';
+import { randomUUID } from 'crypto';
 
 @Injectable()
 export class VideoRenderService {
@@ -13,6 +15,7 @@ export class VideoRenderService {
     private readonly prisma: PrismaService,
     private readonly aiRouter: AiRouterService,
     private readonly configService: ConfigService,
+    private readonly storage: StorageService,
   ) {}
 
   /**
@@ -83,6 +86,7 @@ export class VideoRenderService {
     this.executeRender(taskRecord.id, nodeId, userId, {
       quality,
       stylePresetId,
+      flowProjectId: node.flowProjectId,
       firstFrameUrl: frameContext.firstFrameUrl,
       lastFrameUrl: frameContext.lastFrameUrl,
       prompt: node.prompt,
@@ -109,6 +113,7 @@ export class VideoRenderService {
     options: {
       quality: RenderQuality;
       stylePresetId?: string;
+      flowProjectId: string;
       firstFrameUrl?: string | null;
       lastFrameUrl?: string | null;
       prompt?: string | null;
@@ -145,11 +150,18 @@ export class VideoRenderService {
       });
 
       if (videoUrl) {
+        const persistedVideoUrl = await this.persistRenderedVideo(
+          videoUrl,
+          userId,
+          options.flowProjectId,
+          nodeId,
+        );
+
         // Update node with rendered video URL
         await this.prisma.flowNode.update({
           where: { id: nodeId },
           data: {
-            renderedVideoUrl: videoUrl,
+            renderedVideoUrl: persistedVideoUrl,
             renderStatus: TaskStatus.COMPLETED,
           },
         });
@@ -160,12 +172,12 @@ export class VideoRenderService {
           data: {
             status: TaskStatus.COMPLETED,
             progress: 100,
-            result: { videoUrl } as any,
+            result: { videoUrl: persistedVideoUrl, sourceVideoUrl: videoUrl } as any,
             completedAt: new Date(),
           },
         });
 
-        this.logger.log(`Render completed for node ${nodeId}: ${videoUrl}`);
+        this.logger.log(`Render completed for node ${nodeId}: ${persistedVideoUrl}`);
       } else {
         const allowPlaceholderFallback =
           this.configService.get<string>('CREATION_PLACEHOLDER_FALLBACK') === 'true';
@@ -284,5 +296,68 @@ export class VideoRenderService {
 
     // Return null to use placeholder
     return null;
+  }
+
+  private async persistRenderedVideo(
+    videoUrl: string,
+    userId: string,
+    flowProjectId: string,
+    nodeId: string,
+  ): Promise<string> {
+    // Already in our storage domain, keep as-is
+    if (this.isLikelyInternalStorageUrl(videoUrl)) {
+      return videoUrl;
+    }
+
+    const response = await this.fetchVideoWithFallback(videoUrl);
+    if (!response.ok) {
+      throw new Error(`Failed to download generated video: ${response.status} ${response.statusText}`);
+    }
+
+    const buffer = Buffer.from(await response.arrayBuffer());
+    const key = `renders/${userId}/${flowProjectId}/${nodeId}-${randomUUID()}.mp4`;
+
+    return this.storage.upload(buffer, key, {
+      'Content-Type': 'video/mp4',
+    });
+  }
+
+  private isLikelyInternalStorageUrl(url: string): boolean {
+    const minioEndpoint = this.configService.get<string>('MINIO_ENDPOINT', 'localhost');
+    try {
+      const parsed = new URL(url);
+      if (parsed.hostname === minioEndpoint) return true;
+      if (parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1') return true;
+      return false;
+    } catch {
+      return false;
+    }
+  }
+
+  private async fetchVideoWithFallback(url: string): Promise<Response> {
+    // First attempt: raw URL
+    let response = await fetch(url, {
+      headers: {
+        'User-Agent': 'Viewpoint-Prism-Pro/1.0',
+      },
+    });
+    if (response.ok) return response;
+
+    // Fallback for some OSS links that encode '/' in path (outputs%2Fxxx.mp4)
+    try {
+      const parsed = new URL(url);
+      if (/%2F/i.test(parsed.pathname)) {
+        const fallbackUrl = `${parsed.origin}${decodeURIComponent(parsed.pathname)}${parsed.search}`;
+        response = await fetch(fallbackUrl, {
+          headers: {
+            'User-Agent': 'Viewpoint-Prism-Pro/1.0',
+          },
+        });
+      }
+    } catch {
+      // keep original response
+    }
+
+    return response;
   }
 }

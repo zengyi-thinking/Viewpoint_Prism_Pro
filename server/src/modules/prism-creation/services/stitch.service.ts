@@ -231,6 +231,8 @@ export class StitchService {
       // 1. 下载所有视频到临时文件
       this.logger.log(`Downloading ${videoUrls.length} videos to ${tempDir}`);
       const videoFiles: string[] = [];
+      let expiredCount = 0;
+      let forbiddenCount = 0;
 
       for (let i = 0; i < videoUrls.length; i++) {
         const url = videoUrls[i];
@@ -238,8 +240,14 @@ export class StitchService {
         const filepath = join(tempDir, filename);
 
         try {
-          const response = await fetch(url);
+          const response = await this.fetchVideoWithFallback(url);
           if (!response.ok) {
+            if (response.status === 403) {
+              forbiddenCount += 1;
+              if (this.isLikelyExpiredSignedUrl(url)) {
+                expiredCount += 1;
+              }
+            }
             throw new Error(`Failed to download video from ${url}: ${response.statusText}`);
           }
 
@@ -253,8 +261,16 @@ export class StitchService {
         }
       }
 
+      this.logger.log(
+        `Download summary: requested=${videoUrls.length}, success=${videoFiles.length}, forbidden=${forbiddenCount}, expired=${expiredCount}`,
+      );
+
       if (videoFiles.length === 0) {
-        throw new BadRequestException('No videos available for stitching');
+        const detail =
+          expiredCount > 0
+            ? ` (${expiredCount} 个渲染视频链接已过期，请先重新渲染节点再串联)`
+            : '';
+        throw new BadRequestException(`No videos available for stitching${detail}`);
       }
 
       // 2. 生成 concat 文件列表
@@ -383,6 +399,44 @@ export class StitchService {
       });
     } catch (error) {
       this.logger.warn(`Failed to update task progress: ${(error as Error).message}`);
+    }
+  }
+
+  private async fetchVideoWithFallback(url: string): Promise<Response> {
+    let response = await fetch(url, {
+      headers: {
+        'User-Agent': 'Viewpoint-Prism-Pro/1.0',
+      },
+    });
+    if (response.ok) return response;
+
+    try {
+      const parsed = new URL(url);
+      if (/%2F/i.test(parsed.pathname)) {
+        const fallbackUrl = `${parsed.origin}${decodeURIComponent(parsed.pathname)}${parsed.search}`;
+        response = await fetch(fallbackUrl, {
+          headers: {
+            'User-Agent': 'Viewpoint-Prism-Pro/1.0',
+          },
+        });
+      }
+    } catch {
+      // ignore
+    }
+
+    return response;
+  }
+
+  private isLikelyExpiredSignedUrl(url: string): boolean {
+    try {
+      const parsed = new URL(url);
+      const expires = parsed.searchParams.get('Expires');
+      if (!expires) return false;
+      const expiresSec = Number(expires);
+      if (!Number.isFinite(expiresSec)) return false;
+      return expiresSec * 1000 < Date.now();
+    } catch {
+      return false;
     }
   }
 

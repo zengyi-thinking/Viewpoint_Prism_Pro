@@ -24,6 +24,7 @@ export interface ExportTask {
 
 export interface FlowNodeData extends Record<string, unknown> {
   orderIndex: number;
+  videoPrompt?: string;
   prompt?: string;
   scriptSegment?: string;
   parentNodeId?: string | null;
@@ -56,6 +57,15 @@ export interface FlowNodeData extends Record<string, unknown> {
 export type FlowNode = Node<FlowNodeData>;
 export type FlowEdge = Edge;
 
+export interface PromptBundleCandidate {
+  index?: number;
+  scriptSegment: string;
+  videoPrompt: string;
+  sceneFramePrompt: string;
+  firstFramePrompt: string;
+  lastFramePrompt: string;
+}
+
 function extractNodeList(response: any): any[] {
   if (Array.isArray(response)) return response;
   if (Array.isArray(response?.items)) return response.items;
@@ -84,6 +94,25 @@ function buildSceneFramePrompt(basePrompt?: string, scriptSegment?: string) {
   return `${source}，关键画面帧，信息清晰，细节完整，电影感构图，16:9`;
 }
 
+function resolvePromptBundle(node: any, fallbackPrompt?: string, fallbackSegment?: string) {
+  const videoPrompt = String(
+    node?.videoPrompt || node?.prompt || fallbackPrompt || fallbackSegment || '',
+  ).trim();
+  const scriptSegment = String(node?.scriptSegment || fallbackSegment || '').trim();
+  return {
+    videoPrompt,
+    sceneFramePrompt: String(
+      node?.sceneFramePrompt || buildSceneFramePrompt(videoPrompt, scriptSegment),
+    ).trim(),
+    firstFramePrompt: String(
+      node?.firstFramePrompt || buildFirstFramePrompt(videoPrompt, scriptSegment),
+    ).trim(),
+    lastFramePrompt: String(
+      node?.lastFramePrompt || buildLastFramePrompt(videoPrompt, scriptSegment),
+    ).trim(),
+  };
+}
+
 interface CreationStore {
   // 项目状态
   nodes: FlowNode[];
@@ -107,6 +136,11 @@ interface CreationStore {
   loadNodes: (videoId: string) => Promise<void>;
   createNode: (payload: CreateFlowNodePayload) => Promise<void>;
   generateNextNode: (payload: GenerateNextNodePayload) => Promise<void>;
+  generateNodeCandidates: (
+    currentNodeId: string,
+    idea: string,
+    count?: number,
+  ) => Promise<PromptBundleCandidate[]>;
   createNodesFromSegments: (videoId: string, segments: Array<{ segment: string; prompt: string; estimatedDuration?: number }>) => Promise<void>;
   createBranch: (sourceNodeId: string, branchName: string, promptOverride?: string) => Promise<void>;
   mergeBranch: (branchNodeId: string) => Promise<void>;
@@ -158,7 +192,7 @@ export const useCreationStore = create<CreationStore>((set, get) => ({
 
   // Load nodes from API
   loadNodes: async (videoId: string) => {
-    set({ isLoading: true, error: null, currentVideoId: videoId });
+    set({ isLoading: true, error: null, currentVideoId: videoId, selectedNodeId: null });
     try {
       const response = await creationApi.getNodes(videoId) as any[];
 
@@ -177,6 +211,7 @@ export const useCreationStore = create<CreationStore>((set, get) => ({
           y: node.positionY ?? node.position?.y ?? Math.random() * 400,
         },
         data: {
+          ...resolvePromptBundle(node, node.prompt, node.scriptSegment),
           orderIndex: node.orderIndex,
           prompt: node.prompt,
           scriptSegment: node.scriptSegment,
@@ -200,9 +235,6 @@ export const useCreationStore = create<CreationStore>((set, get) => ({
           lastFrameLocked: node.lastFrameLocked,
           narrationUrl: node.narrationUrl,
           bgmUrl: node.bgmUrl,
-          firstFramePrompt: buildFirstFramePrompt(node.prompt, node.scriptSegment),
-          lastFramePrompt: buildLastFramePrompt(node.prompt, node.scriptSegment),
-          sceneFramePrompt: buildSceneFramePrompt(node.prompt, node.scriptSegment),
         },
       }));
 
@@ -257,6 +289,7 @@ export const useCreationStore = create<CreationStore>((set, get) => ({
           y: createdNode.positionY ?? payload.positionY ?? Math.random() * 400,
         },
         data: {
+          ...resolvePromptBundle(createdNode, createdNode.prompt, createdNode.scriptSegment),
           orderIndex: createdNode.orderIndex,
           prompt: createdNode.prompt,
           scriptSegment: createdNode.scriptSegment,
@@ -277,9 +310,6 @@ export const useCreationStore = create<CreationStore>((set, get) => ({
             (!createdNode.parentNodeId && !createdNode.branchName && Number(createdNode.orderIndex) === 0),
           firstFrameLocked: createdNode.firstFrameLocked,
           lastFrameLocked: createdNode.lastFrameLocked,
-          firstFramePrompt: buildFirstFramePrompt(createdNode.prompt, createdNode.scriptSegment),
-          lastFramePrompt: buildLastFramePrompt(createdNode.prompt, createdNode.scriptSegment),
-          sceneFramePrompt: buildSceneFramePrompt(createdNode.prompt, createdNode.scriptSegment),
         },
       };
 
@@ -357,6 +387,11 @@ export const useCreationStore = create<CreationStore>((set, get) => ({
           y: createdNode.positionY ?? (parentNode ? parentNode.position.y : 160),
         },
         data: {
+          ...resolvePromptBundle(
+            response?.promptBundle || createdNode,
+            createdNode.prompt,
+            createdNode.scriptSegment,
+          ),
           orderIndex: createdNode.orderIndex,
           prompt: createdNode.prompt,
           scriptSegment: createdNode.scriptSegment,
@@ -375,9 +410,6 @@ export const useCreationStore = create<CreationStore>((set, get) => ({
           isFirstScene: Boolean(createdNode.isFirstScene),
           firstFrameLocked: createdNode.firstFrameLocked,
           lastFrameLocked: createdNode.lastFrameLocked,
-          firstFramePrompt: buildFirstFramePrompt(createdNode.prompt, createdNode.scriptSegment),
-          lastFramePrompt: buildLastFramePrompt(createdNode.prompt, createdNode.scriptSegment),
-          sceneFramePrompt: buildSceneFramePrompt(createdNode.prompt, createdNode.scriptSegment),
         },
       };
 
@@ -404,6 +436,32 @@ export const useCreationStore = create<CreationStore>((set, get) => ({
     } catch (error) {
       console.error('Failed to generate next node:', error);
       set({ error: 'AI 续写节点失败', isLoading: false });
+    }
+  },
+
+  generateNodeCandidates: async (currentNodeId: string, idea: string, count = 3) => {
+    const { currentVideoId } = get();
+    if (!currentVideoId) return [];
+    const normalizedIdea = idea.trim();
+    if (!normalizedIdea) return [];
+
+    try {
+      const response = await creationApi.generateNodeCandidates(currentVideoId, {
+        currentNodeId,
+        idea: normalizedIdea,
+        count,
+      }) as any;
+      const candidates = Array.isArray(response?.candidates) ? response.candidates : [];
+      return candidates.map((candidate: any, idx: number) => ({
+        index: Number(candidate?.index ?? idx),
+        ...resolvePromptBundle(candidate, candidate?.videoPrompt || candidate?.prompt, candidate?.scriptSegment),
+        scriptSegment: String(candidate?.scriptSegment || '').trim(),
+        videoPrompt: String(candidate?.videoPrompt || candidate?.prompt || '').trim(),
+      }));
+    } catch (error) {
+      console.error('Failed to generate node candidates:', error);
+      set({ error: '生成节点候选失败' });
+      return [];
     }
   },
 
@@ -630,11 +688,15 @@ export const useCreationStore = create<CreationStore>((set, get) => ({
       get().pollRenderTask(nodeId, response.taskId);
     } catch (error) {
       console.error('Failed to render node:', error);
+      const message =
+        error instanceof Error && error.message
+          ? error.message
+          : '渲染失败';
       set((state) => ({
         nodes: state.nodes.map((node) =>
           node.id === nodeId ? { ...node, data: { ...node.data, isRendering: false, renderStatus: 'FAILED' as RenderStatus } } : node
         ),
-        error: '渲染失败',
+        error: message,
       }));
     }
   },
@@ -710,9 +772,7 @@ export const useCreationStore = create<CreationStore>((set, get) => ({
                   ...n.data,
                   prompt: node.prompt,
                   scriptSegment: node.scriptSegment,
-                  firstFramePrompt: buildFirstFramePrompt(node.prompt, node.scriptSegment),
-                  lastFramePrompt: buildLastFramePrompt(node.prompt, node.scriptSegment),
-                  sceneFramePrompt: buildSceneFramePrompt(node.prompt, node.scriptSegment),
+                  ...resolvePromptBundle(node, node.prompt, node.scriptSegment),
                 },
               }
             : n

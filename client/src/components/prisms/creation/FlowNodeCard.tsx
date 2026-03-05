@@ -2,7 +2,12 @@
 
 import React, { memo, useCallback, useState } from 'react';
 import { Handle, Position } from '@xyflow/react';
-import { useCreationStore, FlowNodeData, RenderStatus } from '@/stores/creation.store';
+import {
+  useCreationStore,
+  FlowNodeData,
+  RenderStatus,
+  PromptBundleCandidate,
+} from '@/stores/creation.store';
 import {
   AlertCircle,
   GitBranch,
@@ -49,6 +54,8 @@ function FlowNodeCardComponent({ id, data, selected }: FlowNodeCardProps) {
     updateNode,
     updateNodeLocalData,
     refineNodeCopy,
+    generateNodeCandidates,
+    generateNextNode,
   } = useCreationStore();
 
   const {
@@ -80,6 +87,11 @@ function FlowNodeCardComponent({ id, data, selected }: FlowNodeCardProps) {
   const [isEditingCopy, setIsEditingCopy] = useState(false);
   const [copyRequirement, setCopyRequirement] = useState('');
   const [savingCopy, setSavingCopy] = useState(false);
+  const [expandIdea, setExpandIdea] = useState('');
+  const [expandCount, setExpandCount] = useState(3);
+  const [expanding, setExpanding] = useState(false);
+  const [candidateList, setCandidateList] = useState<PromptBundleCandidate[]>([]);
+  const [adoptingIndex, setAdoptingIndex] = useState<number | null>(null);
 
   const handleDoubleClick = useCallback(() => {
     selectNode(id);
@@ -127,6 +139,35 @@ function FlowNodeCardComponent({ id, data, selected }: FlowNodeCardProps) {
       setSavingCopy(false);
     }
   }, [copyRequirement, id, refineNodeCopy]);
+
+  const handleGenerateCandidates = useCallback(async () => {
+    const idea = expandIdea.trim();
+    if (!idea) return;
+    setExpanding(true);
+    try {
+      const candidates = await generateNodeCandidates(id, idea, expandCount);
+      setCandidateList(candidates);
+    } finally {
+      setExpanding(false);
+    }
+  }, [expandCount, expandIdea, generateNodeCandidates, id]);
+
+  const handleAdoptCandidate = useCallback(async (candidate: PromptBundleCandidate, index: number) => {
+    setAdoptingIndex(index);
+    try {
+      await generateNextNode({
+        currentNodeId: id,
+        idea: expandIdea.trim() || candidate.scriptSegment,
+        scriptSegment: candidate.scriptSegment,
+        videoPrompt: candidate.videoPrompt,
+        sceneFramePrompt: candidate.sceneFramePrompt,
+        firstFramePrompt: candidate.firstFramePrompt,
+        lastFramePrompt: candidate.lastFramePrompt,
+      });
+    } finally {
+      setAdoptingIndex(null);
+    }
+  }, [expandIdea, generateNextNode, id]);
 
   const triggerFirstFrame = useCallback(() => {
     generateFrame(id, 'first', String(firstFramePrompt || sceneFramePrompt || prompt || ''));
@@ -262,6 +303,70 @@ function FlowNodeCardComponent({ id, data, selected }: FlowNodeCardProps) {
             </button>
           </div>
         )}
+
+        <div className="space-y-2 rounded-md border border-[#2D2D3A] bg-[#14141C] p-2">
+          <label className="text-[10px] text-[#9CA3AF]">节点拓展（生成多个下一节点候选）</label>
+          <textarea
+            value={expandIdea}
+            onChange={(e) => setExpandIdea(e.target.value)}
+            rows={2}
+            placeholder="输入你的意向，例如：转到冲突升级、节奏更快、情绪转折..."
+            className="w-full resize-y rounded-md border border-[#2D2D3A] bg-[#101017] px-2 py-1 text-xs text-[#E5E7EB] outline-none focus:border-[#E91E8C]"
+          />
+          <div className="flex items-center gap-2">
+            <select
+              value={expandCount}
+              onChange={(e) => setExpandCount(Number(e.target.value))}
+              className="rounded-md border border-[#2D2D3A] bg-[#101017] px-2 py-1 text-[10px] text-[#E5E7EB]"
+            >
+              <option value={2}>2 个候选</option>
+              <option value={3}>3 个候选</option>
+              <option value={4}>4 个候选</option>
+            </select>
+            <button
+              onClick={handleGenerateCandidates}
+              disabled={expanding || !expandIdea.trim()}
+              className="rounded-md bg-[#5B21B6] px-2 py-1 text-[10px] text-white transition hover:bg-[#6D28D9] disabled:opacity-50"
+            >
+              {expanding ? <Loader2 className="inline h-3 w-3 animate-spin" /> : <Wand2 className="inline h-3 w-3" />}
+              <span className="ml-1">生成候选</span>
+            </button>
+          </div>
+
+          {candidateList.length > 0 && (
+            <div className="max-h-64 space-y-2 overflow-y-auto pr-1">
+              {candidateList.map((candidate, index) => (
+                <div
+                  key={`${id}-candidate-${index}`}
+                  className="rounded-md border border-[#2D2D3A] bg-[#0F1016] p-2"
+                >
+                  <div className="mb-1 text-[10px] font-medium text-[#D8B4FE]">候选 {index + 1}</div>
+                  <div className="space-y-1 text-[10px] text-[#D1D5DB]">
+                    <div><span className="text-[#9CA3AF]">内容：</span>{candidate.scriptSegment}</div>
+                    <div><span className="text-[#9CA3AF]">视频提示词：</span>{candidate.videoPrompt}</div>
+                    <div><span className="text-[#9CA3AF]">画面提示词：</span>{candidate.sceneFramePrompt}</div>
+                    <div><span className="text-[#9CA3AF]">首帧提示词：</span>{candidate.firstFramePrompt}</div>
+                    <div><span className="text-[#9CA3AF]">尾帧提示词：</span>{candidate.lastFramePrompt}</div>
+                  </div>
+                  <button
+                    onClick={() => handleAdoptCandidate(candidate, index)}
+                    disabled={adoptingIndex !== null}
+                    className="mt-2 rounded-md bg-[#E91E8C] px-2 py-1 text-[10px] text-white transition hover:bg-[#D11B7A] disabled:opacity-50"
+                  >
+                    {adoptingIndex === index ? (
+                      <>
+                        <Loader2 className="mr-1 inline h-3 w-3 animate-spin" />
+                        采用中...
+                      </>
+                    ) : (
+                      '采用该候选为下一节点'
+                    )}
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
       <div className="space-y-2 px-3 py-2">

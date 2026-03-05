@@ -72,6 +72,18 @@ export interface GenerateNextNodePayload {
   currentNodeId?: string;
   idea: string;
   branchName?: string;
+  scriptSegment?: string;
+  videoPrompt?: string;
+  sceneFramePrompt?: string;
+  firstFramePrompt?: string;
+  lastFramePrompt?: string;
+}
+
+export interface GenerateNodeCandidatesPayload {
+  currentNodeId: string;
+  idea: string;
+  count?: number;
+  branchName?: string;
 }
 
 export const creationApi = {
@@ -86,6 +98,12 @@ export const creationApi = {
 
   generateNextNode: (videoId: string, payload: GenerateNextNodePayload) =>
     apiFetch(`/api/prism/creation/videos/${videoId}/nodes/next`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+
+  generateNodeCandidates: (videoId: string, payload: GenerateNodeCandidatesPayload) =>
+    apiFetch(`/api/prism/creation/videos/${videoId}/nodes/expand-candidates`, {
       method: 'POST',
       body: JSON.stringify(payload),
     }),

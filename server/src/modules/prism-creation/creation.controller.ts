@@ -16,6 +16,7 @@ import {
   RenderQuality,
   RefineCopyDto,
   GenerateNextNodeDto,
+  GenerateNodeCandidatesDto,
 } from './dto';
 
 @UseGuards(JwtAuthGuard)
@@ -50,6 +51,16 @@ export class CreationController {
     @Body() dto: GenerateNextNodeDto,
   ) {
     return this.creationService.generateNextNode(userId, videoId, dto);
+  }
+
+  @Post('videos/:videoId/nodes/expand-candidates')
+  @Post(':videoId/nodes/expand-candidates')
+  generateNodeCandidates(
+    @CurrentUser() userId: string,
+    @Param('videoId') videoId: string,
+    @Body() dto: GenerateNodeCandidatesDto,
+  ) {
+    return this.creationService.generateNodeCandidates(userId, videoId, dto);
   }
 
   @Patch('videos/:videoId/nodes/:nodeId')

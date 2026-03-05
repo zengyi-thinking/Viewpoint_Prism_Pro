@@ -28,7 +28,16 @@ import {
   FrameType,
   RefineCopyDto,
   GenerateNextNodeDto,
+  GenerateNodeCandidatesDto,
 } from './dto';
+
+type PromptBundle = {
+  scriptSegment: string;
+  videoPrompt: string;
+  sceneFramePrompt: string;
+  firstFramePrompt: string;
+  lastFramePrompt: string;
+};
 
 @Injectable()
 export class CreationService {
@@ -358,7 +367,13 @@ ${adjustContext}
         },
       });
       if (!currentNode) {
-        throw new NotFoundException('Current node not found in this project');
+        this.logger.warn(
+          `generateNextNode received invalid currentNodeId=${dto.currentNodeId} for project=${project.id}, fallback to latest node`,
+        );
+        currentNode = await this.prisma.flowNode.findFirst({
+          where: { flowProjectId: project.id },
+          orderBy: { orderIndex: 'desc' },
+        });
       }
     } else {
       currentNode = await this.prisma.flowNode.findFirst({
@@ -373,17 +388,31 @@ ${adjustContext}
     });
     const newOrderIndex = (maxOrderIndex._max.orderIndex ?? -1) + 1;
 
-    const generated = await this.generateNextNodeWithLLM(
-      userId,
-      idea,
-      currentNode
-        ? {
-            scriptSegment: currentNode.scriptSegment || '',
-            prompt: currentNode.prompt || '',
-            orderIndex: currentNode.orderIndex,
-          }
-        : null,
-    );
+    const generated = dto.scriptSegment?.trim() || dto.videoPrompt?.trim()
+      ? this.normalizePromptBundle({
+          scriptSegment: dto.scriptSegment || '',
+          videoPrompt: dto.videoPrompt || '',
+          sceneFramePrompt: dto.sceneFramePrompt || '',
+          firstFramePrompt: dto.firstFramePrompt || '',
+          lastFramePrompt: dto.lastFramePrompt || '',
+        }, idea, currentNode
+          ? {
+              scriptSegment: currentNode.scriptSegment || '',
+              prompt: currentNode.prompt || '',
+              orderIndex: currentNode.orderIndex,
+            }
+          : null)
+      : await this.generateNextNodeWithLLM(
+          userId,
+          idea,
+          currentNode
+            ? {
+                scriptSegment: currentNode.scriptSegment || '',
+                prompt: currentNode.prompt || '',
+                orderIndex: currentNode.orderIndex,
+              }
+            : null,
+        );
 
     const baseX = Number(currentNode?.positionX ?? 80);
     const baseY = Number(currentNode?.positionY ?? 120);
@@ -394,7 +423,7 @@ ${adjustContext}
       data: {
         flowProjectId: project.id,
         orderIndex: newOrderIndex,
-        prompt: generated.prompt,
+        prompt: generated.videoPrompt,
         scriptSegment: generated.scriptSegment,
         parentNodeId: currentNode?.id ?? null,
         branchName: dto.branchName?.trim() || null,
@@ -423,6 +452,52 @@ ${adjustContext}
       mode: 'simple',
       sourceNodeId: currentNode?.id ?? null,
       node: this.toNodeDto(node),
+      promptBundle: generated,
+    };
+  }
+
+  /**
+   * 生成节点拓展候选（不落库）
+   */
+  async generateNodeCandidates(userId: string, videoId: string, dto: GenerateNodeCandidatesDto) {
+    const project = await this.getOrCreateProject(userId, videoId);
+    const idea = dto.idea?.trim();
+    if (!idea) {
+      throw new BadRequestException('idea is required');
+    }
+
+    const currentNode = await this.prisma.flowNode.findFirst({
+      where: {
+        id: dto.currentNodeId,
+        flowProjectId: project.id,
+      },
+    });
+    if (!currentNode) {
+      throw new NotFoundException('Current node not found in this project');
+    }
+
+    const count = Math.max(1, Math.min(5, Number(dto.count || 3)));
+    const candidates = await this.generateNodeCandidatesWithLLM(
+      userId,
+      idea,
+      {
+        scriptSegment: currentNode.scriptSegment || '',
+        prompt: currentNode.prompt || '',
+        orderIndex: currentNode.orderIndex,
+      },
+      count,
+    );
+
+    return {
+      userId,
+      videoId,
+      projectId: project.id,
+      sourceNodeId: currentNode.id,
+      count,
+      candidates: candidates.map((candidate, index) => ({
+        index,
+        ...candidate,
+      })),
     };
   }
 
@@ -827,10 +902,7 @@ ${adjustContext}
       throw new NotFoundException('Node not found');
     }
 
-    // Verify access to project
-    if (node.flowProject.video.project.userId !== userId) {
-      throw new ForbiddenException('You do not have access to this node');
-    }
+    this.assertNodeAccess(node, userId);
 
     const result = await this.frameGenService.generateFrame(
       userId,
@@ -874,10 +946,7 @@ ${adjustContext}
       throw new NotFoundException('Node not found');
     }
 
-    // Verify access to project
-    if (node.flowProject.video.project.userId !== userId) {
-      throw new ForbiddenException('You do not have access to this node');
-    }
+    this.assertNodeAccess(node, userId);
 
     const result = await this.frameGenService.lockFrame(
       userId,
@@ -925,10 +994,7 @@ ${adjustContext}
       throw new NotFoundException('Node not found');
     }
 
-    // Verify access to project
-    if (node.flowProject.video.project.userId !== userId) {
-      throw new ForbiddenException('You do not have access to this node');
-    }
+    this.assertNodeAccess(node, userId);
 
     const result = await this.videoRenderService.enqueueRender(
       userId,
@@ -973,9 +1039,7 @@ ${adjustContext}
     if (!node) {
       throw new NotFoundException('Node not found');
     }
-    if (node.flowProject.video.project.userId !== userId) {
-      throw new ForbiddenException('You do not have access to this node');
-    }
+    this.assertNodeAccess(node, userId);
 
     const currentSegment = node.scriptSegment || '';
     const currentPrompt = node.prompt || '';
@@ -1055,6 +1119,7 @@ ${adjustContext}
   private toNodeDto(node: any, renderTask?: any) {
     const taskPayload = (renderTask?.payload as any) || {};
     const taskResult = (renderTask?.result as any) || {};
+    const basePrompt = String(node.prompt || node.scriptSegment || '').trim();
     return {
       id: node.id,
       flowProjectId: node.flowProjectId,
@@ -1074,6 +1139,10 @@ ${adjustContext}
       isMerged: node.isMerged,
       narrationUrl: node.narrationUrl,
       bgmUrl: node.bgmUrl,
+      videoPrompt: basePrompt || null,
+      sceneFramePrompt: basePrompt ? `${basePrompt}，关键画面帧，主体清晰，16:9` : null,
+      firstFramePrompt: basePrompt ? `${basePrompt}，开场首帧，电影感构图，16:9` : null,
+      lastFramePrompt: basePrompt ? `${basePrompt}，收束尾帧，结尾定格，16:9` : null,
       activeRenderTaskId:
         taskPayload?.nodeId === node.id &&
         (renderTask?.status === TaskStatus.PROCESSING || renderTask?.status === TaskStatus.PENDING)
@@ -1150,7 +1219,7 @@ ${adjustContext}
     userId: string,
     idea: string,
     current: { scriptSegment: string; prompt: string; orderIndex: number } | null,
-  ) {
+  ): Promise<PromptBundle> {
     const userPayload = {
       task: '基于当前节点续写下一个视频节点',
       idea,
@@ -1163,12 +1232,7 @@ ${adjustContext}
         : null,
     };
 
-    const fallbackSegment = current
-      ? `延续上一节点并推进剧情：${idea}`
-      : `故事开场：${idea}`;
-    const fallbackPrompt = current
-      ? `${current.prompt || current.scriptSegment || '连续镜头'}，推进到新场景：${idea}`
-      : `${idea}，电影感镜头，16:9`;
+    const fallback = this.normalizePromptBundle({}, idea, current);
 
     try {
       const response = await this.aiRouter.execute(
@@ -1178,7 +1242,7 @@ ${adjustContext}
             {
               role: 'system',
               content:
-                '你是短视频分镜导演助手。请只返回 JSON 对象，不要 markdown 代码块。JSON 字段必须是 scriptSegment 和 prompt。scriptSegment 为 1-3 句镜头文案，prompt 为可直接用于生成画面的高质量中文提示词。',
+                '你是短视频分镜导演助手。请只返回 JSON 对象，不要 markdown 代码块。必须包含字段：scriptSegment, videoPrompt, sceneFramePrompt, firstFramePrompt, lastFramePrompt。所有字段都要是中文高质量提示词/文案。',
             },
             {
               role: 'user',
@@ -1195,15 +1259,169 @@ ${adjustContext}
         (response as any)?.content ??
         '';
 
-      return this.parseRefineCopyResult(content, fallbackSegment, fallbackPrompt);
+      const parsed = this.parseJsonLoose(content);
+      return this.normalizePromptBundle(parsed || {}, idea, current);
     } catch (error: any) {
       this.logger.warn(
         `Generate next node fallback: ${error?.message || 'unknown error'}`,
       );
-      return {
-        scriptSegment: fallbackSegment,
-        prompt: fallbackPrompt,
-      };
+      return fallback;
+    }
+  }
+
+  private async generateNodeCandidatesWithLLM(
+    userId: string,
+    idea: string,
+    current: { scriptSegment: string; prompt: string; orderIndex: number },
+    count: number,
+  ): Promise<PromptBundle[]> {
+    const fallbackList = Array.from({ length: count }).map((_, idx) =>
+      this.normalizePromptBundle(
+        {
+          scriptSegment: `候选${idx + 1}：延续当前节点并推进到新情节：${idea}`,
+          videoPrompt: `${current.prompt || current.scriptSegment || '连续镜头'}，变体${idx + 1}，推进到：${idea}，电影感，16:9`,
+        },
+        idea,
+        current,
+      ),
+    );
+
+    try {
+      const response = await this.aiRouter.execute(
+        AITaskType.LLM_CHAT,
+        {
+          messages: [
+            {
+              role: 'system',
+              content:
+                '你是分镜拓展助手。请基于当前节点生成多个“下一个节点”候选。只返回 JSON 数组，不要 markdown。每个数组元素必须包含字段：scriptSegment, videoPrompt, sceneFramePrompt, firstFramePrompt, lastFramePrompt。',
+            },
+            {
+              role: 'user',
+              content: JSON.stringify(
+                {
+                  task: '节点拓展候选',
+                  count,
+                  idea,
+                  currentNode: current,
+                },
+                null,
+                2,
+              ),
+            },
+          ],
+          temperature: 0.9,
+        },
+        userId,
+      );
+
+      const content =
+        (response as any)?.choices?.[0]?.message?.content ??
+        (response as any)?.content ??
+        '';
+      const parsed = this.parseJsonLoose(content);
+      if (!Array.isArray(parsed) || parsed.length === 0) {
+        return fallbackList;
+      }
+
+      const normalized = parsed
+        .slice(0, count)
+        .map((item: any) => this.normalizePromptBundle(item || {}, idea, current))
+        .filter((item: PromptBundle) => Boolean(item.scriptSegment || item.videoPrompt));
+
+      return normalized.length ? normalized : fallbackList;
+    } catch (error: any) {
+      this.logger.warn(
+        `Generate node candidates fallback: ${error?.message || 'unknown error'}`,
+      );
+      return fallbackList;
+    }
+  }
+
+  private normalizePromptBundle(
+    payload: any,
+    idea: string,
+    current: { scriptSegment: string; prompt: string; orderIndex: number } | null,
+  ): PromptBundle {
+    const fallbackSegment = current
+      ? `延续上一节点并推进剧情：${idea}`
+      : `故事开场：${idea}`;
+    const fallbackVideoPrompt = current
+      ? `${current.prompt || current.scriptSegment || '连续镜头'}，推进到新场景：${idea}，电影感，16:9`
+      : `${idea}，电影感镜头，16:9`;
+    const scriptSegment = String(payload?.scriptSegment || fallbackSegment).trim();
+    const videoPrompt = String(
+      payload?.videoPrompt || payload?.prompt || payload?.sceneFramePrompt || fallbackVideoPrompt,
+    ).trim();
+
+    const sceneFramePrompt = String(
+      payload?.sceneFramePrompt || `${videoPrompt}，关键画面帧，主体清晰，16:9`,
+    ).trim();
+    const firstFramePrompt = String(
+      payload?.firstFramePrompt || `${videoPrompt}，开场首帧，电影感构图，16:9`,
+    ).trim();
+    const lastFramePrompt = String(
+      payload?.lastFramePrompt || `${videoPrompt}，收束尾帧，结尾定格，16:9`,
+    ).trim();
+
+    return {
+      scriptSegment,
+      videoPrompt,
+      sceneFramePrompt,
+      firstFramePrompt,
+      lastFramePrompt,
+    };
+  }
+
+  private parseJsonLoose(content: string): any {
+    const raw = String(content || '').trim();
+    if (!raw) return null;
+
+    const candidates = [
+      raw,
+      raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim(),
+      raw.replace(/```json/gi, '').replace(/```/g, '').trim(),
+    ];
+
+    for (const candidate of candidates) {
+      if (!candidate) continue;
+      try {
+        return JSON.parse(candidate);
+      } catch {
+        // noop
+      }
+    }
+
+    const objectMatch = raw.match(/\{[\s\S]*\}/);
+    if (objectMatch) {
+      try {
+        return JSON.parse(objectMatch[0]);
+      } catch {
+        // noop
+      }
+    }
+
+    const arrayMatch = raw.match(/\[[\s\S]*\]/);
+    if (arrayMatch) {
+      try {
+        return JSON.parse(arrayMatch[0]);
+      } catch {
+        // noop
+      }
+    }
+
+    return null;
+  }
+
+  private assertNodeAccess(node: any, userId: string) {
+    const ownerId = node?.flowProject?.video?.project?.userId;
+    if (!ownerId) {
+      throw new NotFoundException(
+        '节点关联的视频或工程不存在，请刷新节点列表后重试',
+      );
+    }
+    if (ownerId !== userId) {
+      throw new ForbiddenException('You do not have access to this node');
     }
   }
 }
