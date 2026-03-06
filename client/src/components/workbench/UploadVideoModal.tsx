@@ -87,7 +87,7 @@ export function UploadVideoModal({ projectId, onClose, onSuccess }: UploadVideoM
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="panel w-full max-w-md rounded-2xl p-6">
+      <div className="panel w-full max-w-[32rem] rounded-2xl p-6">
         {/* Header */}
         <div className="mb-6 flex items-center justify-between">
           <h2 className="text-lg font-semibold text-text-primary">添加视频</h2>

@@ -412,7 +412,7 @@ export function VideoSourcePanel({
       {/* Delete Confirmation Modal */}
       {deleteConfirmVideo && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="panel w-full max-w-sm rounded-2xl p-6">
+          <div className="panel w-full max-w-[30rem] rounded-2xl p-6">
             <h3 className="mb-4 text-lg font-semibold text-text-primary">删除视频</h3>
             <p className="mb-6 text-sm text-text-secondary">
               确定要删除视频 <span className="font-medium text-text-primary">"{deleteConfirmVideo.title}"</span> 吗？

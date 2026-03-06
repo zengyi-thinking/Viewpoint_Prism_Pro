@@ -437,7 +437,7 @@ export function CreationCanvas({ videoId, onTimeClick }: CreationCanvasProps) {
       </div>
 
       {/* 快捷操作提示 */}
-      <div className="absolute top-4 right-4 rounded-lg bg-[#1E1E24]/80 px-3 py-1.5 text-[10px] text-[#6B7280] backdrop-blur-sm">
+      <div className="absolute top-4 right-14 max-w-[320px] rounded-lg bg-[#1E1E24]/80 px-3 py-1.5 text-[10px] text-[#6B7280] backdrop-blur-sm">
         双击节点编辑 | 拖拽调整位置 | 快速模式先产出第一版，PrismFlow 再做精修
       </div>
     </div>

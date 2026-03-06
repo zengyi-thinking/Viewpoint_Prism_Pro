@@ -115,15 +115,6 @@ export function PrismSwitcher({ collapsed = false, onToggle, onTimeClick }: Pris
                 </svg>
               </button>
             ) : null}
-            <button
-              onClick={onToggle}
-              className="rounded-lg p-1 text-text-tertiary transition-all duration-[var(--transition-base)] hover:bg-bg-panel-tertiary hover:text-text-secondary active:scale-95"
-              title="收起面板"
-            >
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M13 5l7 7-7 7M5 5l7 7-7 7" />
-              </svg>
-            </button>
           </div>
         </div>
       </div>
@@ -189,7 +180,7 @@ export function PrismSwitcher({ collapsed = false, onToggle, onTimeClick }: Pris
         {hasActivePrism ? (
           <button
             onClick={() => setActivePrism(null)}
-            className="absolute right-3 top-3 z-30 inline-flex h-7 w-7 items-center justify-center rounded-lg border border-border bg-bg-panel/90 text-text-secondary shadow-sm transition hover:text-text-primary hover:border-border-focus"
+            className="absolute left-3 top-3 z-30 inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-bg-panel/95 text-text-secondary shadow-sm transition hover:text-text-primary hover:border-border-focus"
             title="返回棱镜选择"
           >
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">

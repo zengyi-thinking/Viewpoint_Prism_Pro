@@ -100,6 +100,16 @@ export function useVideoBehaviorTracking(
     return /You do not have access to this video/i.test(message);
   };
 
+  const isBackendUnavailableError = (error: unknown) => {
+    const message = error instanceof Error ? error.message : String(error || '');
+    return (
+      /网络连接失败/i.test(message) ||
+      /Failed to fetch/i.test(message) ||
+      /ECONNREFUSED/i.test(message) ||
+      /后端已启动/i.test(message)
+    );
+  };
+
   const isStaleRequest = (requestVideoId: string) =>
     latestVideoIdRef.current !== requestVideoId;
 
@@ -290,6 +300,12 @@ export function useVideoBehaviorTracking(
       if (isStaleRequest(requestVideoId)) return;
       setBookmarks(data);
     } catch (error) {
+      if (isBackendUnavailableError(error)) {
+        if (!isStaleRequest(requestVideoId)) {
+          setBookmarks([]);
+        }
+        return;
+      }
       if (isAccessDeniedError(error)) {
         if (!isStaleRequest(requestVideoId)) {
           setBookmarks([]);
@@ -314,6 +330,12 @@ export function useVideoBehaviorTracking(
       if (isStaleRequest(requestVideoId)) return;
       setNotes(data);
     } catch (error) {
+      if (isBackendUnavailableError(error)) {
+        if (!isStaleRequest(requestVideoId)) {
+          setNotes([]);
+        }
+        return;
+      }
       if (isAccessDeniedError(error)) {
         if (!isStaleRequest(requestVideoId)) {
           setNotes([]);
@@ -338,6 +360,12 @@ export function useVideoBehaviorTracking(
       if (isStaleRequest(requestVideoId)) return;
       setHighlights(data);
     } catch (error) {
+      if (isBackendUnavailableError(error)) {
+        if (!isStaleRequest(requestVideoId)) {
+          setHighlights([]);
+        }
+        return;
+      }
       if (isAccessDeniedError(error)) {
         if (!isStaleRequest(requestVideoId)) {
           setHighlights([]);

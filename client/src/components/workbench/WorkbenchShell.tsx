@@ -277,20 +277,11 @@ export function WorkbenchShell({ projectName, projectId }: { projectName?: strin
             <div className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-border-subtle" />
           </div>
 
-          {/* Center: Player + Chat - 创作棱镜模式时播放器变为浮窗 */}
-          <div
-            data-testid="center-panel"
-            className={`relative min-w-0 flex flex-1 flex-col overflow-hidden transition-all duration-[var(--transition-slower)] ${
-              isCreationMode ? 'm-2' : ''
-            }`}
-          >
-            {/* 播放器浮窗（创作模式） */}
-            {isCreationMode ? (
-              <div className="absolute left-0 bottom-0 z-20 rounded-xl border border-border bg-bg-panel shadow-[var(--shadow-2xl)] transition-all duration-[var(--transition-slower)] hover:z-30 hover:shadow-[var(--shadow-2xl)]"
-                   style={{ width: '200px', height: '112px' }}>
-                <PlayerCenter videoRef={videoPlayerRef} />
-              </div>
-            ) : (
+          {!isCreationMode ? (
+            <div
+              data-testid="center-panel"
+              className="relative min-w-0 flex flex-1 flex-col overflow-hidden transition-all duration-[var(--transition-slower)]"
+            >
               <div className="grid min-w-0 min-h-0 flex-1 grid-rows-[minmax(220px,42svh)_1px_minmax(0,1fr)] overflow-hidden">
                 <PlayerCenter videoRef={videoPlayerRef} />
 
@@ -301,19 +292,8 @@ export function WorkbenchShell({ projectName, projectId }: { projectName?: strin
                   <ChatDock projectId={projectId} videoPlayerRef={videoPlayerRef} />
                 </div>
               </div>
-            )}
-
-            {/* 创作模式下显示聊天面板覆盖层 */}
-            {isCreationMode && (
-              <div className="absolute bottom-0 left-0 right-0 top-0 flex flex-col pointer-events-none">
-                <div className="flex-1" />
-                <div className="h-px bg-border-subtle" />
-                <div className="pointer-events-auto h-[42%] min-h-[260px] max-h-[420px]">
-                  <ChatDock projectId={projectId} videoPlayerRef={videoPlayerRef} />
-                </div>
-              </div>
-            )}
-          </div>
+            </div>
+          ) : null}
 
           <div
             role="separator"
@@ -322,7 +302,7 @@ export function WorkbenchShell({ projectName, projectId }: { projectName?: strin
             onMouseDown={() => setDragging('right')}
             className={`panel-separator relative w-1.5 cursor-col-resize transition-all duration-[var(--transition-slow)] ${
               dragging === 'right' ? 'dragging' : ''
-            }`}
+            } ${isCreationMode ? 'opacity-0 pointer-events-none w-0' : ''}`}
           >
             <div className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-border-subtle" />
           </div>
@@ -330,9 +310,9 @@ export function WorkbenchShell({ projectName, projectId }: { projectName?: strin
           {/* Right: Prism Studio Panel (2x2 grid) - 创作模式时展开 */}
           <div
             data-testid="right-panel"
-            className={`flex h-full min-w-0 shrink-0 overflow-hidden rounded-[16px] border border-border bg-bg-panel transition-all duration-[var(--transition-slower)] ${
+            className={`flex h-full min-w-0 overflow-hidden rounded-[16px] border border-border bg-bg-panel transition-all duration-[var(--transition-slower)] ${
               rightCollapsed ? 'panel-collapsed' : ''
-            } ${isCreationMode ? 'w-full' : ''}`}
+            } ${isCreationMode ? 'flex-1 shrink min-w-0' : 'shrink-0'}`}
             style={isCreationMode ? {} : { width: rightCollapsed ? `${COLLAPSED_WIDTH}px` : `${rightWidth}px` }}
           >
             <PrismSwitcher
