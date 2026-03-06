@@ -86,6 +86,57 @@ export interface GenerateNodeCandidatesPayload {
   branchName?: string;
 }
 
+export type NodePrecheckLevel = 'ready' | 'suggest_improve' | 'high_risk';
+
+export interface NodePrecheckIssue {
+  code: string;
+  severity: 'low' | 'medium' | 'high';
+  message: string;
+  suggestion: string;
+}
+
+export interface NodeQuality {
+  promptCompleteness: number;
+  continuity: number;
+  renderStability: number;
+  subjectConsistency: number;
+  overall: number;
+}
+
+export interface NodePrecheckResult {
+  userId: string;
+  nodeId: string;
+  level: NodePrecheckLevel;
+  issues: NodePrecheckIssue[];
+  quality: NodeQuality;
+}
+
+export interface BranchCompareResult {
+  userId: string;
+  branchNodeId: string;
+  mainNodeId: string;
+  recommendation: 'merge_branch' | 'keep_main' | 'manual_review';
+  reasons: string[];
+  compare: {
+    branch: {
+      nodeId: string;
+      quality: NodeQuality;
+      issues: NodePrecheckIssue[];
+    };
+    main: {
+      nodeId: string;
+      quality: NodeQuality;
+      issues: NodePrecheckIssue[];
+    };
+    delta: {
+      overall: number;
+      promptCompleteness: number;
+      continuity: number;
+      renderStability: number;
+    };
+  };
+}
+
 export const creationApi = {
   getNodes: (videoId: string) =>
     apiFetch(`/api/prism/creation/videos/${videoId}/nodes`),
@@ -178,6 +229,21 @@ export const creationApi = {
       method: 'POST',
       body: JSON.stringify(payload),
     }),
+
+  precheckNode: (nodeId: string) =>
+    apiFetch(`/api/prism/creation/nodes/${nodeId}/precheck`) as Promise<NodePrecheckResult>,
+
+  assessNodeQuality: (nodeId: string) =>
+    apiFetch(`/api/prism/creation/nodes/${nodeId}/quality`) as Promise<{
+      userId: string;
+      nodeId: string;
+      quality: NodeQuality;
+      precheckLevel: NodePrecheckLevel;
+      issueCount: number;
+    }>,
+
+  compareBranch: (nodeId: string) =>
+    apiFetch(`/api/prism/creation/branches/${nodeId}/compare`) as Promise<BranchCompareResult>,
 
   // Export project
   exportProject: (videoId: string, payload?: ExportProjectPayload) =>

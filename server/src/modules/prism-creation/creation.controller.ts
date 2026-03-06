@@ -205,4 +205,28 @@ export class CreationController {
   ) {
     return this.creationService.refineNodeCopy(userId, nodeId, dto);
   }
+
+  @Get('nodes/:nodeId/precheck')
+  precheckNode(
+    @CurrentUser() userId: string,
+    @Param('nodeId') nodeId: string,
+  ) {
+    return this.creationService.precheckNode(userId, nodeId);
+  }
+
+  @Get('nodes/:nodeId/quality')
+  assessNodeQuality(
+    @CurrentUser() userId: string,
+    @Param('nodeId') nodeId: string,
+  ) {
+    return this.creationService.assessNodeQuality(userId, nodeId);
+  }
+
+  @Get('branches/:nodeId/compare')
+  compareBranch(
+    @CurrentUser() userId: string,
+    @Param('nodeId') nodeId: string,
+  ) {
+    return this.creationService.compareBranch(userId, nodeId);
+  }
 }

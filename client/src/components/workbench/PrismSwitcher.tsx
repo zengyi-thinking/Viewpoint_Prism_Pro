@@ -86,11 +86,11 @@ export function PrismSwitcher({ collapsed = false, onToggle, onTimeClick }: Pris
   }
 
   return (
-    <div className="flex h-full w-full flex-col min-h-0">
+    <div className="flex h-full w-full min-h-0 flex-col overflow-hidden rounded-[16px]">
       {/* Studio header */}
-      <div className="border-b border-border-subtle px-4 py-3">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
+      <div className="border-b border-border-subtle px-[clamp(10px,1.2vw,16px)] py-[clamp(9px,1vw,12px)]">
+        <div className="flex min-w-0 items-center justify-between gap-2">
+          <div className="flex min-w-0 items-center gap-[clamp(6px,0.8vw,10px)]">
             <svg width="16" height="16" viewBox="0 0 28 28" fill="none">
               <defs>
                 <linearGradient id="psg" x1="0" y1="0" x2="28" y2="28">
@@ -101,24 +101,26 @@ export function PrismSwitcher({ collapsed = false, onToggle, onTimeClick }: Pris
               </defs>
               <path d="M14 2L26 24H2L14 2Z" stroke="url(#psg)" strokeWidth="1.5" fill="none" />
             </svg>
-            <span className="wb-section-title">Studio</span>
+            <span className="wb-section-title truncate">Studio</span>
           </div>
-          <div className="flex items-center gap-1">
+          <div className="flex shrink-0 items-center gap-1 pr-1">
             {hasActivePrism ? (
               <button
                 onClick={() => setActivePrism(null)}
-                className="rounded-lg px-2 py-1 text-[10px] text-text-tertiary transition hover:bg-bg-panel-secondary hover:text-text-secondary"
+                className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-text-secondary transition-all duration-[var(--transition-base)] hover:bg-bg-panel-tertiary hover:text-text-primary active:scale-95"
                 title="返回棱镜选择"
               >
-                返回
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M15 18l-6-6 6-6" />
+                </svg>
               </button>
             ) : null}
             <button
               onClick={onToggle}
-              className="rounded-lg p-1 text-text-tertiary transition hover:bg-bg-panel-secondary hover:text-text-secondary"
+              className="rounded-lg p-1 text-text-tertiary transition-all duration-[var(--transition-base)] hover:bg-bg-panel-tertiary hover:text-text-secondary active:scale-95"
               title="收起面板"
             >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <path d="M13 5l7 7-7 7M5 5l7 7-7 7" />
               </svg>
             </button>
@@ -129,44 +131,44 @@ export function PrismSwitcher({ collapsed = false, onToggle, onTimeClick }: Pris
       {/* 2x2 Prism card grid */}
       <div
         className={[
-          'overflow-hidden transition-all duration-300 ease-out',
+          'overflow-hidden transition-all duration-[var(--transition-slow)] ease-out',
           hasActivePrism
-            ? 'max-h-0 opacity-0 -translate-y-1 pointer-events-none'
+            ? 'max-h-0 opacity-0 -translate-y-2 pointer-events-none'
             : 'max-h-[260px] opacity-100 translate-y-0',
         ].join(' ')}
       >
-        <div className="grid grid-cols-2 gap-2.5 p-3">
+        <div className="grid grid-cols-2 gap-[clamp(8px,1vw,12px)] p-[clamp(10px,1.2vw,16px)]">
         {prisms.map((p) => {
           const isActive = activePrism === p.type;
           return (
             <button
               key={p.type}
               onClick={() => setActivePrism(isActive ? null : p.type)}
-              className="group relative flex flex-col items-start gap-2 rounded-2xl border p-3 text-left transition-all duration-200"
+              className="group relative flex flex-col items-start gap-2 rounded-xl border p-[clamp(8px,1vw,12px)] text-left transition-all duration-[var(--transition-base)] hover:scale-[1.01] active:scale-[0.99] shadow-[var(--shadow-xs)] hover:shadow-[var(--shadow-sm)]"
               style={{
                 borderColor: isActive ? `${p.color}40` : 'var(--border-subtle)',
                 background: isActive ? `${p.color}10` : 'var(--bg-panel-secondary)',
               }}
             >
               <div
-                className="flex h-8 w-8 items-center justify-center rounded-xl transition-colors"
+                className="flex h-8 w-8 items-center justify-center rounded-lg transition-all duration-[var(--transition-base)] group-hover:scale-105"
                 style={{
-                  background: `${p.color}15`,
+                  background: `${p.color}12`,
                   color: isActive ? p.color : 'var(--text-tertiary)',
                 }}
               >
                 {p.icon}
               </div>
               <div>
-                <div className="text-[13px] font-semibold" style={{ color: isActive ? p.color : 'var(--text-primary)' }}>
+                <div className="text-[12px] font-semibold leading-tight" style={{ color: isActive ? p.color : 'var(--text-primary)' }}>
                   {p.label}
                 </div>
-                <div className="mt-0.5 text-[11px] text-text-tertiary">{p.subtitle}</div>
+                <div className="mt-0.5 text-[10px] leading-tight text-text-tertiary">{p.subtitle}</div>
               </div>
               {isActive && (
                 <span
-                  className="absolute right-2 top-2 h-1.5 w-1.5 rounded-full"
-                  style={{ background: p.color }}
+                  className="absolute right-2 top-2 h-1.5 w-1.5 rounded-full animate-pulse"
+                  style={{ background: p.color, boxShadow: `0 0 6px ${p.color}` }}
                 />
               )}
             </button>
@@ -178,12 +180,23 @@ export function PrismSwitcher({ collapsed = false, onToggle, onTimeClick }: Pris
       {/* Active prism panel area */}
       <div
         className={[
-          'min-h-0 flex-1 overflow-hidden transition-all duration-300 ease-out',
+          'relative min-h-0 flex-1 overflow-hidden transition-all duration-300 ease-out',
           hasActivePrism
             ? 'opacity-100 translate-y-0'
             : 'opacity-100 translate-y-0',
         ].join(' ')}
       >
+        {hasActivePrism ? (
+          <button
+            onClick={() => setActivePrism(null)}
+            className="absolute right-3 top-3 z-30 inline-flex h-7 w-7 items-center justify-center rounded-lg border border-border bg-bg-panel/90 text-text-secondary shadow-sm transition hover:text-text-primary hover:border-border-focus"
+            title="返回棱镜选择"
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M15 18l-6-6 6-6" />
+            </svg>
+          </button>
+        ) : null}
         {hasActivePrism ? (
           <div className="h-full animate-[kb-card-fly-in_260ms_ease-out]">
             <PrismActivePanel onTimeClick={onTimeClick} />
@@ -214,7 +227,7 @@ function PrismActivePanel({ videoId, onTimeClick }: { videoId?: string; onTimeCl
   if (activePrism === 'knowledge') {
     if (!currentVideo) {
       return (
-        <div className="panel flex h-full flex-col rounded-none border-t border-l-0 border-r-0 border-b-0">
+        <div className="panel m-2 flex h-[calc(100%-1rem)] flex-col overflow-hidden rounded-[14px] border border-border-subtle bg-bg-panel-secondary">
           <div className="px-4 py-3">
             <div className="flex items-center gap-2">
               <span className="status-dot" style={{ background: c.color }} />
@@ -235,7 +248,7 @@ function PrismActivePanel({ videoId, onTimeClick }: { videoId?: string; onTimeCl
     }
 
     return (
-      <div className="panel flex h-full flex-col rounded-none border-t border-l-0 border-r-0 border-b-0">
+      <div className="panel m-2 flex h-[calc(100%-1rem)] flex-col overflow-hidden rounded-[14px] border border-border-subtle bg-bg-panel-secondary">
         <KnowledgeBoard videoId={currentVideo.id} onTimeClick={onTimeClick} />
       </div>
     );
@@ -245,7 +258,7 @@ function PrismActivePanel({ videoId, onTimeClick }: { videoId?: string; onTimeCl
   if (activePrism === 'creation') {
     if (!currentVideo) {
       return (
-        <div className="panel flex h-full flex-col rounded-none border-t border-l-0 border-r-0 border-b-0">
+        <div className="panel m-2 flex h-[calc(100%-1rem)] flex-col overflow-hidden rounded-[14px] border border-border-subtle bg-bg-panel-secondary">
           <div className="px-4 py-3">
             <div className="flex items-center gap-2">
               <span className="status-dot" style={{ background: c.color }} />
@@ -266,7 +279,7 @@ function PrismActivePanel({ videoId, onTimeClick }: { videoId?: string; onTimeCl
     }
 
     return (
-      <div className="panel flex h-full flex-col rounded-none border-t border-l-0 border-r-0 border-b-0">
+      <div className="panel m-2 flex h-[calc(100%-1rem)] flex-col overflow-hidden rounded-[14px] border border-border-subtle bg-bg-panel-secondary">
         <CreationCanvas videoId={currentVideo.id} onTimeClick={onTimeClick} />
       </div>
     );
@@ -276,7 +289,7 @@ function PrismActivePanel({ videoId, onTimeClick }: { videoId?: string; onTimeCl
   if (activePrism === 'translation') {
     if (!currentVideo) {
       return (
-        <div className="panel flex h-full flex-col rounded-none border-t border-l-0 border-r-0 border-b-0">
+        <div className="panel m-2 flex h-[calc(100%-1rem)] flex-col overflow-hidden rounded-[14px] border border-border-subtle bg-bg-panel-secondary">
           <div className="px-4 py-3">
             <div className="flex items-center gap-2">
               <span className="status-dot" style={{ background: c.color }} />
@@ -297,7 +310,7 @@ function PrismActivePanel({ videoId, onTimeClick }: { videoId?: string; onTimeCl
     }
 
     return (
-      <div className="panel flex h-full flex-col rounded-none border-t border-l-0 border-r-0 border-b-0">
+      <div className="panel m-2 flex h-[calc(100%-1rem)] flex-col overflow-hidden rounded-[14px] border border-border-subtle bg-bg-panel-secondary">
         <TranslationPanel videoId={currentVideo.id} onTimeClick={onTimeClick} />
       </div>
     );
@@ -307,7 +320,7 @@ function PrismActivePanel({ videoId, onTimeClick }: { videoId?: string; onTimeCl
   if (activePrism === 'diffraction') {
     if (!currentVideo) {
       return (
-        <div className="panel flex h-full flex-col rounded-none border-t border-l-0 border-r-0 border-b-0">
+        <div className="panel m-2 flex h-[calc(100%-1rem)] flex-col overflow-hidden rounded-[14px] border border-border-subtle bg-bg-panel-secondary">
           <div className="px-4 py-3">
             <div className="flex items-center gap-2">
               <span className="status-dot" style={{ background: c.color }} />
@@ -328,14 +341,14 @@ function PrismActivePanel({ videoId, onTimeClick }: { videoId?: string; onTimeCl
     }
 
     return (
-      <div className="panel flex h-full flex-col rounded-none border-t border-l-0 border-r-0 border-b-0">
+      <div className="panel m-2 flex h-[calc(100%-1rem)] flex-col overflow-hidden rounded-[14px] border border-border-subtle bg-bg-panel-secondary">
         <DiffractionPanel videoId={currentVideo.id} onTimeClick={onTimeClick} />
       </div>
     );
   }
 
   return (
-    <div className="panel flex h-full flex-col rounded-none border-t border-l-0 border-r-0 border-b-0">
+    <div className="panel m-2 flex h-[calc(100%-1rem)] flex-col overflow-hidden rounded-[14px] border border-border-subtle bg-bg-panel-secondary">
       <div className="px-4 py-3">
         <div className="flex items-center gap-2">
           <span className="status-dot" style={{ background: c.color }} />

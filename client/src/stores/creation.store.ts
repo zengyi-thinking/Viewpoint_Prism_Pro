@@ -4,7 +4,10 @@ import { create } from 'zustand';
 import { Node, Edge } from '@xyflow/react';
 import {
   creationApi,
+  BranchCompareResult,
   CreateFlowNodePayload,
+  NodePrecheckLevel,
+  NodePrecheckResult,
   StitchFlowPayload,
   ExportProjectPayload,
   GenerateNextNodePayload,
@@ -52,6 +55,21 @@ export interface FlowNodeData extends Record<string, unknown> {
   firstFramePrompt?: string;
   lastFramePrompt?: string;
   sceneFramePrompt?: string;
+  precheckLevel?: NodePrecheckLevel;
+  precheckIssues?: Array<{
+    code: string;
+    severity: 'low' | 'medium' | 'high';
+    message: string;
+    suggestion: string;
+  }>;
+  qualityScore?: number;
+  qualityBreakdown?: {
+    promptCompleteness: number;
+    continuity: number;
+    renderStability: number;
+    subjectConsistency: number;
+    overall: number;
+  };
 }
 
 export type FlowNode = Node<FlowNodeData>;
@@ -171,6 +189,20 @@ interface CreationStore {
   pollExportTask: (taskId: string) => Promise<void>;
   pollRenderTask: (nodeId: string, taskId: string) => Promise<void>;
   refineNodeCopy: (nodeId: string, requirement: string) => Promise<void>;
+  precheckNode: (nodeId: string) => Promise<NodePrecheckResult | null>;
+  assessNodeQuality: (nodeId: string) => Promise<{
+    nodeId: string;
+    quality: {
+      promptCompleteness: number;
+      continuity: number;
+      renderStability: number;
+      subjectConsistency: number;
+      overall: number;
+    };
+    precheckLevel: NodePrecheckLevel;
+    issueCount: number;
+  } | null>;
+  compareBranch: (nodeId: string) => Promise<BranchCompareResult | null>;
   updateNodeLocalData: (nodeId: string, data: Partial<FlowNodeData>) => void;
 
   // 清除状态
@@ -658,6 +690,17 @@ export const useCreationStore = create<CreationStore>((set, get) => ({
     const { currentVideoId } = get();
     if (!currentVideoId) return;
 
+    const precheck = await get().precheckNode(nodeId);
+    if (precheck?.level === 'high_risk') {
+      const highestIssue = precheck.issues.find((item) => item.severity === 'high') || precheck.issues[0];
+      set({
+        error: highestIssue
+          ? `预检未通过：${highestIssue.message}`
+          : '预检未通过：当前节点风险过高，请先补全提示词或帧锚点',
+      });
+      return;
+    }
+
     // Set loading state
     set((state) => ({
       nodes: state.nodes.map((node) =>
@@ -781,6 +824,69 @@ export const useCreationStore = create<CreationStore>((set, get) => ({
     } catch (error) {
       console.error('Failed to refine node copy:', error);
       set({ error: 'AI 调整文案失败' });
+    }
+  },
+
+  precheckNode: async (nodeId: string) => {
+    try {
+      const response = await creationApi.precheckNode(nodeId);
+      set((state) => ({
+        nodes: state.nodes.map((node) =>
+          node.id === nodeId
+            ? {
+                ...node,
+                data: {
+                  ...node.data,
+                  precheckLevel: response.level,
+                  precheckIssues: response.issues,
+                  qualityScore: response.quality.overall,
+                  qualityBreakdown: response.quality,
+                },
+              }
+            : node,
+        ),
+      }));
+      return response;
+    } catch (error) {
+      console.error('Failed to precheck node:', error);
+      set({ error: '节点预检失败' });
+      return null;
+    }
+  },
+
+  assessNodeQuality: async (nodeId: string) => {
+    try {
+      const response = await creationApi.assessNodeQuality(nodeId);
+      set((state) => ({
+        nodes: state.nodes.map((node) =>
+          node.id === nodeId
+            ? {
+                ...node,
+                data: {
+                  ...node.data,
+                  precheckLevel: response.precheckLevel,
+                  qualityScore: response.quality.overall,
+                  qualityBreakdown: response.quality,
+                },
+              }
+            : node,
+        ),
+      }));
+      return response;
+    } catch (error) {
+      console.error('Failed to assess node quality:', error);
+      set({ error: '质量评估失败' });
+      return null;
+    }
+  },
+
+  compareBranch: async (nodeId: string) => {
+    try {
+      return await creationApi.compareBranch(nodeId);
+    } catch (error) {
+      console.error('Failed to compare branch:', error);
+      set({ error: '分支对比失败' });
+      return null;
     }
   },
 

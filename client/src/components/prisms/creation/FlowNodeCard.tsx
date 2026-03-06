@@ -56,6 +56,9 @@ function FlowNodeCardComponent({ id, data, selected }: FlowNodeCardProps) {
     refineNodeCopy,
     generateNodeCandidates,
     generateNextNode,
+    precheckNode,
+    assessNodeQuality,
+    compareBranch,
   } = useCreationStore();
 
   const {
@@ -78,6 +81,10 @@ function FlowNodeCardComponent({ id, data, selected }: FlowNodeCardProps) {
     lastFramePrompt,
     sceneFramePrompt,
     renderedVideoUrl,
+    precheckLevel,
+    precheckIssues,
+    qualityScore,
+    qualityBreakdown,
   } = data;
 
   const isBranchNode = Boolean(parentNodeId || branchName);
@@ -92,6 +99,19 @@ function FlowNodeCardComponent({ id, data, selected }: FlowNodeCardProps) {
   const [expanding, setExpanding] = useState(false);
   const [candidateList, setCandidateList] = useState<PromptBundleCandidate[]>([]);
   const [adoptingIndex, setAdoptingIndex] = useState<number | null>(null);
+  const [prechecking, setPrechecking] = useState(false);
+  const [scoring, setScoring] = useState(false);
+  const [compareLoading, setCompareLoading] = useState(false);
+  const [compareResult, setCompareResult] = useState<{
+    recommendation: 'merge_branch' | 'keep_main' | 'manual_review';
+    reasons: string[];
+    delta: {
+      overall: number;
+      promptCompleteness: number;
+      continuity: number;
+      renderStability: number;
+    };
+  } | null>(null);
 
   const handleDoubleClick = useCallback(() => {
     selectNode(id);
@@ -185,6 +205,49 @@ function FlowNodeCardComponent({ id, data, selected }: FlowNodeCardProps) {
     lockFrame(id, 'last', !lastFrameLocked);
   }, [id, lastFrameLocked, lockFrame]);
 
+  const handlePrecheck = useCallback(async () => {
+    setPrechecking(true);
+    try {
+      await precheckNode(id);
+    } finally {
+      setPrechecking(false);
+    }
+  }, [id, precheckNode]);
+
+  const handleScore = useCallback(async () => {
+    setScoring(true);
+    try {
+      await assessNodeQuality(id);
+    } finally {
+      setScoring(false);
+    }
+  }, [assessNodeQuality, id]);
+
+  const handleCompareBranch = useCallback(async () => {
+    if (!isBranchNode) return;
+    setCompareLoading(true);
+    try {
+      const result = await compareBranch(id);
+      if (!result) return;
+      setCompareResult({
+        recommendation: result.recommendation,
+        reasons: result.reasons,
+        delta: result.compare.delta,
+      });
+    } finally {
+      setCompareLoading(false);
+    }
+  }, [compareBranch, id, isBranchNode]);
+
+  const precheckTone =
+    precheckLevel === 'ready'
+      ? 'text-[#34D399] bg-[#10B981]/15 border-[#10B981]/40'
+      : precheckLevel === 'high_risk'
+        ? 'text-[#FCA5A5] bg-[#EF4444]/12 border-[#EF4444]/35'
+        : precheckLevel === 'suggest_improve'
+          ? 'text-[#FCD34D] bg-[#F59E0B]/12 border-[#F59E0B]/35'
+          : 'text-[#9CA3AF] bg-[#2D2D3A] border-[#2D2D3A]';
+
   return (
     <div
       className={[
@@ -234,6 +297,18 @@ function FlowNodeCardComponent({ id, data, selected }: FlowNodeCardProps) {
             {renderStatus === 'FAILED' && <AlertCircle className="h-3 w-3" />}
             {statusLabels[renderStatus]}
           </span>
+          <span className={`rounded-full border px-2 py-0.5 text-[10px] font-medium ${precheckTone}`}>
+            {precheckLevel === 'ready'
+              ? '预检通过'
+              : precheckLevel === 'high_risk'
+                ? '高风险'
+                : precheckLevel === 'suggest_improve'
+                  ? '建议优化'
+                  : '未预检'}
+          </span>
+          <span className="rounded-full bg-[#1A1A22] px-2 py-0.5 text-[10px] text-[#9CA3AF]">
+            质量 {qualityScore != null ? Math.round(qualityScore) : '-'}
+          </span>
           <button
             onClick={handleDelete}
             className="rounded p-1 text-[#9CA3AF] transition hover:bg-[#3B1F26] hover:text-[#F87171]"
@@ -245,6 +320,7 @@ function FlowNodeCardComponent({ id, data, selected }: FlowNodeCardProps) {
       </div>
 
       <div className="space-y-2 border-b border-[#2D2D3A] px-3 py-2">
+        <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#6B7280]">叙事意图层</div>
         <div>
           <label className="text-[10px] text-[#6B7280]">节点文案</label>
           <textarea
@@ -304,6 +380,7 @@ function FlowNodeCardComponent({ id, data, selected }: FlowNodeCardProps) {
           </div>
         )}
 
+        <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#6B7280] pt-1">提示词层</div>
         <div className="space-y-2 rounded-md border border-[#2D2D3A] bg-[#14141C] p-2">
           <label className="text-[10px] text-[#9CA3AF]">节点拓展（生成多个下一节点候选）</label>
           <textarea
@@ -370,6 +447,7 @@ function FlowNodeCardComponent({ id, data, selected }: FlowNodeCardProps) {
       </div>
 
       <div className="space-y-2 px-3 py-2">
+        <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#6B7280]">画面锚点层</div>
         {isFirstMainNode ? (
           <>
             <div>
@@ -483,6 +561,65 @@ function FlowNodeCardComponent({ id, data, selected }: FlowNodeCardProps) {
       </div>
 
       <div className="space-y-2 border-t border-[#2D2D3A] px-3 py-2">
+        <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#6B7280]">渲染状态层</div>
+        <div className="flex gap-1">
+          <button
+            onClick={handlePrecheck}
+            disabled={prechecking}
+            className="flex-1 rounded-lg border border-[#2D2D3A] bg-[#1C1D26] py-1.5 text-[10px] text-[#E5E7EB] transition hover:bg-[#2A2C38] disabled:opacity-50"
+          >
+            {prechecking ? <Loader2 className="mr-1 inline h-3 w-3 animate-spin" /> : <AlertCircle className="mr-1 inline h-3 w-3" />}
+            预检
+          </button>
+          <button
+            onClick={handleScore}
+            disabled={scoring}
+            className="flex-1 rounded-lg border border-[#2D2D3A] bg-[#1C1D26] py-1.5 text-[10px] text-[#E5E7EB] transition hover:bg-[#2A2C38] disabled:opacity-50"
+          >
+            {scoring ? <Loader2 className="mr-1 inline h-3 w-3 animate-spin" /> : <Wand2 className="mr-1 inline h-3 w-3" />}
+            质量评分
+          </button>
+          {isBranchNode ? (
+            <button
+              onClick={handleCompareBranch}
+              disabled={compareLoading}
+              className="flex-1 rounded-lg border border-[#2D2D3A] bg-[#1C1D26] py-1.5 text-[10px] text-[#E5E7EB] transition hover:bg-[#2A2C38] disabled:opacity-50"
+            >
+              {compareLoading ? <Loader2 className="mr-1 inline h-3 w-3 animate-spin" /> : <GitMerge className="mr-1 inline h-3 w-3" />}
+              分支对比
+            </button>
+          ) : null}
+        </div>
+
+        {qualityBreakdown ? (
+          <div className="rounded-lg border border-[#2D2D3A] bg-[#14141C] px-2 py-1.5 text-[10px] text-[#AEB4BF]">
+            提示词完整度 {Math.round(qualityBreakdown.promptCompleteness)} · 连续性 {Math.round(qualityBreakdown.continuity)} · 渲染稳定性 {Math.round(qualityBreakdown.renderStability)}
+          </div>
+        ) : null}
+
+        {precheckIssues && precheckIssues.length > 0 ? (
+          <div className="rounded-lg border border-[#3D2A2A] bg-[#2B1E1E]/50 p-2 text-[10px] text-[#FCA5A5]">
+            {precheckIssues[0].message}
+          </div>
+        ) : null}
+
+        {compareResult ? (
+          <div className="rounded-lg border border-[#2D2D3A] bg-[#14141C] p-2 text-[10px] text-[#CBD5E1]">
+            <div className="font-medium text-[#E5E7EB]">
+              合并建议：
+              {compareResult.recommendation === 'merge_branch'
+                ? '合并分支'
+                : compareResult.recommendation === 'keep_main'
+                  ? '保留主干'
+                  : '人工复核'}
+            </div>
+            <div className="mt-1 text-[#9CA3AF]">
+              综合差值 {compareResult.delta.overall > 0 ? '+' : ''}{compareResult.delta.overall.toFixed(1)}
+            </div>
+            <div className="mt-1 text-[#9CA3AF]">{compareResult.reasons[0]}</div>
+          </div>
+        ) : null}
+
         <div className="flex gap-1">
           {isFirstMainNode ? (
             <>

@@ -8,6 +8,7 @@ import { PrismSwitcher } from './PrismSwitcher';
 import { ThemeSelector } from '@/components/theme';
 import Link from 'next/link';
 import { useWorkbenchStore } from '@/stores/workbench.store';
+import { projectApi } from '@/services/project.api';
 
 const LEFT_MIN_WIDTH = 220;
 const RIGHT_MIN_WIDTH = 260;
@@ -26,6 +27,9 @@ export function WorkbenchShell({ projectName, projectId }: { projectName?: strin
   const [leftCollapsed, setLeftCollapsed] = useState(false);
   const [rightCollapsed, setRightCollapsed] = useState(false);
   const [dragging, setDragging] = useState<DragTarget>(null);
+  const [isEditingTitle, setIsEditingTitle] = useState(false);
+  const [titleDraft, setTitleDraft] = useState(projectName || '工作台');
+  const [isSavingTitle, setIsSavingTitle] = useState(false);
 
   // 创作棱镜模式：空间折叠
   const isCreationMode = activePrism === 'creation';
@@ -50,6 +54,10 @@ export function WorkbenchShell({ projectName, projectId }: { projectName?: strin
     setLeftWidth(suggestedLeft);
     setRightWidth(suggestedRight);
   }, []);
+
+  useEffect(() => {
+    setTitleDraft(projectName || '工作台');
+  }, [projectName]);
 
   useEffect(() => {
     const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
@@ -159,18 +167,38 @@ export function WorkbenchShell({ projectName, projectId }: { projectName?: strin
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [leftCollapsed, rightCollapsed]);
 
+  const commitProjectTitle = async () => {
+    const trimmed = titleDraft.trim();
+    const fallback = projectName || '工作台';
+    const nextTitle = trimmed || fallback;
+    setTitleDraft(nextTitle);
+    setIsEditingTitle(false);
+
+    if (!projectId || !nextTitle || nextTitle === projectName) return;
+
+    setIsSavingTitle(true);
+    try {
+      await projectApi.update(projectId, { name: nextTitle });
+    } catch (error) {
+      console.error('Failed to update project title:', error);
+      setTitleDraft(fallback);
+    } finally {
+      setIsSavingTitle(false);
+    }
+  };
+
   return (
     <div className="workbench-shell flex h-dvh min-h-0 flex-col bg-bg-primary text-text-primary">
       {/* Top bar */}
-      <header className="flex h-[clamp(46px,5.2vh,58px)] shrink-0 items-center justify-between border-b border-border bg-bg-panel px-[clamp(12px,1.35vw,20px)]">
-        <div className="flex items-center gap-3">
-          <Link href="/projects" className="flex items-center gap-2 text-text-secondary transition hover:text-text-primary">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <header className="flex h-[clamp(56px,6.2vh,72px)] shrink-0 items-center justify-between border-b border-border bg-bg-panel px-[clamp(14px,1.8vw,26px)]">
+        <div className="flex items-center gap-[clamp(8px,1vw,14px)]">
+          <Link href="/projects" className="flex items-center gap-2 text-text-secondary transition-all duration-[var(--transition-base)] hover:text-text-primary hover:scale-105">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M15 18l-6-6 6-6" />
             </svg>
           </Link>
-          <div className="h-4 w-px bg-border" />
-          <svg width="18" height="18" viewBox="0 0 28 28" fill="none">
+          <div className="h-5 w-px bg-border" />
+          <svg width="24" height="24" viewBox="0 0 28 28" fill="none" className="shrink-0">
             <defs>
               <linearGradient id="wlg" x1="0" y1="0" x2="28" y2="28">
                 <stop offset="0%" stopColor="#FF6B35" />
@@ -180,12 +208,40 @@ export function WorkbenchShell({ projectName, projectId }: { projectName?: strin
             </defs>
             <path d="M14 2L26 24H2L14 2Z" stroke="url(#wlg)" strokeWidth="1.5" fill="none" />
           </svg>
-          <span className="wb-title">{projectName || '工作台'}</span>
+          {isEditingTitle ? (
+            <input
+              value={titleDraft}
+              onChange={(e) => setTitleDraft(e.target.value)}
+              onBlur={commitProjectTitle}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  void commitProjectTitle();
+                }
+                if (e.key === 'Escape') {
+                  setTitleDraft(projectName || '工作台');
+                  setIsEditingTitle(false);
+                }
+              }}
+              autoFocus
+              className="h-9 w-[clamp(180px,28vw,360px)] rounded-lg border border-border bg-bg-panel-secondary px-3 text-[clamp(17px,1.15vw,22px)] font-semibold text-text-primary outline-none transition focus:border-[#E91E8C]"
+            />
+          ) : (
+            <button
+              type="button"
+              onClick={() => setIsEditingTitle(true)}
+              className="wb-title rounded-md px-1 py-0.5 text-left transition hover:bg-bg-panel-secondary"
+              title="点击编辑工程标题"
+            >
+              {titleDraft}
+            </button>
+          )}
+          {isSavingTitle ? <span className="wb-meta">保存中...</span> : null}
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-[clamp(6px,0.8vw,10px)]">
           {/* Engine status indicator */}
-          <div className="flex items-center gap-1.5 rounded-lg border border-border-subtle bg-bg-panel-secondary px-2.5 py-1">
+          <div className="flex items-center gap-1.5 rounded-lg border border-border-subtle bg-bg-panel-secondary px-2.5 py-1 transition-all duration-[var(--transition-base)] hover:border-border">
             <span className="status-dot status-dot-warning" />
             <span className="wb-meta">引擎待配置</span>
           </div>
@@ -197,11 +253,11 @@ export function WorkbenchShell({ projectName, projectId }: { projectName?: strin
 
       {/* Main content area */}
       <div className="wb-main-gap flex min-h-0 flex-1">
-        <div ref={containerRef} className="flex min-h-0 flex-1 overflow-hidden">
+        <div ref={containerRef} className="flex min-h-0 flex-1 overflow-hidden gap-0">
           {/* Left: Video Source Panel */}
           <div
             data-testid="left-panel"
-            className={`flex h-full shrink-0 transition-all duration-200 ${
+            className={`flex h-full shrink-0 transition-all duration-[var(--transition-base)] ${
               effectiveLeftCollapsed ? 'panel-collapsed' : ''
             }`}
             style={{ width: effectiveLeftCollapsed ? `${COLLAPSED_WIDTH}px` : `${leftWidth}px` }}
@@ -214,7 +270,7 @@ export function WorkbenchShell({ projectName, projectId }: { projectName?: strin
             aria-orientation="vertical"
             data-testid="resize-handle-left"
             onMouseDown={() => setDragging('left')}
-            className={`panel-separator relative w-1.5 cursor-col-resize transition-all duration-300 ${
+            className={`panel-separator relative w-1.5 cursor-col-resize transition-all duration-[var(--transition-slow)] ${
               dragging === 'left' ? 'dragging' : ''
             } ${isCreationMode ? 'opacity-0 pointer-events-none' : ''}`}
           >
@@ -224,13 +280,13 @@ export function WorkbenchShell({ projectName, projectId }: { projectName?: strin
           {/* Center: Player + Chat - 创作棱镜模式时播放器变为浮窗 */}
           <div
             data-testid="center-panel"
-            className={`relative min-w-0 flex flex-1 flex-col overflow-hidden transition-all duration-500 ${
+            className={`relative min-w-0 flex flex-1 flex-col overflow-hidden transition-all duration-[var(--transition-slower)] ${
               isCreationMode ? 'm-2' : ''
             }`}
           >
             {/* 播放器浮窗（创作模式） */}
             {isCreationMode ? (
-              <div className="absolute left-0 bottom-0 z-20 w-48 rounded-lg border border-border bg-bg-panel shadow-xl transition-all duration-500 hover:z-30"
+              <div className="absolute left-0 bottom-0 z-20 rounded-xl border border-border bg-bg-panel shadow-[var(--shadow-2xl)] transition-all duration-[var(--transition-slower)] hover:z-30 hover:shadow-[var(--shadow-2xl)]"
                    style={{ width: '200px', height: '112px' }}>
                 <PlayerCenter videoRef={videoPlayerRef} />
               </div>
@@ -264,7 +320,7 @@ export function WorkbenchShell({ projectName, projectId }: { projectName?: strin
             aria-orientation="vertical"
             data-testid="resize-handle-right"
             onMouseDown={() => setDragging('right')}
-            className={`panel-separator relative w-1.5 cursor-col-resize ${
+            className={`panel-separator relative w-1.5 cursor-col-resize transition-all duration-[var(--transition-slow)] ${
               dragging === 'right' ? 'dragging' : ''
             }`}
           >
@@ -274,7 +330,7 @@ export function WorkbenchShell({ projectName, projectId }: { projectName?: strin
           {/* Right: Prism Studio Panel (2x2 grid) - 创作模式时展开 */}
           <div
             data-testid="right-panel"
-            className={`flex h-full shrink-0 border-l border-border bg-bg-panel transition-all duration-500 ${
+            className={`flex h-full min-w-0 shrink-0 overflow-hidden rounded-[16px] border border-border bg-bg-panel transition-all duration-[var(--transition-slower)] ${
               rightCollapsed ? 'panel-collapsed' : ''
             } ${isCreationMode ? 'w-full' : ''}`}
             style={isCreationMode ? {} : { width: rightCollapsed ? `${COLLAPSED_WIDTH}px` : `${rightWidth}px` }}

@@ -34,20 +34,20 @@ export function ThemeSelector() {
 
   return (
     <div ref={containerRef} className="relative">
-      {/* 太阳图标按钮（主题切换） */}
+      {/* 主题切换按钮 */}
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="flex h-9 w-9 items-center justify-center rounded-lg text-text-secondary transition-all hover:bg-bg-panel-secondary hover:text-text-primary"
+        className="flex h-8 w-8 items-center justify-center rounded-lg text-text-secondary transition-all duration-[var(--transition-base)] hover:bg-bg-panel-secondary hover:text-text-primary hover:scale-105 active:scale-95"
         title="切换主题"
       >
         {currentTheme.type === 'light' ? (
-          // 月亮图标（当前是浅色主题，点击可切换到深色）
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          // 月亮图标（当前是浅色主题）
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
           </svg>
         ) : (
-          // 太阳图标（当前是深色主题，点击可切换到浅色）
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          // 太阳图标（当前是深色主题）
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <circle cx="12" cy="12" r="5" />
             <line x1="12" y1="1" x2="12" y2="3" />
             <line x1="12" y1="21" x2="12" y2="23" />
@@ -63,17 +63,23 @@ export function ThemeSelector() {
 
       {/* 下拉菜单 */}
       {isOpen && (
-        <div className="dropdown-menu absolute right-0 top-full z-50 mt-2 w-72">
-          <div className="p-3 border-b border-border-subtle">
-            <p className="text-xs font-medium uppercase tracking-wider text-text-tertiary">
+        <div className="dropdown-menu absolute right-0 top-full z-50 mt-2 w-80 animate-scale-in">
+          <div className="p-3 border-b border-border-subtle bg-bg-panel-secondary/30">
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-text-tertiary">
               主题设置
+            </p>
+            <p className="mt-0.5 text-[10px] text-text-tertiary">
+              当前: {currentTheme.name}
             </p>
           </div>
 
-          <div className="max-h-96 overflow-y-auto p-2">
+          <div className="max-h-[480px] overflow-y-auto p-2.5">
             {/* 深色主题组 */}
-            <div className="mb-4">
-              <p className="mb-2 px-2 text-xs font-medium text-text-tertiary">
+            <div className="mb-3">
+              <p className="mb-1.5 px-2 text-[11px] font-semibold text-text-tertiary flex items-center gap-1.5">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+                </svg>
                 深色主题
               </p>
               <div className="space-y-1">
@@ -93,7 +99,12 @@ export function ThemeSelector() {
 
             {/* 浅色主题组 */}
             <div>
-              <p className="mb-2 px-2 text-xs font-medium text-text-tertiary">
+              <p className="mb-1.5 px-2 text-[11px] font-semibold text-text-tertiary flex items-center gap-1.5">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <circle cx="12" cy="12" r="5" />
+                  <line x1="12" y1="1" x2="12" y2="3" />
+                  <line x1="12" y1="21" x2="12" y2="23" />
+                </svg>
                 浅色主题
               </p>
               <div className="space-y-1">
@@ -113,8 +124,12 @@ export function ThemeSelector() {
           </div>
 
           {/* 底部提示 */}
-          <div className="border-t border-border-subtle p-2">
-            <p className="px-2 text-[10px] text-text-tertiary">
+          <div className="border-t border-border-subtle p-2.5 bg-bg-panel-secondary/20">
+            <p className="px-2 text-[9px] text-text-tertiary flex items-center gap-1">
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <circle cx="12" cy="12" r="10" />
+                <path d="M12 16v-4M12 8h.01" />
+              </svg>
               主题选择会自动保存到本地
             </p>
           </div>
@@ -146,40 +161,40 @@ function ThemeOption({ theme, isActive, onClick }: ThemeOptionProps) {
   return (
     <button
       onClick={onClick}
-      className={`dropdown-item w-full rounded-lg ${
-        isActive ? 'dropdown-item-active' : ''
+      className={`dropdown-item w-full rounded-lg transition-all duration-[var(--transition-base)] ${
+        isActive ? 'dropdown-item-active ring-1 ring-accent-primary ring-offset-1 ring-offset-bg-panel' : ''
       }`}
     >
       {/* 主题预览色块 */}
       <div className="flex shrink-0 items-center gap-1">
         <div
-          className="h-5 w-5 rounded border border-border-subtle"
+          className="h-5 w-5 rounded-md border border-border-subtle shadow-[var(--shadow-xs)] transition-transform hover:scale-110"
           style={{ backgroundColor: theme.colors.background }}
         />
         <div
-          className="h-5 w-5 rounded border border-border-subtle"
+          className="h-5 w-5 rounded-md border border-border-subtle shadow-[var(--shadow-xs)] transition-transform hover:scale-110"
           style={{ backgroundColor: theme.colors.panel }}
         />
         <div
-          className="h-5 w-5 rounded border border-border-subtle"
+          className="h-5 w-5 rounded-md border border-border-subtle shadow-[var(--shadow-xs)] transition-transform hover:scale-110"
           style={{ backgroundColor: theme.colors.accent }}
         />
       </div>
 
       {/* 主题名称 */}
       <div className="flex-1 text-left">
-        <p className="text-sm font-medium">{theme.name}</p>
-        <p className="text-[10px] opacity-70">{theme.nameEn}</p>
+        <p className="text-[12px] font-semibold leading-tight">{theme.name}</p>
+        <p className="text-[10px] opacity-70 leading-tight">{theme.nameEn}</p>
       </div>
 
       {/* 选中标记 */}
       {isActive && (
         <svg
-          className="h-4 w-4 shrink-0"
+          className="h-4 w-4 shrink-0 text-accent-primary"
           viewBox="0 0 24 24"
           fill="none"
           stroke="currentColor"
-          strokeWidth="2"
+          strokeWidth="2.5"
         >
           <path d="M20 6L9 17l-5-5" />
         </svg>

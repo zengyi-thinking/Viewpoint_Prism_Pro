@@ -1,9 +1,16 @@
 export default function LandingPage() {
   return (
-    <div className="min-h-screen bg-[#0a0a0f] text-[#e8e8ed]">
+    <div
+      className="min-h-screen w-full bg-[#0a0a0f] text-[#e8e8ed]"
+      style={{
+        writingMode: 'horizontal-tb',
+        textOrientation: 'mixed',
+        minWidth: '100vw',
+      }}
+    >
       {/* ====== Navbar ====== */}
       <nav className="fixed top-0 left-0 right-0 z-50 border-b border-white/5 bg-[#0a0a0f]/80 backdrop-blur-xl">
-        <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-6">
+        <div className="mx-auto flex h-16 w-full max-w-7xl items-center justify-between px-6">
           <div className="flex items-center gap-2">
             <PrismLogo />
             <span className="text-lg font-semibold tracking-tight">Viewpoint Prism</span>
@@ -36,19 +43,18 @@ export default function LandingPage() {
           <PrismDecoration />
         </div>
 
-        <div className="relative z-10 mx-auto max-w-4xl text-center">
+        <div className="relative z-10 mx-auto w-full max-w-[56rem] text-center">
           <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-1.5 text-sm text-white/60">
             <span className="inline-block h-2 w-2 rounded-full bg-green-400" />
             BYOK 架构 · 自带模型密钥
           </div>
 
-          <h1 className="mb-6 text-5xl font-bold leading-tight tracking-tight md:text-7xl">
-            一束视频，
-            <br />
-            <span className="prism-gradient-text">四道光谱</span>
+          <h1 className="mb-6 text-5xl font-bold leading-tight tracking-tight break-normal md:text-7xl">
+            <span className="block">一束视频，</span>
+            <span className="block prism-gradient-text">四道光谱</span>
           </h1>
 
-          <p className="mx-auto mb-10 max-w-2xl text-lg leading-relaxed text-white/50 md:text-xl">
+          <p className="mx-auto mb-10 max-w-[42rem] text-lg leading-relaxed text-white/50 break-normal md:text-xl">
             同一条视频通过四大棱镜，折射为学习笔记、二创视频、多语种译制、多平台图文。
             不切换工具，不重复劳动，一个工作台完成全部内容生产。
           </p>
@@ -75,7 +81,7 @@ export default function LandingPage() {
           <div className="mb-16 text-center">
             <p className="mb-3 text-sm font-medium uppercase tracking-widest text-prism-pink">Core Prisms</p>
             <h2 className="mb-4 text-3xl font-bold md:text-5xl">四大棱镜，四条产线</h2>
-            <p className="mx-auto max-w-xl text-white/40">
+            <p className="mx-auto max-w-[36rem] text-white/40">
               不切换系统，切换棱镜即切换产线。每个棱镜都输出可导出的高价值资产。
             </p>
           </div>

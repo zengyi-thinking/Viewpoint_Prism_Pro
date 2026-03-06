@@ -32,7 +32,14 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[#0a0a0f] px-4">
+    <div
+      className="relative flex min-h-screen w-full items-center justify-center overflow-hidden bg-[#0a0a0f] px-4"
+      style={{
+        writingMode: 'horizontal-tb',
+        textOrientation: 'mixed',
+        minWidth: '100vw',
+      }}
+    >
       {/* 背景光晕 */}
       <div className="auth-glow auth-glow-orange" />
       <div className="auth-glow auth-glow-pink" />
@@ -53,7 +60,7 @@ export default function LoginPage() {
         </svg>
       </div>
 
-      <div className="relative z-10 w-full max-w-md">
+      <div className="relative z-10 mx-auto w-full max-w-[28rem]">
         {/* Logo */}
         <div className="mb-8 text-center">
           <Link href="/" className="inline-flex items-center gap-2.5 group">

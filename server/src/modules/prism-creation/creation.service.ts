@@ -1113,8 +1113,335 @@ ${adjustContext}
   }
 
   // ============================================================
+  // Precheck / Quality / Branch Compare
+  // ============================================================
+
+  async precheckNode(userId: string, nodeId: string) {
+    const node = await this.getNodeWithProject(nodeId);
+    if (!node) {
+      throw new NotFoundException('Node not found');
+    }
+    this.assertNodeAccess(node, userId);
+
+    const parentNode = node.parentNodeId
+      ? await this.prisma.flowNode.findUnique({ where: { id: node.parentNodeId } })
+      : null;
+
+    const result = this.evaluateNodeReadiness(node, parentNode);
+    return {
+      userId,
+      nodeId,
+      ...result,
+    };
+  }
+
+  async assessNodeQuality(userId: string, nodeId: string) {
+    const node = await this.getNodeWithProject(nodeId);
+    if (!node) {
+      throw new NotFoundException('Node not found');
+    }
+    this.assertNodeAccess(node, userId);
+
+    const parentNode = node.parentNodeId
+      ? await this.prisma.flowNode.findUnique({ where: { id: node.parentNodeId } })
+      : null;
+
+    const readiness = this.evaluateNodeReadiness(node, parentNode);
+    return {
+      userId,
+      nodeId,
+      quality: readiness.quality,
+      precheckLevel: readiness.level,
+      issueCount: readiness.issues.length,
+    };
+  }
+
+  async compareBranch(userId: string, branchNodeId: string) {
+    const branchNode = await this.getNodeWithProject(branchNodeId);
+    if (!branchNode) {
+      throw new NotFoundException('Branch node not found');
+    }
+    this.assertNodeAccess(branchNode, userId);
+
+    if (!branchNode.parentNodeId) {
+      throw new BadRequestException('Current node is not a branch node');
+    }
+
+    const mainNode = await this.prisma.flowNode.findUnique({
+      where: { id: branchNode.parentNodeId },
+    });
+
+    if (!mainNode) {
+      throw new NotFoundException('Main node for this branch is missing');
+    }
+
+    const branchReadiness = this.evaluateNodeReadiness(branchNode, mainNode);
+    const mainReadiness = this.evaluateNodeReadiness(mainNode, null);
+
+    const branchOverall = branchReadiness.quality.overall;
+    const mainOverall = mainReadiness.quality.overall;
+    const delta = branchOverall - mainOverall;
+
+    const recommendation =
+      delta >= 6
+        ? 'merge_branch'
+        : delta <= -6
+          ? 'keep_main'
+          : 'manual_review';
+
+    const reasons: string[] = [];
+    if (delta >= 6) {
+      reasons.push('分支综合质量显著高于主干，建议合并。');
+    } else if (delta <= -6) {
+      reasons.push('分支综合质量显著低于主干，建议保留主干并继续迭代分支。');
+    } else {
+      reasons.push('分支与主干质量接近，建议人工对比视觉结果后决定。');
+    }
+
+    if (branchReadiness.quality.continuity < mainReadiness.quality.continuity) {
+      reasons.push('分支在连续性评分上低于主干，注意前后镜头衔接。');
+    }
+
+    if (branchReadiness.quality.renderStability < 60) {
+      reasons.push('分支渲染稳定性偏低，建议先补全尾帧或优化提示词。');
+    }
+
+    return {
+      userId,
+      branchNodeId,
+      mainNodeId: mainNode.id,
+      recommendation,
+      reasons,
+      compare: {
+        branch: {
+          nodeId: branchNode.id,
+          quality: branchReadiness.quality,
+          issues: branchReadiness.issues,
+        },
+        main: {
+          nodeId: mainNode.id,
+          quality: mainReadiness.quality,
+          issues: mainReadiness.issues,
+        },
+        delta: {
+          overall: delta,
+          promptCompleteness:
+            branchReadiness.quality.promptCompleteness -
+            mainReadiness.quality.promptCompleteness,
+          continuity:
+            branchReadiness.quality.continuity -
+            mainReadiness.quality.continuity,
+          renderStability:
+            branchReadiness.quality.renderStability -
+            mainReadiness.quality.renderStability,
+        },
+      },
+    };
+  }
+
+  // ============================================================
   // DTO Converters
   // ============================================================
+
+  private async getNodeWithProject(nodeId: string) {
+    return this.prisma.flowNode.findUnique({
+      where: { id: nodeId },
+      include: {
+        flowProject: {
+          include: {
+            video: {
+              include: {
+                project: true,
+              },
+            },
+          },
+        },
+      },
+    });
+  }
+
+  private evaluateNodeReadiness(node: any, parentNode: any | null) {
+    const issues: Array<{
+      code: string;
+      severity: 'low' | 'medium' | 'high';
+      message: string;
+      suggestion: string;
+    }> = [];
+
+    const prompt = String(node?.prompt || '').trim();
+    const segment = String(node?.scriptSegment || '').trim();
+    const baseText = `${prompt} ${segment}`.trim();
+
+    const hasSubject =
+      /(人物|主角|角色|人群|产品|场景|城市|房间|街道|画面|subject|character|person|scene)/i.test(
+        baseText,
+      );
+    const hasAction =
+      /(走|跑|看|转|推进|拉远|跟拍|移动|旋转|进入|离开|升起|下降|转场|move|pan|zoom|track|follow)/i.test(
+        baseText,
+      );
+    const hasCamera =
+      /(特写|近景|中景|远景|俯拍|仰拍|跟拍|推镜|拉镜|摇镜|航拍|镜头|close-up|wide shot|pan|tilt|zoom|pov)/i.test(
+        baseText,
+      );
+
+    if (!prompt) {
+      issues.push({
+        code: 'missing_prompt',
+        severity: 'high',
+        message: '缺少画面提示词，模型无法稳定生成镜头。',
+        suggestion: '至少补充主体 + 动作 + 镜头语言。',
+      });
+    }
+    if (!hasSubject) {
+      issues.push({
+        code: 'missing_subject',
+        severity: 'medium',
+        message: '提示词缺少明确主体，可能导致画面焦点漂移。',
+        suggestion: '在提示词里显式写出主角/物体/场景主体。',
+      });
+    }
+    if (!hasAction) {
+      issues.push({
+        code: 'missing_action',
+        severity: 'medium',
+        message: '提示词缺少动作描述，动态镜头会变弱。',
+        suggestion: '增加动作动词，例如推进、转身、入场、跟随等。',
+      });
+    }
+    if (!hasCamera) {
+      issues.push({
+        code: 'missing_camera_language',
+        severity: 'medium',
+        message: '提示词缺少镜头语言，构图和运动可能不稳定。',
+        suggestion: '补充近景/远景/俯拍/推镜等镜头语义。',
+      });
+    }
+
+    const hasLastFrame = Boolean(node?.lastFrameUrl);
+    const hasFirstFrame = Boolean(node?.firstFrameUrl);
+    const parentHasFrame = Boolean(parentNode?.lastFrameUrl || parentNode?.firstFrameUrl);
+
+    if (!hasLastFrame) {
+      issues.push({
+        code: 'missing_last_frame_anchor',
+        severity: 'high',
+        message: '当前节点缺少尾帧锚点，渲染稳定性会显著下降。',
+        suggestion: '先生成并锁定尾帧，再执行视频渲染。',
+      });
+    }
+
+    if (parentNode && !parentHasFrame) {
+      issues.push({
+        code: 'continuity_parent_anchor_missing',
+        severity: 'medium',
+        message: '上一节点缺少帧锚点，当前节点连续性风险较高。',
+        suggestion: '补全上一节点尾帧，或为当前节点补充首帧锚点。',
+      });
+    }
+
+    if (parentNode && hasFirstFrame && parentNode?.lastFrameUrl) {
+      const parentKeywords = this.extractKeywords(String(parentNode.prompt || parentNode.scriptSegment || ''));
+      const currentKeywords = this.extractKeywords(baseText);
+      const overlap = parentKeywords.filter((kw) => currentKeywords.includes(kw));
+      if (overlap.length === 0) {
+        issues.push({
+          code: 'style_drift_risk',
+          severity: 'low',
+          message: '当前节点与上一节点关键词关联较弱，可能出现风格漂移。',
+          suggestion: '在当前提示词复用上一节点的主体/风格关键词。',
+        });
+      }
+    }
+
+    const promptCompleteness = this.scorePromptCompleteness(prompt, hasSubject, hasAction, hasCamera);
+    const continuity = this.scoreContinuity(parentNode, hasFirstFrame, hasLastFrame, issues);
+    const renderStability = this.scoreRenderStability(hasLastFrame, prompt, issues.length);
+    const subjectConsistency = this.scoreSubjectConsistency(parentNode, baseText);
+    const overall = Math.round(
+      (promptCompleteness + continuity + renderStability + subjectConsistency) / 4,
+    );
+
+    const hasHighRisk = issues.some((item) => item.severity === 'high');
+    const hasMediumRisk = issues.some((item) => item.severity === 'medium');
+    const level = hasHighRisk
+      ? 'high_risk'
+      : hasMediumRisk || overall < 70
+        ? 'suggest_improve'
+        : 'ready';
+
+    return {
+      level,
+      issues,
+      quality: {
+        promptCompleteness,
+        continuity,
+        renderStability,
+        subjectConsistency,
+        overall,
+      },
+    };
+  }
+
+  private extractKeywords(text: string): string[] {
+    const cleaned = String(text || '').toLowerCase();
+    const words = cleaned
+      .split(/[^a-zA-Z0-9\u4e00-\u9fa5]+/)
+      .map((w) => w.trim())
+      .filter((w) => w.length >= 2);
+    return Array.from(new Set(words)).slice(0, 24);
+  }
+
+  private scorePromptCompleteness(
+    prompt: string,
+    hasSubject: boolean,
+    hasAction: boolean,
+    hasCamera: boolean,
+  ) {
+    let score = 30;
+    if (prompt.length >= 12) score += 15;
+    if (prompt.length >= 28) score += 10;
+    if (hasSubject) score += 15;
+    if (hasAction) score += 15;
+    if (hasCamera) score += 15;
+    return Math.max(0, Math.min(100, score));
+  }
+
+  private scoreContinuity(
+    parentNode: any | null,
+    hasFirstFrame: boolean,
+    hasLastFrame: boolean,
+    issues: Array<{ code: string }>,
+  ) {
+    if (!parentNode) {
+      return hasLastFrame ? 88 : 68;
+    }
+    let score = 70;
+    if (hasFirstFrame) score += 10;
+    if (hasLastFrame) score += 10;
+    if (issues.some((i) => i.code === 'continuity_parent_anchor_missing')) score -= 20;
+    if (issues.some((i) => i.code === 'style_drift_risk')) score -= 8;
+    return Math.max(0, Math.min(100, score));
+  }
+
+  private scoreRenderStability(hasLastFrame: boolean, prompt: string, issueCount: number) {
+    let score = hasLastFrame ? 82 : 46;
+    if (prompt.length >= 24) score += 10;
+    if (prompt.length >= 40) score += 6;
+    score -= Math.min(18, issueCount * 3);
+    return Math.max(0, Math.min(100, score));
+  }
+
+  private scoreSubjectConsistency(parentNode: any | null, currentText: string) {
+    if (!parentNode) return 80;
+    const parentText = String(parentNode.prompt || parentNode.scriptSegment || '');
+    const parentKeywords = this.extractKeywords(parentText);
+    const currentKeywords = this.extractKeywords(currentText);
+    if (!parentKeywords.length || !currentKeywords.length) return 55;
+    const overlap = parentKeywords.filter((kw) => currentKeywords.includes(kw)).length;
+    const ratio = overlap / Math.max(1, Math.min(parentKeywords.length, currentKeywords.length));
+    return Math.max(35, Math.min(96, Math.round(40 + ratio * 56)));
+  }
 
   private toNodeDto(node: any, renderTask?: any) {
     const taskPayload = (renderTask?.payload as any) || {};

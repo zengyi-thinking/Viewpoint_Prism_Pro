@@ -64,7 +64,7 @@ export const Select: React.FC<SelectProps> = ({ children, value, onValueChange }
     <select
       value={value}
       onChange={(e) => onValueChange?.(e.target.value)}
-      className="flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+      className="input flex h-9 w-full items-center justify-between rounded-lg border border-border bg-bg-panel-secondary px-3 py-1.5 text-[13px] text-text-primary transition-all duration-[var(--transition-base)] hover:border-border hover:bg-bg-panel-tertiary focus:outline-none focus:ring-2 focus:ring-accent-primary focus:ring-offset-2 focus:ring-offset-bg-primary cursor-pointer"
     >
       {placeholder && <option value="">{placeholder}</option>}
       {options.map((opt) => (
