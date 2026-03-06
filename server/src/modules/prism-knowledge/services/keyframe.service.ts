@@ -8,6 +8,7 @@ import { AiRouterService } from '../../../infrastructure/ai-router/ai-router.ser
 import { FfmpegService } from '../../../infrastructure/media/ffmpeg.service';
 import { StorageService } from '../../../infrastructure/storage/storage.service';
 import { PrismaService } from '../../../prisma/prisma.service';
+import { FrameInsightService } from './frame-insight.service';
 
 @Injectable()
 export class KeyframeService {
@@ -18,6 +19,7 @@ export class KeyframeService {
     private readonly storage: StorageService,
     private readonly ffmpeg: FfmpegService,
     private readonly aiRouter: AiRouterService,
+    private readonly frameInsightService: FrameInsightService,
   ) {}
 
   async extractKeyframes(
@@ -52,6 +54,11 @@ export class KeyframeService {
         status: 'processing' | 'completed' | 'failed',
         metadata?: Record<string, unknown>,
       ) => Promise<void> | void;
+      transcriptSegments?: Array<{
+        start: number;
+        end: number;
+        text: string;
+      }>;
     } = {},
   ) {
     const shouldRegenerate = options.regenerate ?? false;
@@ -124,6 +131,11 @@ export class KeyframeService {
       onProgress?: (
         progress: { current: number; total: number; message?: string },
       ) => Promise<void> | void;
+      transcriptSegments?: Array<{
+        start: number;
+        end: number;
+        text: string;
+      }>;
     },
   ) {
     const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'vp-keyframe-'));
@@ -204,16 +216,44 @@ export class KeyframeService {
             similarity: idx === 0 ? null : 0.72,
           },
         });
-        created.push(record);
+
+        const transcriptWindow = this.pickTranscriptWindow(
+          options.transcriptSegments ?? [],
+          ts,
+        );
+        const frameInsight = await this.frameInsightService.generateAndStore({
+          userId,
+          videoId: video.id,
+          keyframeId: record.id,
+          timestampSec: ts,
+          imageBase64: frameBuffer.toString('base64'),
+          imageUrl: publicUrl,
+          frameType: record.frameType,
+          keyframeDescription: record.description,
+          transcriptWindow,
+        });
+        const enrichedRecord = await this.prisma.keyframe.update({
+          where: { id: record.id },
+          data: {
+            description: frameInsight.visualSummary || record.description,
+            metadata: {
+              frameInsightId: frameInsight.id,
+              chapterHint: frameInsight.chapterHint ?? null,
+              visualType: frameInsight.visualType ?? null,
+            },
+          },
+        });
+
+        created.push(enrichedRecord);
         await options.onFrame?.(
           {
-            id: record.id,
-            videoId: record.videoId,
-            timestamp: record.timestamp,
-            frameType: record.frameType,
-            storagePath: record.storagePath,
-            description: record.description,
-            similarity: record.similarity,
+            id: enrichedRecord.id,
+            videoId: enrichedRecord.videoId,
+            timestamp: enrichedRecord.timestamp,
+            frameType: enrichedRecord.frameType,
+            storagePath: enrichedRecord.storagePath,
+            description: enrichedRecord.description,
+            similarity: enrichedRecord.similarity,
           },
           created.length - 1,
           timestamps.length,
@@ -228,6 +268,29 @@ export class KeyframeService {
     } finally {
       await fs.rm(tempDir, { recursive: true, force: true });
     }
+  }
+
+  private pickTranscriptWindow(
+    segments: Array<{ start: number; end: number; text: string }>,
+    timestampSec: number,
+  ) {
+    if (!segments.length) return [];
+
+    const window = segments.filter(
+      (segment) => segment.end >= timestampSec - 25 && segment.start <= timestampSec + 25,
+    );
+    if (window.length > 0) return window.slice(0, 8);
+
+    const nearest = [...segments]
+      .sort(
+        (a, b) =>
+          Math.abs(((a.start + a.end) / 2) - timestampSec) -
+          Math.abs(((b.start + b.end) / 2) - timestampSec),
+      )
+      .slice(0, 4)
+      .sort((a, b) => a.start - b.start);
+
+    return nearest;
   }
 
   private computeFrameFingerprint(buffer: Buffer) {

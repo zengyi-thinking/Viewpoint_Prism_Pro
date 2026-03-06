@@ -69,6 +69,13 @@ Base: `/api/prism/knowledge`
     - `regenerateKeyframes?: boolean`
 - `GET /videos/:videoId/board`
   - 返回知识看板状态机快照（`idle/analyzing/streaming/ready/syncing/synced/failed`）与统一 timeline 数据结构
+- `GET /videos/:videoId/deep-analysis`
+  - 返回当前视频最新的二次理解结果（若不存在则为 `PENDING`）
+- `POST /videos/:videoId/deep-analysis/regenerate`
+  - body:
+    - `includeBackground?: boolean`
+- `GET /videos/:videoId/background-facts`
+  - 返回二次理解中抽取出的背景事实与歧义点
 - `GET /videos/:videoId/transcript`
 - `GET /videos/:videoId/outline`
 - `GET /videos/:videoId/flashcards`

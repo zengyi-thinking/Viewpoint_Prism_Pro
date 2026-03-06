@@ -71,6 +71,16 @@ export class MindmapService {
       orderBy: { updatedAt: 'desc' },
       select: { outlineMarkdown: true },
     });
+    const deepAnalysis = await this.prisma.knowledgeDeepAnalysis.findFirst({
+      where: { videoId, status: 'COMPLETED' as any },
+      orderBy: { createdAt: 'desc' },
+      select: {
+        summary: true,
+        chapterGraphJson: true,
+        conceptGraphJson: true,
+        ambiguitiesJson: true,
+      },
+    });
 
     const outlineContext = existingAsset?.outlineMarkdown ?? null;
 
@@ -83,6 +93,14 @@ export class MindmapService {
       outlineContext,
       maxDepth,
       maxNodes,
+      deepAnalysis
+        ? {
+            summary: deepAnalysis.summary ?? '',
+            chapterGraph: (deepAnalysis.chapterGraphJson as any[]) ?? [],
+            conceptGraph: (deepAnalysis.conceptGraphJson as any[]) ?? [],
+            ambiguities: (deepAnalysis.ambiguitiesJson as any[]) ?? [],
+          }
+        : null,
     );
 
     // 3. 将思维导图存储到知识资产的 notesMarkdown 中
@@ -155,6 +173,7 @@ export class MindmapService {
       null,
       5,
       90,
+      null,
       prompt,
       conversationContext,
     );
@@ -227,6 +246,12 @@ export class MindmapService {
     outlineContext: string | null,
     maxDepth: number,
     maxNodes: number,
+    deepAnalysisContext?: {
+      summary?: string;
+      chapterGraph?: Array<Record<string, unknown>>;
+      conceptGraph?: Array<Record<string, unknown>>;
+      ambiguities?: Array<Record<string, unknown>>;
+    } | null,
     customPrompt?: string,
     conversationContext?: string,
   ): Promise<MindmapResult> {
@@ -237,6 +262,7 @@ export class MindmapService {
         transcriptSegments,
         keyframes,
         outlineContext,
+        deepAnalysisContext,
       );
 
       const systemPrompt = this.buildSystemPrompt(maxDepth, maxNodes, customPrompt);
@@ -491,6 +517,10 @@ export class MindmapService {
       transcriptSummary: string;
       keyframes: Array<{ timestamp: number; description: string }>;
       outlineContext: string;
+      deepAnalysisSummary: string;
+      chapterGraph: Array<Record<string, unknown>>;
+      conceptGraph: Array<Record<string, unknown>>;
+      ambiguities: Array<Record<string, unknown>>;
     },
     conversationContext?: string,
   ): string {
@@ -508,6 +538,22 @@ ${inputData.keyframes.map((k) => `[${k.timestamp}s] ${k.description}`).join('\n'
 
     if (inputData.outlineContext) {
       prompt += `\n# 现有大纲参考\n${inputData.outlineContext}\n`;
+    }
+
+    if (inputData.deepAnalysisSummary) {
+      prompt += `\n# 二次理解摘要\n${inputData.deepAnalysisSummary}\n`;
+    }
+
+    if (inputData.chapterGraph.length > 0) {
+      prompt += `\n# 章节图参考\n${JSON.stringify(inputData.chapterGraph.slice(0, 8), null, 2)}\n`;
+    }
+
+    if (inputData.conceptGraph.length > 0) {
+      prompt += `\n# 概念图参考\n${JSON.stringify(inputData.conceptGraph.slice(0, 12), null, 2)}\n`;
+    }
+
+    if (inputData.ambiguities.length > 0) {
+      prompt += `\n# 易混淆点\n${JSON.stringify(inputData.ambiguities.slice(0, 8), null, 2)}\n`;
     }
 
     if (conversationContext) {
@@ -532,6 +578,12 @@ ${inputData.keyframes.map((k) => `[${k.timestamp}s] ${k.description}`).join('\n'
     transcriptSegments: Array<{ start: number; end: number; text: string }>,
     keyframes: Array<{ timestamp: number; storagePath: string; description?: string | null }>,
     outlineContext: string | null,
+    deepAnalysisContext?: {
+      summary?: string;
+      chapterGraph?: Array<Record<string, unknown>>;
+      conceptGraph?: Array<Record<string, unknown>>;
+      ambiguities?: Array<Record<string, unknown>>;
+    } | null,
   ) {
     // 摘要转写内容（扩大采样，保证导图细节）
     const transcriptSummary = transcriptSegments
@@ -550,6 +602,10 @@ ${inputData.keyframes.map((k) => `[${k.timestamp}s] ${k.description}`).join('\n'
       transcriptSummary: transcriptSummary || '暂无转写内容',
       keyframes: keyframeInfo,
       outlineContext: outlineContext || '',
+      deepAnalysisSummary: deepAnalysisContext?.summary || '',
+      chapterGraph: (deepAnalysisContext?.chapterGraph ?? []).slice(0, 8),
+      conceptGraph: (deepAnalysisContext?.conceptGraph ?? []).slice(0, 12),
+      ambiguities: (deepAnalysisContext?.ambiguities ?? []).slice(0, 8),
     };
   }
 

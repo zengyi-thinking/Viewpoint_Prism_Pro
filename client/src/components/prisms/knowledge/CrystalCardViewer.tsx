@@ -27,6 +27,7 @@ export function CrystalCardViewer({
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [expandedCard, setExpandedCard] = useState<string | null>(null);
   const [categories, setCategories] = useState<string[]>([]);
+  const [isDownloadingZip, setIsDownloadingZip] = useState(false);
 
   useEffect(() => {
     loadCrystalCards();
@@ -161,6 +162,93 @@ export function CrystalCardViewer({
     downloadFile(`crystal-cards-${videoId}.md`, doc, 'text/markdown;charset=utf-8');
   };
 
+  const sanitizeFileName = (value: string) =>
+    value
+      .replace(/[\\/:*?"<>|]/g, '-')
+      .replace(/\s+/g, '_')
+      .slice(0, 80);
+
+  const handleDownloadZip = async () => {
+    if (!cards.length || isDownloadingZip) return;
+
+    try {
+      setIsDownloadingZip(true);
+      const JSZipModule = await import('jszip');
+      const JSZip = JSZipModule.default;
+      const zip = new JSZip();
+      const packageName = sanitizeFileName(`knowledge_crystal_cards_${videoId}`);
+      const folder = zip.folder(packageName);
+      if (!folder) throw new Error('无法创建压缩包目录');
+
+      const manifest = [
+        `Knowledge Crystal Cards Package`,
+        `Video ID: ${videoId}`,
+        `Card Count: ${cards.length}`,
+        '',
+        'Files:',
+        ...cards.map((card, index) => {
+          const source = card.sourceType || 'generated';
+          const title = sanitizeFileName(card.title || `card_${index + 1}`);
+          return `${(index + 1).toString().padStart(2, '0')}. [${source}] ${title}`;
+        }),
+      ].join('\n');
+
+      folder.file('README.txt', manifest);
+      folder.file(
+        'cards.json',
+        JSON.stringify(
+          {
+            videoId,
+            exportedAt: new Date().toISOString(),
+            count: cards.length,
+            cards,
+          },
+          null,
+          2,
+        ),
+      );
+
+      cards.forEach((card, index) => {
+        const source = card.sourceType || 'generated';
+        const title = sanitizeFileName(card.title || `card_${index + 1}`);
+        const fileName = `${(index + 1).toString().padStart(2, '0')}_${source}_${title}.md`;
+        const content = [
+          `# ${card.title}`,
+          '',
+          `- 类型: ${getCardTypeLabel(card.type)}`,
+          `- 来源: ${source}`,
+          `- 分类: ${card.category || '未分类'}`,
+          `- 重要性: ${card.importance}/5`,
+          `- 难度: ${card.difficulty}/5`,
+          card.videoTime ? `- 时间点: ${card.videoTime}` : '',
+          card.tags?.length ? `- 标签: ${card.tags.join(', ')}` : '',
+          card.imageUrl ? `- 图片: ${card.imageUrl}` : '',
+          '',
+          card.summary ? `## 摘要\n${card.summary}\n` : '',
+          `## 内容\n${card.content}`,
+        ]
+          .filter(Boolean)
+          .join('\n');
+
+        folder.file(`cards/${fileName}`, content);
+      });
+
+      const blob = await zip.generateAsync({ type: 'blob' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${packageName}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Failed to download crystal card zip:', error);
+    } finally {
+      setIsDownloadingZip(false);
+    }
+  };
+
   const getCardTypeLabel = (type: CrystalCardType): string => {
     const labels: Record<CrystalCardType, string> = {
       [CrystalCardType.CONCEPT]: '概念',
@@ -199,13 +287,51 @@ export function CrystalCardViewer({
     return '⭐'.repeat(Math.min(importance, 5));
   };
 
+  const getSourceInfo = (card: CrystalCard) => {
+    const source =
+      card.sourceType ||
+      (typeof card.metadata?.source === 'string' ? String(card.metadata.source) : '') ||
+      (card.type === CrystalCardType.QA
+        ? 'qa'
+        : card.type === CrystalCardType.KEYFRAME
+          ? 'keyframe'
+          : 'outline');
+
+    switch (source) {
+      case 'deepAnalysis':
+      case 'deep_analysis':
+        return {
+          label: '深度分析',
+          className: 'border-sky-500/30 bg-sky-500/10 text-sky-200',
+        };
+      case 'qa':
+      case 'chat':
+        return {
+          label: 'Q&A',
+          className: 'border-amber-500/30 bg-amber-500/10 text-amber-200',
+        };
+      case 'keyframe':
+        return {
+          label: '关键帧',
+          className: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-200',
+        };
+      case 'outline_service':
+      case 'outline':
+      default:
+        return {
+          label: '大纲',
+          className: 'border-violet-500/30 bg-violet-500/10 text-violet-200',
+        };
+    }
+  };
+
   return (
     <div className={`crystal-card-viewer h-full min-h-0 flex flex-col ${className}`}>
       {/* 顶部工具栏 */}
       <div className="flex items-center justify-between mb-4 p-4 rounded-lg bg-[var(--bg-panel-secondary)] border border-[var(--border-subtle)]">
         <div className="flex items-center gap-4">
           <h3 className="text-lg font-semibold text-[var(--text-primary)]">
-            晶体卡片
+            晶体蜂巢
           </h3>
           <span className="text-sm text-[var(--text-secondary)]">
             {filteredCards.length} 张卡片
@@ -315,10 +441,11 @@ export function CrystalCardViewer({
                 : 'flex flex-col gap-3'
             }
           >
-            {filteredCards.map((card) => (
+            {filteredCards.map((card, index) => (
               <CrystalCardItem
                 key={card.id}
                 card={card}
+                index={index}
                 isExpanded={expandedCard === card.id}
                 onExpand={() => handleCardExpand(card.id)}
                 onTimeClick={() => handleTimeClick(card)}
@@ -326,6 +453,7 @@ export function CrystalCardViewer({
                 getCardTypeIcon={getCardTypeIcon}
                 getDifficultyColor={getDifficultyColor}
                 getImportanceStars={getImportanceStars}
+                getSourceInfo={getSourceInfo}
                 viewMode={viewMode}
               />
             ))}
@@ -335,6 +463,13 @@ export function CrystalCardViewer({
 
       {/* 右下角下载区 */}
       <div className="mt-4 border-t border-[var(--border-subtle)] pt-3 flex items-center justify-end gap-2">
+        <button
+          onClick={handleDownloadZip}
+          disabled={!cards.length || isDownloadingZip}
+          className="px-3 py-1.5 rounded-lg text-sm border border-[var(--border-subtle)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-40"
+        >
+          {isDownloadingZip ? '打包中...' : '下载 ZIP'}
+        </button>
         <button
           onClick={handleDownloadJson}
           disabled={!cards.length}
@@ -356,6 +491,7 @@ export function CrystalCardViewer({
 
 interface CrystalCardItemProps {
   card: CrystalCard;
+  index: number;
   isExpanded: boolean;
   onExpand: () => void;
   onTimeClick: () => void;
@@ -363,11 +499,13 @@ interface CrystalCardItemProps {
   getCardTypeIcon: (type: CrystalCardType) => string;
   getDifficultyColor: (difficulty: number) => string;
   getImportanceStars: (importance: number) => string;
+  getSourceInfo: (card: CrystalCard) => { label: string; className: string };
   viewMode: 'grid' | 'list';
 }
 
 function CrystalCardItem({
   card,
+  index,
   isExpanded,
   onExpand,
   onTimeClick,
@@ -375,8 +513,93 @@ function CrystalCardItem({
   getCardTypeIcon,
   getDifficultyColor,
   getImportanceStars,
+  getSourceInfo,
   viewMode,
 }: CrystalCardItemProps) {
+  const sourceInfo = getSourceInfo(card);
+
+  if (viewMode === 'grid') {
+    return (
+      <button
+        type="button"
+        onClick={onExpand}
+        className={`group relative h-[248px] w-full text-left transition-transform duration-200 hover:-translate-y-1 ${
+          index % 2 === 1 ? 'md:translate-y-10' : ''
+        }`}
+      >
+        <div
+          className={`absolute inset-0 border transition-all duration-200 ${
+            card.isFeatured
+              ? 'border-[var(--accent-primary)] shadow-[0_0_0_1px_rgba(255,255,255,0.04),0_12px_32px_rgba(0,0,0,0.28)]'
+              : 'border-[var(--border-subtle)] shadow-[0_8px_24px_rgba(0,0,0,0.22)]'
+          }`}
+          style={{
+            clipPath:
+              'polygon(25% 6.7%, 75% 6.7%, 100% 50%, 75% 93.3%, 25% 93.3%, 0% 50%)',
+            background: card.imageUrl
+              ? `linear-gradient(180deg, rgba(8,10,18,0.20), rgba(8,10,18,0.88)), url(${card.imageUrl}) center/cover`
+              : 'linear-gradient(160deg, rgba(20,22,34,0.98), rgba(36,39,58,0.92))',
+          }}
+        />
+        <div className="absolute inset-[10%] flex flex-col justify-between overflow-hidden px-2 py-4">
+          <div>
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="text-lg" role="img" aria-label="card type">
+                {getCardTypeIcon(card.type)}
+              </span>
+              <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] text-white/80">
+                {getCardTypeLabel(card.type)}
+              </span>
+              <span className={`rounded-full border px-2 py-0.5 text-[10px] ${sourceInfo.className}`}>
+                {sourceInfo.label}
+              </span>
+            </div>
+
+            <h4 className="mt-3 line-clamp-3 text-sm font-semibold leading-5 text-white">
+              {card.title}
+            </h4>
+
+            <p className={`mt-2 text-[12px] leading-5 text-white/72 ${isExpanded ? '' : 'line-clamp-4'}`}>
+              {card.summary || card.content}
+            </p>
+          </div>
+
+          <div className="mt-3">
+            {card.tags.length > 0 ? (
+              <div className="flex flex-wrap gap-1.5">
+                {card.tags.slice(0, 3).map((tag, tagIndex) => (
+                  <span
+                    key={tagIndex}
+                    className="rounded-full border border-white/10 bg-black/20 px-2 py-0.5 text-[10px] text-white/70"
+                  >
+                    {tag}
+                  </span>
+                ))}
+              </div>
+            ) : null}
+
+            <div className="mt-3 flex items-center justify-between text-[10px] text-white/70">
+              <span>{getImportanceStars(card.importance)}</span>
+              {card.videoTime ? (
+                <span
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onTimeClick();
+                  }}
+                  className="cursor-pointer rounded-full border border-white/10 px-2 py-0.5 hover:text-white"
+                >
+                  {card.videoTime}
+                </span>
+              ) : (
+                <span>展开</span>
+              )}
+            </div>
+          </div>
+        </div>
+      </button>
+    );
+  }
+
   return (
     <div
       className={`crystal-card-item bg-[var(--bg-panel)] border border-[var(--border-subtle)] rounded-xl overflow-hidden transition-all hover:border-[var(--border-focus)] hover:shadow-lg ${
@@ -392,6 +615,11 @@ function CrystalCardItem({
             </span>
             <span className="text-xs text-[var(--text-secondary)] uppercase font-medium">
               {getCardTypeLabel(card.type)}
+            </span>
+            <span
+              className={`rounded-full border px-2 py-0.5 text-[10px] ${sourceInfo.className}`}
+            >
+              {sourceInfo.label}
             </span>
           </div>
           {card.isFeatured && (

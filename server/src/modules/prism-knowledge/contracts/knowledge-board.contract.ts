@@ -41,6 +41,8 @@ export interface KnowledgeBoardSnapshot {
     flashcards: number;
     qaCards: number;
     outlineBlocks: number;
+    frameInsights?: number;
+    deepAnalysisVersion?: number | null;
   };
   updatedAt: string;
 }

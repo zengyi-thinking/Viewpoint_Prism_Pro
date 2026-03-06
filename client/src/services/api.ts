@@ -18,22 +18,30 @@ function getApiBaseCandidates(): string[] {
     candidates.push(envBase);
   }
 
-  // 同源回退：利用 Next rewrite('/api/*' -> 'http://localhost:3001/api/*')
-  candidates.push('');
-
   if (typeof window !== 'undefined') {
     const host = window.location.hostname;
     const protocol = window.location.protocol === 'https:' ? 'https:' : 'http:';
     const sameHost3001 = `${protocol}//${host}:3001`;
-    candidates.push(sameHost3001);
+    if (!envBase) {
+      candidates.push(sameHost3001);
 
-    if (host !== 'localhost') candidates.push('http://localhost:3001');
-    if (host !== '127.0.0.1') candidates.push('http://127.0.0.1:3001');
+      if (host !== 'localhost') candidates.push('http://localhost:3001');
+      if (host !== '127.0.0.1') candidates.push('http://127.0.0.1:3001');
+    }
   } else {
-    candidates.push('http://localhost:3001');
+    if (!envBase) {
+      candidates.push('http://localhost:3001');
+    }
   }
 
-  return Array.from(new Set(candidates.map((item) => normalizeBase(item)).filter(Boolean).concat('')));
+  // 仅在没有显式后端地址时，才回退到 Next 的 rewrite 代理。
+  if (!envBase) {
+    candidates.push('');
+  }
+
+  return Array.from(
+    new Set(candidates.map((item) => normalizeBase(item)).filter((item) => item !== '')),
+  ).concat(envBase ? [] : ['']);
 }
 
 export function getToken(): string | null {

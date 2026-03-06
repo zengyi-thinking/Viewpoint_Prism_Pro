@@ -10,6 +10,7 @@ export class StorageService implements OnModuleInit {
   private endPoint: string;
   private port: number;
   private useSSL: boolean;
+  private minioReady = false;
 
   constructor(private readonly configService: ConfigService) {}
 
@@ -32,6 +33,15 @@ export class StorageService implements OnModuleInit {
     });
 
     try {
+      const isHealthy = await this.checkMinioHealth();
+      if (!isHealthy) {
+        this.logger.warn(
+          `MinIO health check failed at ${this.endPoint}:${this.port}. ` +
+            'Current endpoint is not a reachable MinIO service. Storage features will fail until MinIO is available.',
+        );
+        return;
+      }
+
       // Ensure bucket exists
       const exists = await this.client.bucketExists(this.bucketName);
       if (!exists) {
@@ -60,10 +70,39 @@ export class StorageService implements OnModuleInit {
         JSON.stringify(publicReadPolicy),
       );
       this.logger.log(`Bucket "${this.bucketName}" policy set to public read.`);
+      this.minioReady = true;
     } catch (error) {
-      this.logger.error(`Failed to initialize MinIO: ${error.message}`, error.stack);
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.warn(
+        `Failed to initialize MinIO at ${this.endPoint}:${this.port}: ${message}. ` +
+          'Please verify MINIO_ENDPOINT/MINIO_PORT and credentials.',
+      );
       // Don't throw - allow app to start even if MinIO is not available
     }
+  }
+
+  private async checkMinioHealth(): Promise<boolean> {
+    const protocol = this.useSSL ? 'https' : 'http';
+    const healthUrl = `${protocol}://${this.endPoint}:${this.port}/minio/health/live`;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 2500);
+
+    try {
+      const res = await fetch(healthUrl, { signal: controller.signal });
+      return res.ok;
+    } catch {
+      return false;
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  private assertMinioReady(): void {
+    if (this.minioReady) return;
+    throw new Error(
+      `MinIO is not ready at ${this.endPoint}:${this.port}. ` +
+        'Start MinIO service or fix MINIO_ENDPOINT/MINIO_PORT before using storage APIs.',
+    );
   }
 
   /**
@@ -74,6 +113,7 @@ export class StorageService implements OnModuleInit {
    * @returns The URL of the uploaded file
    */
   async upload(buffer: Buffer, key: string, metaData?: Record<string, string>): Promise<string> {
+    this.assertMinioReady();
     try {
       const normalizedMetaData = this.normalizeMetaData(metaData);
       // 修复：使用类型断言绕过 minio v8 的类型定义问题
@@ -107,6 +147,7 @@ export class StorageService implements OnModuleInit {
     size: number,
     metaData?: Record<string, string>,
   ): Promise<string> {
+    this.assertMinioReady();
     try {
       const normalizedMetaData = this.normalizeMetaData(metaData);
       // 使用类型断言绕过 minio v8 的类型定义问题
@@ -132,6 +173,7 @@ export class StorageService implements OnModuleInit {
    * @returns File buffer
    */
   async download(key: string): Promise<Buffer> {
+    this.assertMinioReady();
     try {
       const stream = await this.client.getObject(this.bucketName, key);
       return new Promise((resolve, reject) => {
@@ -152,6 +194,7 @@ export class StorageService implements OnModuleInit {
    * @returns Readable stream
    */
   async downloadStream(key: string): Promise<NodeJS.ReadableStream> {
+    this.assertMinioReady();
     try {
       return await this.client.getObject(this.bucketName, key);
     } catch (error) {
@@ -167,6 +210,7 @@ export class StorageService implements OnModuleInit {
    * @returns Presigned URL
    */
   async getSignedUrl(key: string, expiresIn = 24 * 60 * 60): Promise<string> {
+    this.assertMinioReady();
     try {
       return await this.client.presignedGetObject(this.bucketName, key, expiresIn);
     } catch (error) {
@@ -190,6 +234,7 @@ export class StorageService implements OnModuleInit {
    * @param key - Storage key
    */
   async delete(key: string): Promise<void> {
+    this.assertMinioReady();
     try {
       await this.client.removeObject(this.bucketName, key);
       this.logger.log(`Deleted file ${key}`);
@@ -204,6 +249,7 @@ export class StorageService implements OnModuleInit {
    * @param keys - Array of storage keys
    */
   async deleteMultiple(keys: string[]): Promise<void> {
+    this.assertMinioReady();
     try {
       await this.client.removeObjects(this.bucketName, keys);
       this.logger.log(`Deleted ${keys.length} files`);
@@ -219,6 +265,7 @@ export class StorageService implements OnModuleInit {
    * @returns True if file exists
    */
   async exists(key: string): Promise<boolean> {
+    this.assertMinioReady();
     try {
       await this.client.statObject(this.bucketName, key);
       return true;
@@ -233,6 +280,7 @@ export class StorageService implements OnModuleInit {
    * @returns Object stats
    */
   async getMetadata(key: string): Promise<Minio.BucketItemStat> {
+    this.assertMinioReady();
     try {
       return await this.client.statObject(this.bucketName, key);
     } catch (error) {
@@ -247,6 +295,7 @@ export class StorageService implements OnModuleInit {
    * @returns List of objects
    */
   async listObjects(prefix: string): Promise<Minio.BucketItem[]> {
+    this.assertMinioReady();
     try {
       const objects: any[] = [];
       const stream = this.client.listObjects(this.bucketName, prefix, true);

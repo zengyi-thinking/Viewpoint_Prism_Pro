@@ -41,12 +41,31 @@ export function VideoSourcePanel({
     enabled: !!projectId,
   });
 
-  // 自动绑定首个视频，避免右侧知识面板空白无上下文。
+  // 切项目时如果当前视频属于其他项目，立即清掉，避免右侧面板继续请求旧视频。
+  useEffect(() => {
+    if (!projectId) return;
+    if (!currentVideo) return;
+    if (currentVideo.projectId !== projectId) {
+      setCurrentVideo(null);
+    }
+  }, [projectId, currentVideo, setCurrentVideo]);
+
+  // 自动绑定首个有效视频，避免右侧面板持有无效上下文。
   useEffect(() => {
     if (!projectId) return;
     if (isLoading) return;
-    if (currentVideo?.id) return;
-    if (videos.length === 0) return;
+    if (videos.length === 0) {
+      if (currentVideo) {
+        setCurrentVideo(null);
+      }
+      return;
+    }
+
+    const matchedCurrent = currentVideo
+      ? videos.find((video) => video.id === currentVideo.id)
+      : null;
+
+    if (matchedCurrent) return;
     setCurrentVideo(videos[0]);
   }, [projectId, isLoading, videos, currentVideo, setCurrentVideo]);
 

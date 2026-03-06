@@ -53,6 +53,17 @@ interface DbUserProfile {
   profile: unknown;
 }
 
+interface DbDeepAnalysis {
+  id: string;
+  version: number;
+  summary: string | null;
+  chapterGraphJson: unknown;
+  conceptGraphJson: unknown;
+  ambiguitiesJson: unknown;
+  backgroundFactsJson: unknown;
+  learningRecommendationsJson: unknown;
+}
+
 export type KnowledgeSyncTarget = 'notion' | 'feishu';
 
 export interface KnowledgeSettlementOutput {
@@ -117,7 +128,7 @@ export class ExportService {
     const { userId, videoId, videoTitle, forceRegenerate = false } = params;
     const syncTargets = this.normalizeSyncTargets(params.syncTargets);
 
-    const [transcript, keyframes, latestAsset, user, userSettings, qaCards, chatMessages, behaviorEvents] =
+    const [transcript, keyframes, latestAsset, user, userSettings, qaCards, chatMessages, behaviorEvents, deepAnalysis] =
       await Promise.all([
         this.prisma.transcript.findFirst({
           where: { videoId },
@@ -174,6 +185,10 @@ export class ExportService {
           orderBy: { createdAt: 'desc' },
           take: 200,
         }),
+        this.prisma.knowledgeDeepAnalysis.findFirst({
+          where: { videoId, status: 'COMPLETED' as any },
+          orderBy: { createdAt: 'desc' },
+        }),
       ]);
 
     const segments = ((transcript?.segments as any[]) ?? []).map((s: any) => ({
@@ -189,12 +204,14 @@ export class ExportService {
       userId,
       videoTitle,
       forceRegenerate,
+      deepAnalysis: this.toDeepAnalysisContext(deepAnalysis),
     });
 
     const fusedOutlineMarkdown = this.composeEnrichedOutlineMarkdown(
       asset.outlineMarkdown || '',
       keyframes,
       qaCards,
+      deepAnalysis,
     );
     const fusedNotesMarkdown = this.composeFusedNotesMarkdown({
       user,
@@ -203,6 +220,7 @@ export class ExportService {
       qaCards,
       chatMessages,
       behaviorEvents,
+      deepAnalysis,
     });
     const reviewPlanMarkdown = this.composeReviewPlanMarkdown(cards);
     const packageMarkdown = this.composePackageMarkdown({
@@ -212,6 +230,7 @@ export class ExportService {
       reviewPlanMarkdown,
       keyframes,
       flashcards: cards,
+      deepAnalysis,
     });
 
     await this.prisma.knowledgeAsset.update({
@@ -380,8 +399,15 @@ export class ExportService {
     userId: string;
     videoTitle: string;
     forceRegenerate: boolean;
+    deepAnalysis?: {
+      summary?: string;
+      chapterGraph?: Array<Record<string, unknown>>;
+      conceptGraph?: Array<Record<string, unknown>>;
+      learningRecommendations?: Array<Record<string, unknown>>;
+      ambiguities?: Array<Record<string, unknown>>;
+    };
   }) {
-    const { asset, transcriptSegments, userId, videoTitle, forceRegenerate } = params;
+    const { asset, transcriptSegments, userId, videoTitle, forceRegenerate, deepAnalysis } = params;
     const existing = await this.prisma.flashcard.findMany({
       where: { assetId: asset.id },
       orderBy: { createdAt: 'asc' },
@@ -398,6 +424,7 @@ export class ExportService {
       videoTitle,
       outlineMarkdown: asset.outlineMarkdown || '',
       maxCards: 16,
+      deepAnalysis,
     });
   }
 
@@ -427,6 +454,7 @@ export class ExportService {
     outlineMarkdown: string,
     keyframes: DbKeyframe[],
     qaCards: DbCrystalCard[],
+    deepAnalysis?: DbDeepAnalysis | null,
   ) {
     const keyframeLines = keyframes.slice(0, 24).map((kf) => {
       const desc = kf.description?.trim() || `关键帧类型: ${String(kf.frameType)}`;
@@ -438,8 +466,25 @@ export class ExportService {
       return `- [${ts}] Q: ${card.sourceText || card.title}\n  A: ${this.takeFirstLine(card.content || card.summary || '')}`;
     });
 
+    const backgroundLines = Array.isArray(deepAnalysis?.backgroundFactsJson)
+      ? (deepAnalysis?.backgroundFactsJson as Array<Record<string, unknown>>)
+          .slice(0, 8)
+          .map((fact) => {
+            const title = typeof fact.title === 'string' ? fact.title : '背景事实';
+            const detail =
+              typeof fact.detail === 'string'
+                ? fact.detail
+                : typeof fact.summary === 'string'
+                  ? fact.summary
+                  : '';
+            return `- ${title}${detail ? `：${detail}` : ''}`;
+          })
+      : [];
+
     return [
       outlineMarkdown?.trim() || '# 结构化大纲\n\n（暂无内容）',
+      ...(deepAnalysis?.summary ? ['', '## 二次理解摘要', deepAnalysis.summary] : []),
+      ...(backgroundLines.length > 0 ? ['', '## 背景知识补充', backgroundLines.join('\n')] : []),
       '',
       '## 关键帧图谱',
       keyframeLines.length > 0 ? keyframeLines.join('\n') : '- 暂无关键帧',
@@ -463,8 +508,9 @@ export class ExportService {
       currentTime: number;
       createdAt: Date;
     }>;
+    deepAnalysis?: DbDeepAnalysis | null;
   }) {
-    const { user, asset, keyframes, qaCards, chatMessages, behaviorEvents } = params;
+    const { user, asset, keyframes, qaCards, chatMessages, behaviorEvents, deepAnalysis } = params;
 
     const profileText = this.serializeUserProfile(user);
     const highlights = this.deriveBehaviorHighlights(behaviorEvents);
@@ -482,11 +528,45 @@ export class ExportService {
       return `- ${this.formatTimestamp(frame.timestamp)}：${frame.description || `关键帧(${String(frame.frameType)})`}`;
     });
 
+    const chapterLines = Array.isArray(deepAnalysis?.chapterGraphJson)
+      ? (deepAnalysis?.chapterGraphJson as Array<Record<string, unknown>>)
+          .slice(0, 8)
+          .map((chapter) => {
+            const title = typeof chapter.title === 'string' ? chapter.title : '章节';
+            const summary =
+              typeof chapter.summary === 'string' ? chapter.summary : '';
+            return `- ${title}${summary ? `：${summary}` : ''}`;
+          })
+      : [];
+
+    const recommendationLines = Array.isArray(deepAnalysis?.learningRecommendationsJson)
+      ? (deepAnalysis?.learningRecommendationsJson as Array<Record<string, unknown>>)
+          .slice(0, 8)
+          .map((item) => {
+            const title = typeof item.title === 'string' ? item.title : '学习建议';
+            const action = typeof item.action === 'string' ? item.action : '';
+            return `- ${title}${action ? `：${action}` : ''}`;
+          })
+      : [];
+
+    const ambiguityLines = Array.isArray(deepAnalysis?.ambiguitiesJson)
+      ? (deepAnalysis?.ambiguitiesJson as Array<Record<string, unknown>>)
+          .slice(0, 6)
+          .map((item) => {
+            const concept = typeof item.concept === 'string' ? item.concept : '易混淆点';
+            const clarification =
+              typeof item.clarification === 'string' ? item.clarification : '';
+            return `- ${concept}${clarification ? `：${clarification}` : ''}`;
+          })
+      : [];
+
     return [
       '# 个性化学习笔记',
       '',
       '## 画像驱动策略',
       profileText || '- 暂无画像，默认以“概念清晰 + 可复述 + 可回看”策略整理。',
+      ...(deepAnalysis?.summary ? ['', '## 二次理解摘要', deepAnalysis.summary] : []),
+      ...(chapterLines.length > 0 ? ['', '## 章节主线', chapterLines.join('\n')] : []),
       '',
       '## 关键理解路径（由视频主线自动收敛）',
       keyframeHints.length > 0
@@ -499,6 +579,8 @@ export class ExportService {
         : qaFromChat.length > 0
           ? qaFromChat.join('\n')
           : '- 暂无 Q&A 补充。',
+      ...(ambiguityLines.length > 0 ? ['', '## 易混淆点澄清', ambiguityLines.join('\n')] : []),
+      ...(recommendationLines.length > 0 ? ['', '## 学习建议', recommendationLines.join('\n')] : []),
       '',
       '## 用户观看行为洞察（重点/跳过）',
       highlights.length > 0 ? highlights.join('\n') : '- 暂无行为数据。',
@@ -544,8 +626,9 @@ export class ExportService {
     reviewPlanMarkdown: string;
     keyframes: DbKeyframe[];
     flashcards: DbFlashcard[];
+    deepAnalysis?: DbDeepAnalysis | null;
   }) {
-    const { title, outlineMarkdown, notesMarkdown, reviewPlanMarkdown, keyframes, flashcards } = params;
+    const { title, outlineMarkdown, notesMarkdown, reviewPlanMarkdown, keyframes, flashcards, deepAnalysis } = params;
 
     const flashcardSection =
       flashcards.length > 0
@@ -575,24 +658,40 @@ export class ExportService {
       '',
       outlineMarkdown,
       '',
-      '## 2) 个性化学习笔记（融合 Q&A）',
+      '## 2) 二次理解与背景知识',
+      '',
+      deepAnalysis?.summary || '（暂无二次理解摘要）',
+      '',
+      '## 3) 个性化学习笔记（融合 Q&A）',
       '',
       notesMarkdown,
       '',
-      '## 3) 记忆闪卡',
+      '## 4) 记忆闪卡',
       '',
       flashcardSection,
       '',
-      '## 4) 关键帧索引',
+      '## 5) 关键帧索引',
       '',
       keyframeSection,
       '',
-      '## 5) 复习计划',
+      '## 6) 复习计划',
       '',
       reviewPlanMarkdown,
     ]
       .join('\n')
       .trim();
+  }
+
+  private toDeepAnalysisContext(deepAnalysis?: DbDeepAnalysis | null) {
+    if (!deepAnalysis) return undefined;
+    return {
+      summary: deepAnalysis.summary ?? '',
+      chapterGraph: (deepAnalysis.chapterGraphJson as any[]) ?? [],
+      conceptGraph: (deepAnalysis.conceptGraphJson as any[]) ?? [],
+      learningRecommendations:
+        (deepAnalysis.learningRecommendationsJson as any[]) ?? [],
+      ambiguities: (deepAnalysis.ambiguitiesJson as any[]) ?? [],
+    };
   }
 
   private serializeUserProfile(user: DbUserProfile | null) {

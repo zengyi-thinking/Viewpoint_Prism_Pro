@@ -27,6 +27,10 @@ export class AnalyzeKnowledgeDto {
   @IsOptional()
   @IsBoolean()
   regenerateKeyframes?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  includeDeepAnalysis?: boolean;
 }
 
 export class BatchAnalyzeKnowledgeDto {
@@ -43,6 +47,16 @@ export class BatchAnalyzeKnowledgeDto {
   @IsOptional()
   @IsBoolean()
   regenerateKeyframes?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  includeDeepAnalysis?: boolean;
+}
+
+export class RegenerateDeepAnalysisDto {
+  @IsOptional()
+  @IsBoolean()
+  includeBackground?: boolean;
 }
 
 export class ExportKnowledgeDto {

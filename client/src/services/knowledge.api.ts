@@ -15,6 +15,7 @@ import type {
 export interface AnalyzeKnowledgePayload {
   regenerateTranscript?: boolean;
   regenerateKeyframes?: boolean;
+  includeDeepAnalysis?: boolean;
 }
 
 export interface BatchAnalyzeKnowledgePayload extends AnalyzeKnowledgePayload {
@@ -148,8 +149,29 @@ export interface KnowledgeBoardSnapshotResponse {
     flashcards: number;
     qaCards: number;
     outlineBlocks: number;
+    frameInsights?: number;
+    deepAnalysisVersion?: number | null;
   };
   updatedAt: string;
+}
+
+export interface KnowledgeDeepAnalysisResponse {
+  userId: string;
+  videoId: string;
+  status: 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED';
+  deepAnalysis: null | {
+    id: string;
+    version: number;
+    status: 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED';
+    summary?: string | null;
+    chapterGraphJson?: unknown;
+    conceptGraphJson?: unknown;
+    ambiguitiesJson?: unknown;
+    backgroundFactsJson?: unknown;
+    learningRecommendationsJson?: unknown;
+    updatedAt: string;
+    createdAt: string;
+  };
 }
 
 export const knowledgeApi = {
@@ -184,6 +206,35 @@ export const knowledgeApi = {
     apiFetch<KnowledgeBoardSnapshotResponse>(
       `/api/prism/knowledge/videos/${videoId}/board`,
     ),
+
+  getDeepAnalysis: (videoId: string) =>
+    apiFetch<KnowledgeDeepAnalysisResponse>(
+      `/api/prism/knowledge/videos/${videoId}/deep-analysis`,
+    ),
+
+  regenerateDeepAnalysis: (
+    videoId: string,
+    payload: { includeBackground?: boolean } = {},
+  ) =>
+    apiFetch<{
+      taskId: string;
+      status: 'completed';
+      deepAnalysis: KnowledgeDeepAnalysisResponse['deepAnalysis'];
+    }>(`/api/prism/knowledge/videos/${videoId}/deep-analysis/regenerate`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+
+  getBackgroundFacts: (videoId: string) =>
+    apiFetch<{
+      userId: string;
+      videoId: string;
+      status: 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED';
+      deepAnalysisId: string | null;
+      items: Array<Record<string, unknown>>;
+      ambiguities: Array<Record<string, unknown>>;
+      updatedAt: string | null;
+    }>(`/api/prism/knowledge/videos/${videoId}/background-facts`),
 
   getOutline: (videoId: string) =>
     apiFetch<KnowledgeOutlineResponse>(`/api/prism/knowledge/videos/${videoId}/outline`),

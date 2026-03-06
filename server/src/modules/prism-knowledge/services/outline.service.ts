@@ -25,6 +25,12 @@ export class OutlineService {
         storagePath: string;
         description?: string | null;
       }>;
+      deepAnalysis?: {
+        summary?: string;
+        chapterGraph?: Array<Record<string, unknown>>;
+        conceptGraph?: Array<Record<string, unknown>>;
+        ambiguities?: Array<Record<string, unknown>>;
+      };
     },
   ) {
     const {
@@ -33,12 +39,14 @@ export class OutlineService {
       videoTitle,
       transcriptSegments,
       keyframes,
+      deepAnalysis,
     } = params;
     const markdown = await this.generateOutlineStrict(
       userId,
       videoTitle,
       transcriptSegments,
       keyframes,
+      deepAnalysis,
     );
 
     const existing = await this.prisma.knowledgeAsset.findFirst({
@@ -71,6 +79,12 @@ export class OutlineService {
     title: string,
     transcriptSegments: Array<{ start: number; end: number; text: string }>,
     keyframes: Array<{ timestamp: number; storagePath: string; description?: string | null }>,
+    deepAnalysis?: {
+      summary?: string;
+      chapterGraph?: Array<Record<string, unknown>>;
+      conceptGraph?: Array<Record<string, unknown>>;
+      ambiguities?: Array<Record<string, unknown>>;
+    },
   ) {
     const compactSegments = transcriptSegments.slice(0, 40).map((s) => ({
       start: s.start,
@@ -99,6 +113,7 @@ export class OutlineService {
                 '4) 时间锚点必须尽量使用 mm:ss 或 hh:mm:ss。',
                 '5) 结尾必须包含“复盘清单”和“提问建议”。',
                 '6) 禁止空泛描述，禁止只罗列标题。',
+                '7) 如果提供了二次理解结果，必须吸收其中的章节主线、核心概念和易混淆点。',
               ].join('\n'),
           },
           {
@@ -108,6 +123,14 @@ export class OutlineService {
                 title,
                 transcriptSegments: compactSegments,
                 keyframes: compactFrames,
+                deepAnalysis: deepAnalysis
+                  ? {
+                      summary: deepAnalysis.summary ?? '',
+                      chapterGraph: (deepAnalysis.chapterGraph ?? []).slice(0, 8),
+                      conceptGraph: (deepAnalysis.conceptGraph ?? []).slice(0, 12),
+                      ambiguities: (deepAnalysis.ambiguities ?? []).slice(0, 8),
+                    }
+                  : null,
               },
               null,
               2,

@@ -44,7 +44,17 @@ function getUnixProcessName(pid) {
 }
 
 function killWindowsPid(pid) {
-  execSync(`taskkill /PID ${pid} /T /F`, { stdio: ['pipe', 'pipe', 'pipe'] });
+  try {
+    execSync(`taskkill /PID ${pid} /T /F`, { stdio: ['pipe', 'pipe', 'pipe'] });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    const notFound =
+      message.includes('not found') ||
+      message.includes('not running') ||
+      message.includes('没有找到') ||
+      message.includes('找不到');
+    if (!notFound) throw error;
+  }
 }
 
 function killUnixPid(pid) {
@@ -68,7 +78,7 @@ function freePort(port) {
     const processName = isWindows ? getWindowsProcessName(pid) : getUnixProcessName(pid);
     const lowerName = processName.toLowerCase();
 
-    if (!lowerName.includes('node')) {
+    if (processName && !lowerName.includes('node')) {
       hasBlockedProcess = true;
       console.error(
         `[free-port] Port ${port} is occupied by non-node process PID=${pid} (${processName || 'unknown'}).`,
@@ -82,7 +92,7 @@ function freePort(port) {
       } else {
         killUnixPid(pid);
       }
-      console.log(`[free-port] Killed ${processName || 'node'} PID=${pid} on port ${port}.`);
+      console.log(`[free-port] Cleared PID=${pid} (${processName || 'unknown'}) on port ${port}.`);
     } catch (error) {
       hasBlockedProcess = true;
       const message = error instanceof Error ? error.message : String(error);

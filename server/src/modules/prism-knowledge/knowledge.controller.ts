@@ -7,6 +7,7 @@ import {
   BatchAnalyzeKnowledgeDto,
   ExportKnowledgeDto,
   GenerateMindmapDto,
+  RegenerateDeepAnalysisDto,
   RegenerateFlashcardsDto,
   SettleKnowledgeDto,
 } from './dto';
@@ -29,6 +30,31 @@ export class KnowledgeController {
     @Body() dto: AnalyzeKnowledgeDto,
   ) {
     return this.knowledgeService.analyze(userId, videoId, dto);
+  }
+
+  @Post('videos/:videoId/deep-analysis/regenerate')
+  regenerateDeepAnalysis(
+    @CurrentUser() userId: string,
+    @Param('videoId') videoId: string,
+    @Body() dto: RegenerateDeepAnalysisDto,
+  ) {
+    return this.knowledgeService.regenerateDeepAnalysis(userId, videoId, dto);
+  }
+
+  @Get('videos/:videoId/deep-analysis')
+  getDeepAnalysis(
+    @CurrentUser() userId: string,
+    @Param('videoId') videoId: string,
+  ) {
+    return this.knowledgeService.getDeepAnalysis(userId, videoId);
+  }
+
+  @Get('videos/:videoId/background-facts')
+  getBackgroundFacts(
+    @CurrentUser() userId: string,
+    @Param('videoId') videoId: string,
+  ) {
+    return this.knowledgeService.getBackgroundFacts(userId, videoId);
   }
 
   @Post('videos/analyze-batch')

@@ -77,6 +77,9 @@ describe('KnowledgeService analyze pipeline', () => {
     const crystalCardService: any = {};
     const mindmapService: any = {};
     const exportService: any = {};
+    const deepUnderstandingService: any = {
+      generate: jest.fn(),
+    };
 
     const wsGateway: any = {
       emitKnowledgeState: jest.fn(),
@@ -95,9 +98,10 @@ describe('KnowledgeService analyze pipeline', () => {
       crystalCardService,
       mindmapService,
       exportService,
+      deepUnderstandingService,
     );
 
-    const result = await service.analyze('user_1', video.id, {});
+    const result = await service.analyze('user_1', video.id, { includeDeepAnalysis: false });
 
     expect(result.status).toBe('completed');
     expect(result.boardState).toBe('ready');

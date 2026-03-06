@@ -129,6 +129,8 @@ model VideoSource {
   notes          VideoNote[]
   highlights     VideoHighlight[]
   frameAnalyses FrameAnalysis[]
+  frameInsights  FrameInsight[]
+  deepAnalyses   KnowledgeDeepAnalysis[]
 
   @@index([projectId])
   @@map("video_sources")
@@ -175,6 +177,8 @@ model Keyframe {
 
   createdAt DateTime @default(now())
 
+  frameInsight FrameInsight?
+
   @@index([videoId, timestamp])
   @@map("keyframes")
 }
@@ -198,9 +202,60 @@ model KnowledgeAsset {
 
   flashcards Flashcard[]
   crystalCards CrystalCard[]
+  deepAnalyses KnowledgeDeepAnalysis[]
 
   @@index([videoId])
   @@map("knowledge_assets")
+}
+
+model FrameInsight {
+  id          String      @id @default(cuid())
+  videoId     String
+  video       VideoSource @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  keyframeId  String      @unique
+  keyframe    Keyframe    @relation(fields: [keyframeId], references: [id], onDelete: Cascade)
+  timestampSec Float
+  ocrText     String?     @db.Text
+  visualSummary String    @db.Text
+  chapterHint String?
+  chartType   String?
+  visualType  String?
+  formulaSignals Json?
+  codeSignals Json?
+  visualEntities Json?
+  confidence  Float?
+  metadata    Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([videoId, timestampSec])
+  @@map("frame_insights")
+}
+
+model KnowledgeDeepAnalysis {
+  id          String         @id @default(cuid())
+  videoId     String
+  video       VideoSource    @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  assetId     String?
+  asset       KnowledgeAsset? @relation(fields: [assetId], references: [id], onDelete: SetNull)
+  version     Int            @default(1)
+  status      TaskStatus     @default(PENDING)
+  summary     String?        @db.Text
+  chapterGraphJson Json?
+  conceptGraphJson Json?
+  ambiguitiesJson Json?
+  backgroundFactsJson Json?
+  learningRecommendationsJson Json?
+  sourceDigestJson Json?
+  metadata    Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([videoId, createdAt])
+  @@index([assetId])
+  @@map("knowledge_deep_analyses")
 }
 
 model Flashcard {

@@ -25,6 +25,13 @@ export class FlashcardService {
     videoTitle?: string;
     outlineMarkdown?: string;
     maxCards?: number;
+    deepAnalysis?: {
+      summary?: string;
+      chapterGraph?: Array<Record<string, unknown>>;
+      conceptGraph?: Array<Record<string, unknown>>;
+      learningRecommendations?: Array<Record<string, unknown>>;
+      ambiguities?: Array<Record<string, unknown>>;
+    };
   }) {
     const {
       assetId,
@@ -33,6 +40,7 @@ export class FlashcardService {
       videoTitle = '学习视频',
       outlineMarkdown = '',
       maxCards = 10,
+      deepAnalysis,
     } = params;
 
     await this.prisma.flashcard.deleteMany({
@@ -52,6 +60,7 @@ export class FlashcardService {
       outlineMarkdown,
       transcriptSegments,
       maxCards,
+      deepAnalysis,
     });
 
     const created: any[] = [];
@@ -91,8 +100,15 @@ export class FlashcardService {
     outlineMarkdown: string;
     transcriptSegments: FlashcardSegment[];
     maxCards: number;
+    deepAnalysis?: {
+      summary?: string;
+      chapterGraph?: Array<Record<string, unknown>>;
+      conceptGraph?: Array<Record<string, unknown>>;
+      learningRecommendations?: Array<Record<string, unknown>>;
+      ambiguities?: Array<Record<string, unknown>>;
+    };
   }) {
-    const { userId, videoTitle, outlineMarkdown, transcriptSegments, maxCards } = params;
+    const { userId, videoTitle, outlineMarkdown, transcriptSegments, maxCards, deepAnalysis } = params;
     const compactSegments = transcriptSegments.slice(0, 40).map((seg, idx) => ({
       idx,
       start: seg.start ?? idx * 15,
@@ -112,6 +128,7 @@ export class FlashcardService {
               `卡片数量不超过 ${maxCards}，不少于 ${Math.max(6, Math.floor(maxCards * 0.7))}。`,
               'front 是问题句，back 是简明但具体的答案，必须有可执行或可复述信息。',
               'difficulty 取值 1-5。',
+              '优先围绕核心概念、章节主线、易混淆点和学习建议生成闪卡，避免只是把摘要改写成问答。',
               '禁止输出 markdown 代码块。',
             ].join('\n'),
           },
@@ -122,6 +139,15 @@ export class FlashcardService {
                 title: videoTitle,
                 outline: this.truncate(outlineMarkdown, 2200),
                 transcriptSegments: compactSegments,
+                deepAnalysis: deepAnalysis
+                  ? {
+                      summary: deepAnalysis.summary ?? '',
+                      chapterGraph: (deepAnalysis.chapterGraph ?? []).slice(0, 8),
+                      conceptGraph: (deepAnalysis.conceptGraph ?? []).slice(0, 12),
+                      learningRecommendations: (deepAnalysis.learningRecommendations ?? []).slice(0, 8),
+                      ambiguities: (deepAnalysis.ambiguities ?? []).slice(0, 6),
+                    }
+                  : null,
               },
               null,
               2,

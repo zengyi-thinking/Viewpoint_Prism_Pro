@@ -10,6 +10,8 @@ import { FlashcardService } from './services/flashcard.service';
 import { CrystalCardService } from './services/crystal-card.service';
 import { MindmapService } from './services/mindmap.service';
 import { ExportService } from './services/export.service';
+import { FrameInsightService } from './services/frame-insight.service';
+import { DeepUnderstandingService } from './services/deep-understanding.service';
 
 @Module({
   imports: [WsModule, SyncModule],
@@ -23,6 +25,8 @@ import { ExportService } from './services/export.service';
     CrystalCardService,
     MindmapService,
     ExportService,
+    FrameInsightService,
+    DeepUnderstandingService,
   ],
   exports: [KnowledgeService],
 })

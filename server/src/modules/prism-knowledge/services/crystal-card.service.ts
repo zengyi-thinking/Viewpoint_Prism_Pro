@@ -19,6 +19,13 @@ interface GenerateCrystalCardsParams {
     description?: string;
   }>;
   outlineMarkdown?: string;
+  deepAnalysis?: {
+    summary?: string;
+    chapterGraph?: Array<Record<string, unknown>>;
+    conceptGraph?: Array<Record<string, unknown>>;
+    learningRecommendations?: Array<Record<string, unknown>>;
+    ambiguities?: Array<Record<string, unknown>>;
+  };
 }
 
 interface CrystalCardGenerationOptions {
@@ -35,6 +42,7 @@ type CardDraft = {
   summary?: string;
   timestamp?: number;
   imageUrl?: string;
+  sourceType?: string;
   tags?: string[];
   difficulty?: number;
   importance?: number;
@@ -61,6 +69,7 @@ export class CrystalCardService {
       transcriptSegments,
       keyframes = [],
       outlineMarkdown = '',
+      deepAnalysis,
       userId,
     } = params;
     const {
@@ -85,6 +94,7 @@ export class CrystalCardService {
         transcriptSegments,
         keyframes,
         outlineMarkdown,
+        deepAnalysis,
         types,
         maxCards,
         difficulty,
@@ -97,6 +107,7 @@ export class CrystalCardService {
         transcriptSegments,
         keyframes,
         outlineMarkdown,
+        deepAnalysis,
         types,
         maxCards,
         includeKeyframes,
@@ -120,7 +131,7 @@ export class CrystalCardService {
               ? this.formatTimestamp(draft.timestamp)
               : null,
           imageUrl: draft.imageUrl ?? null,
-          sourceType: 'generated',
+          sourceType: draft.sourceType ?? 'generated',
           tags: (draft.tags ?? []).slice(0, 6),
           difficulty: this.normalizeInt(draft.difficulty ?? difficulty, 1, 5),
           importance: this.normalizeInt(draft.importance ?? 3, 1, 5),
@@ -199,6 +210,13 @@ export class CrystalCardService {
     transcriptSegments: Array<{ start: number; end: number; text: string }>;
     keyframes: Array<{ timestamp: number; storagePath: string; description?: string }>;
     outlineMarkdown: string;
+    deepAnalysis?: {
+      summary?: string;
+      chapterGraph?: Array<Record<string, unknown>>;
+      conceptGraph?: Array<Record<string, unknown>>;
+      learningRecommendations?: Array<Record<string, unknown>>;
+      ambiguities?: Array<Record<string, unknown>>;
+    };
     types: CrystalCardType[];
     maxCards: number;
     difficulty: number;
@@ -209,6 +227,7 @@ export class CrystalCardService {
       transcriptSegments,
       keyframes,
       outlineMarkdown,
+      deepAnalysis,
       types,
       maxCards,
       difficulty,
@@ -224,9 +243,11 @@ export class CrystalCardService {
               content: [
                 '你是视频学习助手，负责生成“晶体卡片”。',
                 '输出必须是 JSON 数组，且不要使用 markdown 代码块。',
-                '每项字段：type,title,content,summary,timestamp,tags,difficulty,importance,category,isFeatured。',
+                '每项字段：type,title,content,summary,timestamp,sourceType,tags,difficulty,importance,category,isFeatured。',
                 `type 仅可使用：${types.join(', ')}`,
+                'sourceType 仅可使用：outline, deepAnalysis, qa, keyframe。',
                 `最多 ${maxCards} 项。`,
+                '优先体现章节主线、核心概念、关键帧价值、学习建议和易混淆点。',
               ].join('\n'),
             },
             {
@@ -237,6 +258,15 @@ export class CrystalCardService {
                   outlineMarkdown: this.clip(outlineMarkdown, 2500),
                   transcriptSegments: transcriptSegments.slice(0, 40),
                   keyframes: keyframes.slice(0, 12),
+                  deepAnalysis: deepAnalysis
+                    ? {
+                        summary: deepAnalysis.summary ?? '',
+                        chapterGraph: (deepAnalysis.chapterGraph ?? []).slice(0, 8),
+                        conceptGraph: (deepAnalysis.conceptGraph ?? []).slice(0, 12),
+                        learningRecommendations: (deepAnalysis.learningRecommendations ?? []).slice(0, 8),
+                        ambiguities: (deepAnalysis.ambiguities ?? []).slice(0, 6),
+                      }
+                    : null,
                   defaults: { difficulty },
                 },
                 null,
@@ -271,6 +301,13 @@ export class CrystalCardService {
     transcriptSegments: Array<{ start: number; end: number; text: string }>;
     keyframes: Array<{ timestamp: number; storagePath: string; description?: string }>;
     outlineMarkdown: string;
+    deepAnalysis?: {
+      summary?: string;
+      chapterGraph?: Array<Record<string, unknown>>;
+      conceptGraph?: Array<Record<string, unknown>>;
+      learningRecommendations?: Array<Record<string, unknown>>;
+      ambiguities?: Array<Record<string, unknown>>;
+    };
     types: CrystalCardType[];
     maxCards: number;
     includeKeyframes: boolean;
@@ -281,6 +318,7 @@ export class CrystalCardService {
       transcriptSegments,
       keyframes,
       outlineMarkdown,
+      deepAnalysis,
       types,
       maxCards,
       includeKeyframes,
@@ -297,8 +335,9 @@ export class CrystalCardService {
         drafts.push({
           type: CrystalCardType.SUMMARY,
           title: `《${videoTitle}》学习摘要`,
-          content: summary,
-          summary: this.clip(summary, 180),
+          content: deepAnalysis?.summary ? `${deepAnalysis.summary}\n\n${summary}` : summary,
+          summary: this.clip(deepAnalysis?.summary || summary, 180),
+          sourceType: deepAnalysis?.summary ? 'deepAnalysis' : 'outline',
           difficulty: 1,
           importance: 5,
           category: '整体概览',
@@ -308,13 +347,33 @@ export class CrystalCardService {
     }
 
     if (types.includes(CrystalCardType.CONCEPT)) {
-      for (const seg of transcriptSegments.slice(0, 4)) {
+      const conceptSeeds =
+        deepAnalysis?.conceptGraph && deepAnalysis.conceptGraph.length > 0
+          ? deepAnalysis.conceptGraph.slice(0, 4).map((concept) => ({
+              title:
+                typeof concept.name === 'string' ? concept.name : '核心概念',
+              content:
+                typeof concept.summary === 'string' ? concept.summary : '',
+            }))
+          : transcriptSegments.slice(0, 4).map((seg) => ({
+              title: this.extractTitle(seg.text),
+              content: seg.text,
+              start: seg.start,
+            }));
+
+      for (const seg of conceptSeeds) {
+        const timestamp =
+          'start' in seg && typeof seg.start === 'number' ? seg.start : undefined;
         drafts.push({
           type: CrystalCardType.CONCEPT,
-          title: this.clip(this.extractTitle(seg.text), 40),
-          content: seg.text,
-          summary: this.clip(seg.text, 120),
-          timestamp: seg.start,
+          title: this.clip(this.extractTitle(seg.title), 40),
+          content: seg.content,
+          summary: this.clip(seg.content, 120),
+          timestamp,
+          sourceType:
+            deepAnalysis?.conceptGraph && deepAnalysis.conceptGraph.length > 0
+              ? 'deepAnalysis'
+              : 'outline',
           tags: ['概念'],
           difficulty,
           importance: 3,
@@ -332,6 +391,7 @@ export class CrystalCardService {
           content: chunk.text,
           summary: this.clip(chunk.text, 120),
           timestamp: chunk.start,
+          sourceType: 'outline',
           tags: ['时间线'],
           difficulty,
           importance: 3,
@@ -341,16 +401,19 @@ export class CrystalCardService {
     }
 
     if (types.includes(CrystalCardType.INSIGHT)) {
-      const insight = transcriptSegments.find((s) =>
-        ['因此', '关键', '结论', '所以', '意味着'].some((k) => s.text.includes(k)),
-      );
-      if (insight) {
+      const insightText =
+        deepAnalysis?.summary ||
+        transcriptSegments.find((s) =>
+          ['因此', '关键', '结论', '所以', '意味着'].some((k) => s.text.includes(k)),
+        )?.text;
+      if (insightText) {
         drafts.push({
           type: CrystalCardType.INSIGHT,
           title: '关键洞察',
-          content: insight.text,
-          summary: this.clip(insight.text, 140),
-          timestamp: insight.start,
+          content: insightText,
+          summary: this.clip(insightText, 140),
+          timestamp: transcriptSegments[0]?.start,
+          sourceType: deepAnalysis?.summary ? 'deepAnalysis' : 'outline',
           tags: ['洞察'],
           difficulty: Math.min(5, difficulty + 1),
           importance: 5,
@@ -369,6 +432,7 @@ export class CrystalCardService {
           summary: frame.description || '关键画面',
           timestamp: frame.timestamp,
           imageUrl: frame.storagePath,
+          sourceType: 'keyframe',
           tags: ['关键帧'],
           difficulty,
           importance: 3,
@@ -394,6 +458,7 @@ export class CrystalCardService {
       content,
       summary: this.asText(input?.summary) || undefined,
       timestamp: Number.isFinite(timestampRaw) ? timestampRaw : undefined,
+      sourceType: this.asText(input?.sourceType) || undefined,
       tags: Array.isArray(input?.tags) ? input.tags.map((v: any) => String(v)).slice(0, 6) : undefined,
       difficulty: this.normalizeInt(Number(input?.difficulty || fallbackDifficulty), 1, 5),
       importance: this.normalizeInt(Number(input?.importance || 3), 1, 5),

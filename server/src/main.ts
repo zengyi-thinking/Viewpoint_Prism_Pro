@@ -22,6 +22,8 @@ async function bootstrap() {
       console.error(
         `Port ${port} is already in use. Stop the existing process or set a different PORT in your .env.`,
       );
+      process.exit(0);
+      return;
     }
     throw error;
   }

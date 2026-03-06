@@ -7,6 +7,7 @@ import {
   BatchAnalyzeKnowledgeDto,
   ExportKnowledgeDto,
   GenerateMindmapDto,
+  RegenerateDeepAnalysisDto,
   RegenerateFlashcardsDto,
   SettleKnowledgeDto,
 } from './dto';
@@ -25,6 +26,7 @@ import { MindmapService, MindmapResult } from './services/mindmap.service';
 import { OutlineService } from './services/outline.service';
 import { TranscriptService } from './services/transcript.service';
 import { ExportService } from './services/export.service';
+import { DeepUnderstandingService } from './services/deep-understanding.service';
 
 @Injectable()
 export class KnowledgeService {
@@ -40,6 +42,7 @@ export class KnowledgeService {
     private readonly crystalCardService: CrystalCardService,
     private readonly mindmapService: MindmapService,
     private readonly exportService: ExportService,
+    private readonly deepUnderstandingService: DeepUnderstandingService,
   ) {}
 
   async analyze(
@@ -133,6 +136,13 @@ export class KnowledgeService {
       },
     );
 
+    const transcriptSegments =
+      (transcript.segments as Array<{
+        start: number;
+        end: number;
+        text: string;
+      }>) ?? [];
+
     this.wsGateway.emitTaskProgress(userId, {
       projectId: video.projectId,
       videoId: video.id,
@@ -154,6 +164,7 @@ export class KnowledgeService {
       userId,
       {
         regenerate: dto.regenerateKeyframes,
+        transcriptSegments,
         onProgress: async ({ current, total }) => {
           const ratio = total <= 0 ? 0 : current / total;
           const progress = 36 + Math.round(ratio * 24);
@@ -199,13 +210,6 @@ export class KnowledgeService {
       },
     );
 
-    const transcriptSegments =
-      (transcript.segments as Array<{
-        start: number;
-        end: number;
-        text: string;
-      }>) ?? [];
-
     const asset = await this.outlineService.buildOutline({
       userId,
       videoId: video.id,
@@ -216,7 +220,42 @@ export class KnowledgeService {
         storagePath: kf.storagePath,
         description: kf.description,
       })),
+      deepAnalysis: undefined,
     });
+
+    const deepAnalysis =
+      dto.includeDeepAnalysis === false
+        ? null
+        : await this.generateDeepAnalysisForVideo({
+            userId,
+            videoId: video.id,
+            projectId: video.projectId,
+            videoTitle: video.title,
+            assetId: asset.id,
+            transcriptSegments,
+            keyframes,
+          });
+
+    const refreshedAsset =
+      deepAnalysis != null
+        ? await this.outlineService.buildOutline({
+            userId,
+            videoId: video.id,
+            videoTitle: video.title,
+            transcriptSegments,
+            keyframes: keyframes.map((kf) => ({
+              timestamp: kf.timestamp,
+              storagePath: kf.storagePath,
+              description: kf.description,
+            })),
+            deepAnalysis: {
+              summary: deepAnalysis.summary ?? '',
+              chapterGraph: (deepAnalysis.chapterGraphJson as any[]) ?? [],
+              conceptGraph: (deepAnalysis.conceptGraphJson as any[]) ?? [],
+              ambiguities: (deepAnalysis.ambiguitiesJson as any[]) ?? [],
+            },
+          })
+        : asset;
 
     this.wsGateway.emitTaskProgress(userId, {
       projectId: video.projectId,
@@ -235,9 +274,9 @@ export class KnowledgeService {
         id: `outline-${asset.id}`,
         type: KnowledgeTimelineItemType.OUTLINE_BLOCK,
         title: '结构化大纲',
-        summary: this.takeFirstNonEmptyLine(asset.outlineMarkdown) ?? '知识大纲已生成',
-        content: asset.outlineMarkdown,
-        timestampSec: parseTimestampToSeconds(asset.outlineMarkdown),
+        summary: this.takeFirstNonEmptyLine(refreshedAsset.outlineMarkdown) ?? '知识大纲已生成',
+        content: refreshedAsset.outlineMarkdown,
+        timestampSec: parseTimestampToSeconds(refreshedAsset.outlineMarkdown),
         metadata: { source: 'outline_service' },
         createdAt: new Date().toISOString(),
       },
@@ -249,8 +288,18 @@ export class KnowledgeService {
       transcriptSegments,
       userId,
       videoTitle: video.title,
-      outlineMarkdown: asset.outlineMarkdown ?? '',
+      outlineMarkdown: refreshedAsset.outlineMarkdown ?? '',
       maxCards: 12,
+      deepAnalysis: deepAnalysis
+        ? {
+            summary: deepAnalysis.summary ?? '',
+            chapterGraph: (deepAnalysis.chapterGraphJson as any[]) ?? [],
+            conceptGraph: (deepAnalysis.conceptGraphJson as any[]) ?? [],
+            learningRecommendations:
+              (deepAnalysis.learningRecommendationsJson as any[]) ?? [],
+            ambiguities: (deepAnalysis.ambiguitiesJson as any[]) ?? [],
+          }
+        : undefined,
     });
 
     const flashcardItems = flashcards.slice(0, 12);
@@ -328,6 +377,7 @@ export class KnowledgeService {
         transcriptSegments: transcriptSegments.length,
         keyframes: keyframes.length,
         flashcards: flashcards.length,
+        deepAnalysisVersion: deepAnalysis?.version ?? null,
       },
       timestamp: new Date().toISOString(),
     });
@@ -342,7 +392,10 @@ export class KnowledgeService {
       transcriptId: transcript.id,
       keyframeCount: keyframes.length,
       assetId: asset.id,
+      outlineAssetId: refreshedAsset.id,
       flashcardCount: flashcards.length,
+      deepAnalysisId: deepAnalysis?.id ?? null,
+      deepAnalysisVersion: deepAnalysis?.version ?? null,
     };
   }
 
@@ -351,6 +404,7 @@ export class KnowledgeService {
     const options: AnalyzeKnowledgeDto = {
       regenerateTranscript: dto.regenerateTranscript,
       regenerateKeyframes: dto.regenerateKeyframes,
+      includeDeepAnalysis: dto.includeDeepAnalysis,
     };
 
     const results: Array<{
@@ -396,7 +450,7 @@ export class KnowledgeService {
   async getBoardSnapshot(userId: string, videoId: string): Promise<KnowledgeBoardSnapshot> {
     const video = await this.getOwnedVideo(userId, videoId);
 
-    const [transcript, keyframes, asset, flashcards, qaCards] = await Promise.all([
+    const [transcript, keyframes, asset, flashcards, qaCards, frameInsights, deepAnalysis] = await Promise.all([
       this.prisma.transcript.findFirst({
         where: { videoId },
         orderBy: { createdAt: 'desc' },
@@ -423,6 +477,14 @@ export class KnowledgeService {
         },
         orderBy: { createdAt: 'asc' },
       }),
+      this.prisma.frameInsight.findMany({
+        where: { videoId },
+        orderBy: { timestampSec: 'asc' },
+      }),
+      this.prisma.knowledgeDeepAnalysis.findFirst({
+        where: { videoId },
+        orderBy: { createdAt: 'desc' },
+      }),
     ]);
 
     const transcriptSegments = (transcript?.segments as Array<{
@@ -435,22 +497,58 @@ export class KnowledgeService {
     const qaFromNotes = this.extractQaCardsFromNotes(asset?.notesMarkdown ?? '', video.id, asset?.id ?? null);
 
     const timeline: KnowledgeTimelineItem[] = [
-      ...keyframes.map((frame) => ({
-        id: `keyframe-${frame.id}`,
-        type: KnowledgeTimelineItemType.KEYFRAME_CARD,
-        videoId: video.id,
-        assetId: asset?.id ?? null,
-        timestampSec: frame.timestamp,
-        title: `关键帧 @ ${this.formatTimestamp(frame.timestamp)}`,
-        summary: frame.description ?? `画面类型：${frame.frameType}`,
-        imageUrl: frame.storagePath,
-        metadata: {
-          frameType: frame.frameType,
-          similarity: frame.similarity ?? null,
-        },
-        createdAt: frame.createdAt.toISOString(),
-      })),
+      ...keyframes.map((frame) => {
+        const insight = frameInsights.find((item) => item.keyframeId === frame.id);
+        return {
+          id: `keyframe-${frame.id}`,
+          type: KnowledgeTimelineItemType.KEYFRAME_CARD,
+          videoId: video.id,
+          assetId: asset?.id ?? null,
+          timestampSec: frame.timestamp,
+          title: `关键帧 @ ${this.formatTimestamp(frame.timestamp)}`,
+          summary:
+            insight?.visualSummary ??
+            frame.description ??
+            `画面类型：${frame.frameType}`,
+          imageUrl: frame.storagePath,
+          metadata: {
+            frameType: frame.frameType,
+            similarity: frame.similarity ?? null,
+            frameInsightId: insight?.id ?? null,
+            chapterHint: insight?.chapterHint ?? null,
+            visualType: insight?.visualType ?? null,
+            ocrText: insight?.ocrText ?? null,
+            visualEntities: insight?.visualEntities ?? [],
+          },
+          createdAt: frame.createdAt.toISOString(),
+        };
+      }),
       ...outlineBlocks,
+      ...(deepAnalysis?.summary
+        ? [
+            {
+              id: `deep-analysis-${deepAnalysis.id}`,
+              type: KnowledgeTimelineItemType.OUTLINE_BLOCK,
+              videoId: video.id,
+              assetId: asset?.id ?? null,
+              title: `深度理解 v${deepAnalysis.version}`,
+              summary: deepAnalysis.summary,
+              content: this.formatDeepAnalysisContent(deepAnalysis),
+              metadata: {
+                source: 'deep_analysis',
+                deepAnalysisId: deepAnalysis.id,
+                version: deepAnalysis.version,
+                conceptCount: Array.isArray(deepAnalysis.conceptGraphJson)
+                  ? deepAnalysis.conceptGraphJson.length
+                  : 0,
+                chapterCount: Array.isArray(deepAnalysis.chapterGraphJson)
+                  ? deepAnalysis.chapterGraphJson.length
+                  : 0,
+              },
+              createdAt: deepAnalysis.createdAt.toISOString(),
+            } satisfies KnowledgeTimelineItem,
+          ]
+        : []),
       ...qaFromNotes,
       ...qaCards.map((card) => ({
         id: `qa-${card.id}`,
@@ -511,7 +609,7 @@ export class KnowledgeService {
       return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
     });
 
-    const state = deriveKnowledgeBoardState({
+    let state = deriveKnowledgeBoardState({
       transcriptStatus: video.transcriptStatus as any,
       keyframeStatus: video.keyframeStatus as any,
       assetStatus: (asset?.status as any) ?? null,
@@ -521,6 +619,10 @@ export class KnowledgeService {
       hasOutline: Boolean(asset?.outlineMarkdown?.trim()),
       hasFlashcards: flashcards.length > 0,
     });
+
+    if (deepAnalysis?.status === 'PROCESSING' && state === KnowledgeBoardState.READY) {
+      state = KnowledgeBoardState.STREAMING;
+    }
 
     return {
       videoId: video.id,
@@ -533,6 +635,8 @@ export class KnowledgeService {
         flashcards: flashcards.length,
         qaCards: qaFromNotes.length + qaCards.length,
         outlineBlocks: outlineBlocks.length,
+        deepAnalysisVersion: deepAnalysis?.version ?? null,
+        frameInsights: frameInsights.length,
       },
       updatedAt: new Date().toISOString(),
     };
@@ -598,6 +702,97 @@ export class KnowledgeService {
     };
   }
 
+  async getDeepAnalysis(userId: string, videoId: string) {
+    await this.getOwnedVideo(userId, videoId);
+    const deepAnalysis = await this.prisma.knowledgeDeepAnalysis.findFirst({
+      where: { videoId },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    return {
+      userId,
+      videoId,
+      status: deepAnalysis?.status ?? 'PENDING',
+      deepAnalysis,
+    };
+  }
+
+  async getBackgroundFacts(userId: string, videoId: string) {
+    await this.getOwnedVideo(userId, videoId);
+    const deepAnalysis = await this.prisma.knowledgeDeepAnalysis.findFirst({
+      where: { videoId },
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        status: true,
+        backgroundFactsJson: true,
+        ambiguitiesJson: true,
+        updatedAt: true,
+      },
+    });
+
+    return {
+      userId,
+      videoId,
+      status: deepAnalysis?.status ?? 'PENDING',
+      deepAnalysisId: deepAnalysis?.id ?? null,
+      items: (deepAnalysis?.backgroundFactsJson as any[]) ?? [],
+      ambiguities: (deepAnalysis?.ambiguitiesJson as any[]) ?? [],
+      updatedAt: deepAnalysis?.updatedAt?.toISOString() ?? null,
+    };
+  }
+
+  async regenerateDeepAnalysis(
+    userId: string,
+    videoId: string,
+    dto: RegenerateDeepAnalysisDto = {},
+  ) {
+    const video = await this.getOwnedVideo(userId, videoId);
+    const transcript = await this.prisma.transcript.findFirst({
+      where: { videoId },
+      orderBy: { createdAt: 'desc' },
+    });
+    if (!transcript) {
+      throw new NotFoundException('请先生成转写内容');
+    }
+
+    const keyframes = await this.prisma.keyframe.findMany({
+      where: { videoId },
+      orderBy: { timestamp: 'asc' },
+    });
+    if (keyframes.length === 0) {
+      throw new NotFoundException('请先生成关键帧');
+    }
+
+    const asset = await this.prisma.knowledgeAsset.findFirst({
+      where: { videoId },
+      orderBy: { updatedAt: 'desc' },
+    });
+    if (!asset) {
+      throw new NotFoundException('请先生成知识资产');
+    }
+
+    const result = await this.generateDeepAnalysisForVideo({
+      userId,
+      videoId,
+      projectId: video.projectId,
+      videoTitle: video.title,
+      assetId: asset.id,
+      transcriptSegments:
+        (transcript.segments as Array<{ start: number; end: number; text: string }>) ?? [],
+      keyframes,
+      includeBackground: dto.includeBackground,
+    });
+
+    return {
+      taskId: `deep_analysis_${Date.now()}`,
+      userId,
+      videoId,
+      status: 'completed',
+      deepAnalysis: result,
+    };
+  }
+
   async regenerateOutline(userId: string, videoId: string) {
     const video = await this.getOwnedVideo(userId, videoId);
 
@@ -631,6 +826,7 @@ export class KnowledgeService {
         storagePath: kf.storagePath,
         description: kf.description,
       })),
+      deepAnalysis: await this.loadDeepAnalysisContext(videoId),
     });
 
     return {
@@ -683,6 +879,7 @@ export class KnowledgeService {
       videoTitle: video.title,
       outlineMarkdown: asset.outlineMarkdown ?? '',
       maxCards: dto.maxCards ?? 12,
+      deepAnalysis: await this.loadDeepAnalysisContext(videoId),
     });
 
     return {
@@ -1158,6 +1355,7 @@ export class KnowledgeService {
           description: kf.description ?? undefined,
         })),
         outlineMarkdown: asset.outlineMarkdown ?? undefined,
+        deepAnalysis: await this.loadDeepAnalysisContext(videoId),
       },
       options,
     );
@@ -1169,6 +1367,105 @@ export class KnowledgeService {
       status: 'completed',
       result,
     };
+  }
+
+  private async generateDeepAnalysisForVideo(params: {
+    userId: string;
+    videoId: string;
+    projectId: string;
+    videoTitle: string;
+    assetId: string;
+    transcriptSegments: Array<{ start: number; end: number; text: string }>;
+    keyframes: Array<{
+      id: string;
+      timestamp: number;
+      frameType: any;
+      storagePath: string;
+      description?: string | null;
+    }>;
+    includeBackground?: boolean;
+  }) {
+    this.wsGateway.emitTaskProgress(params.userId, {
+      projectId: params.projectId,
+      videoId: params.videoId,
+      task: 'knowledge_analyze',
+      progress: 66,
+      message: '正在进行二次理解分析',
+      timestamp: new Date().toISOString(),
+    });
+
+    const [asset, frameInsights, qaCards, user] = await Promise.all([
+      this.prisma.knowledgeAsset.findUnique({
+        where: { id: params.assetId },
+      }),
+      this.prisma.frameInsight.findMany({
+        where: { videoId: params.videoId },
+        orderBy: { timestampSec: 'asc' },
+      }),
+      this.prisma.crystalCard.findMany({
+        where: {
+          asset: { videoId: params.videoId },
+          type: CrystalCardType.QA,
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 10,
+      }),
+      this.prisma.user.findUnique({
+        where: { id: params.userId },
+        select: { profile: true },
+      }),
+    ]);
+
+    const deepAnalysis = await this.deepUnderstandingService.generate({
+      userId: params.userId,
+      videoId: params.videoId,
+      assetId: params.assetId,
+      videoTitle: params.videoTitle,
+      transcriptSegments: params.transcriptSegments,
+      keyframes: params.keyframes,
+      frameInsights: frameInsights.map((insight) => ({
+        keyframeId: insight.keyframeId,
+        timestampSec: insight.timestampSec,
+        visualSummary: insight.visualSummary,
+        chapterHint: insight.chapterHint,
+        visualType: insight.visualType,
+        ocrText: insight.ocrText,
+        visualEntities: Array.isArray(insight.visualEntities)
+          ? (insight.visualEntities as string[])
+          : [],
+      })),
+      outlineMarkdown: asset?.outlineMarkdown ?? '',
+      userProfile: (user?.profile as Record<string, unknown> | null) ?? null,
+      qaCards: qaCards.map((card) => ({
+        title: card.title,
+        summary: card.summary,
+        content: card.content,
+        timestamp: card.timestamp,
+      })),
+      includeBackground: params.includeBackground,
+    });
+
+    this.emitKnowledgeTimelineItem(params.projectId, {
+      projectId: params.projectId,
+      videoId: params.videoId,
+      taskId: `deep-analysis-${deepAnalysis.id}`,
+      item: {
+        id: `deep-analysis-${deepAnalysis.id}`,
+        type: KnowledgeTimelineItemType.OUTLINE_BLOCK,
+        title: `深度理解 v${deepAnalysis.version}`,
+        summary: deepAnalysis.summary ?? '深度理解已生成',
+        content: this.formatDeepAnalysisContent(deepAnalysis),
+        metadata: {
+          source: 'deep_analysis',
+          deepAnalysisId: deepAnalysis.id,
+          version: deepAnalysis.version,
+        },
+        createdAt: deepAnalysis.createdAt.toISOString(),
+      },
+      timestamp: new Date().toISOString(),
+    });
+
+    return deepAnalysis;
   }
 
   private async getOwnedVideo(userId: string, videoId: string) {
@@ -1364,5 +1661,89 @@ export class KnowledgeService {
       targets.add(target);
     }
     return Array.from(targets);
+  }
+
+  private async loadDeepAnalysisContext(videoId: string) {
+    const deepAnalysis = await this.prisma.knowledgeDeepAnalysis.findFirst({
+      where: { videoId, status: 'COMPLETED' as any },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    if (!deepAnalysis) return undefined;
+
+    return {
+      summary: deepAnalysis.summary ?? '',
+      chapterGraph: (deepAnalysis.chapterGraphJson as any[]) ?? [],
+      conceptGraph: (deepAnalysis.conceptGraphJson as any[]) ?? [],
+      learningRecommendations:
+        (deepAnalysis.learningRecommendationsJson as any[]) ?? [],
+      ambiguities: (deepAnalysis.ambiguitiesJson as any[]) ?? [],
+    };
+  }
+
+  private formatDeepAnalysisContent(deepAnalysis: {
+    summary?: string | null;
+    chapterGraphJson?: unknown;
+    conceptGraphJson?: unknown;
+    ambiguitiesJson?: unknown;
+    learningRecommendationsJson?: unknown;
+  }) {
+    const lines: string[] = [];
+    if (deepAnalysis.summary) {
+      lines.push(deepAnalysis.summary);
+    }
+
+    const chapters = Array.isArray(deepAnalysis.chapterGraphJson)
+      ? (deepAnalysis.chapterGraphJson as Array<Record<string, unknown>>)
+      : [];
+    if (chapters.length > 0) {
+      lines.push('', '章节主线:');
+      for (const chapter of chapters.slice(0, 6)) {
+        const title = typeof chapter.title === 'string' ? chapter.title : '未命名章节';
+        const summary =
+          typeof chapter.summary === 'string' ? chapter.summary : '';
+        lines.push(`- ${title}${summary ? `：${summary}` : ''}`);
+      }
+    }
+
+    const concepts = Array.isArray(deepAnalysis.conceptGraphJson)
+      ? (deepAnalysis.conceptGraphJson as Array<Record<string, unknown>>)
+      : [];
+    if (concepts.length > 0) {
+      lines.push('', '核心概念:');
+      for (const concept of concepts.slice(0, 8)) {
+        const name = typeof concept.name === 'string' ? concept.name : '概念';
+        const summary =
+          typeof concept.summary === 'string' ? concept.summary : '';
+        lines.push(`- ${name}${summary ? `：${summary}` : ''}`);
+      }
+    }
+
+    const ambiguities = Array.isArray(deepAnalysis.ambiguitiesJson)
+      ? (deepAnalysis.ambiguitiesJson as Array<Record<string, unknown>>)
+      : [];
+    if (ambiguities.length > 0) {
+      lines.push('', '易混淆点:');
+      for (const item of ambiguities.slice(0, 5)) {
+        const concept = typeof item.concept === 'string' ? item.concept : '未命名问题';
+        const clarification =
+          typeof item.clarification === 'string' ? item.clarification : '';
+        lines.push(`- ${concept}${clarification ? `：${clarification}` : ''}`);
+      }
+    }
+
+    const recommendations = Array.isArray(deepAnalysis.learningRecommendationsJson)
+      ? (deepAnalysis.learningRecommendationsJson as Array<Record<string, unknown>>)
+      : [];
+    if (recommendations.length > 0) {
+      lines.push('', '学习建议:');
+      for (const item of recommendations.slice(0, 5)) {
+        const title = typeof item.title === 'string' ? item.title : '建议';
+        const action = typeof item.action === 'string' ? item.action : '';
+        lines.push(`- ${title}${action ? `：${action}` : ''}`);
+      }
+    }
+
+    return lines.join('\n').trim();
   }
 }
