@@ -14,6 +14,11 @@ export class SettingsController {
     return this.settingsService.getSettings(userId);
   }
 
+  @Get('provider-key-stats')
+  getProviderKeyStats() {
+    return this.settingsService.getProviderKeyPoolStats();
+  }
+
   @Put()
   updateSettings(
     @CurrentUser() userId: string,

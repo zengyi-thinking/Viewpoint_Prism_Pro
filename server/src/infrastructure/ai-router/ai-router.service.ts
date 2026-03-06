@@ -40,6 +40,20 @@ const DEFAULT_PROVIDER_PREFERENCES: Record<AITaskType, string> = {
 @Injectable()
 export class AiRouterService {
   private readonly logger = new Logger(AiRouterService.name);
+  private readonly providerKeyCursor = new Map<string, number>();
+  private readonly providerKeyStats = new Map<
+    string,
+    Map<
+      string,
+      {
+        successCount: number;
+        failureCount: number;
+        lastSuccessAt: string | null;
+        lastFailureAt: string | null;
+        lastError: string | null;
+      }
+    >
+  >();
 
   constructor(
     private readonly prisma: PrismaService,
@@ -80,28 +94,57 @@ export class AiRouterService {
         try {
           this.logger.log(`Trying provider ${provider.name} for ${taskType}`);
 
-          // Get API key for this provider (BYOK)
-          const apiKey = this.getApiKeyForProvider(provider, userSettings);
+          // Get API key candidates for this provider (BYOK first, then env pool)
+          const apiKeys = this.getApiKeysForProvider(provider, userSettings);
 
-          if (!apiKey) {
+          if (apiKeys.length === 0) {
             this.logger.warn(`No API key found for provider ${provider.name}, skipping`);
             lastError = new Error(`No API key found for provider ${provider.name}`);
             continue;
           }
 
-          // Execute the task
-          const result = await provider.execute(taskType, payload, apiKey);
+          const orderedKeys = this.orderApiKeys(provider.name, apiKeys);
+          let providerLastError: Error | null = null;
 
-          // Log successful execution
-          const duration = Date.now() - startTime;
-          await this.logExecution(userId, taskType, provider.name, true, duration, null);
+          for (let keyIndex = 0; keyIndex < orderedKeys.length; keyIndex += 1) {
+            const apiKey = orderedKeys[keyIndex];
+            try {
+              if (orderedKeys.length > 1) {
+                this.logger.log(
+                  `Trying provider ${provider.name} key ${keyIndex + 1}/${orderedKeys.length} (${this.maskApiKey(apiKey)}) for ${taskType}`,
+                );
+              }
 
-          // Return result with provider info
-          return {
-            ...result,
-            provider: provider.name,
-            duration,
-          };
+              const result = await provider.execute(taskType, payload, apiKey);
+
+              this.advanceKeyCursor(provider.name, apiKeys, apiKey);
+              this.recordKeyResult(provider.name, apiKey, true, null);
+
+              const duration = Date.now() - startTime;
+              await this.logExecution(userId, taskType, provider.name, true, duration, null);
+
+              return {
+                ...result,
+                provider: provider.name,
+                duration,
+              };
+            } catch (error) {
+              providerLastError =
+                error instanceof Error ? error : new Error(String(error));
+              this.recordKeyResult(
+                provider.name,
+                apiKey,
+                false,
+                providerLastError.message,
+              );
+              this.logger.warn(
+                `Provider ${provider.name} key ${keyIndex + 1}/${orderedKeys.length} (${this.maskApiKey(apiKey)}) failed for ${taskType}: ${providerLastError.message}`,
+              );
+            }
+          }
+
+          lastError = providerLastError;
+          continue;
         } catch (error) {
           lastError = error;
           this.logger.warn(`Provider ${provider.name} failed for ${taskType}: ${error.message}`);
@@ -159,6 +202,36 @@ export class AiRouterService {
       byProvider: {},
       costs: {},
     };
+  }
+
+  getProviderKeyPoolStats() {
+    const providers = ['seedance', 'openai', 'gemini', 'midjourney', 'elevenlabs'];
+    return providers.reduce<Record<string, unknown>>((acc, providerName) => {
+      const keys = this.getEnvFallbackKeys(providerName);
+      const cursor = this.providerKeyCursor.get(providerName) ?? 0;
+      const statsByKey = this.providerKeyStats.get(providerName) ?? new Map();
+
+      acc[providerName] = {
+        poolSize: keys.length,
+        nextCursor: keys.length > 0 ? cursor % keys.length : 0,
+        keys: keys.map((key, index) => {
+          const masked = this.maskApiKey(key);
+          const stats = statsByKey.get(masked);
+          return {
+            index,
+            maskedKey: masked,
+            isNext: keys.length > 0 && index === (cursor % keys.length),
+            successCount: stats?.successCount ?? 0,
+            failureCount: stats?.failureCount ?? 0,
+            lastSuccessAt: stats?.lastSuccessAt ?? null,
+            lastFailureAt: stats?.lastFailureAt ?? null,
+            lastError: stats?.lastError ?? null,
+          };
+        }),
+      };
+
+      return acc;
+    }, {});
   }
 
   /**
@@ -230,7 +303,7 @@ export class AiRouterService {
   /**
    * Get API key for a provider from user settings
    */
-  private getApiKeyForProvider(provider: AIProvider, userSettings: any): string | null {
+  private getApiKeysForProvider(provider: AIProvider, userSettings: any): string[] {
     const apiKeyMap: Record<string, keyof any> = {
       openai: 'openaiKey',
       gemini: 'geminiKey',
@@ -244,9 +317,11 @@ export class AiRouterService {
 
     const key = apiKeyMap[provider.name];
     const userKey = key ? userSettings?.[key] : null;
-    if (userKey) return userKey;
+    if (typeof userKey === 'string' && userKey.trim()) {
+      return [userKey.trim()];
+    }
 
-    return this.getEnvFallbackKey(provider.name);
+    return this.getEnvFallbackKeys(provider.name);
   }
 
   /**
@@ -261,42 +336,130 @@ export class AiRouterService {
     return user?.settings || null;
   }
 
-  private getEnvFallbackKey(providerName: string): string | null {
+  private getEnvFallbackKeys(providerName: string): string[] {
     switch (providerName) {
       case 'openai':
       case 'whisper':
-        return (
-          this.configService.get<string>('OPENAI_API_KEY') ||
-          this.configService.get<string>('OPENAI_PREMIUM_API_KEY') ||
-          null
+        return this.parseApiKeyPool(
+          this.configService.get<string>('OPENAI_API_KEYS'),
+          this.configService.get<string>('OPENAI_API_KEY'),
+          this.configService.get<string>('OPENAI_PREMIUM_API_KEY'),
         );
       case 'gemini':
-        return (
-          this.configService.get<string>('GEMINI_API_KEY') ||
-          this.configService.get<string>('GOOGLE_API_KEY') ||
-          null
+        return this.parseApiKeyPool(
+          this.configService.get<string>('GEMINI_API_KEYS'),
+          this.configService.get<string>('GEMINI_API_KEY'),
+          this.configService.get<string>('GOOGLE_API_KEY'),
         );
       case 'volcengine-asr':
-        return this.configService.get<string>('VOLCENGINE_ASR_TOKEN') || null;
+        return this.parseApiKeyPool(
+          this.configService.get<string>('VOLCENGINE_ASR_TOKEN'),
+        );
       case 'aliyun-asr':
-        return this.configService.get<string>('ALIYUN_ASR_ACCESS_KEY') || null;
+        return this.parseApiKeyPool(
+          this.configService.get<string>('ALIYUN_ASR_ACCESS_KEY'),
+        );
       case 'midjourney':
-        return this.configService.get<string>('MIDJOURNEY_API_KEY') || null;
+        return this.parseApiKeyPool(
+          this.configService.get<string>('MIDJOURNEY_API_KEYS'),
+          this.configService.get<string>('MIDJOURNEY_API_KEY'),
+        );
       case 'seedance':
-        return (
-          this.configService.get<string>('SEEDANCE_API_KEY') ||
-          this.configService.get<string>('SILICONFLOW_API_KEY') ||
-          null
+        return this.parseApiKeyPool(
+          this.configService.get<string>('SILICONFLOW_API_KEYS'),
+          this.configService.get<string>('SEEDANCE_API_KEYS'),
+          this.configService.get<string>('SEEDANCE_API_KEY'),
+          this.configService.get<string>('SILICONFLOW_API_KEY'),
         );
       case 'elevenlabs':
-        return (
-          this.configService.get<string>('ELEVENLABS_API_KEY') ||
-          this.configService.get<string>('ELEVENLABS_PREMIUM_API_KEY') ||
-          null
+        return this.parseApiKeyPool(
+          this.configService.get<string>('ELEVENLABS_API_KEYS'),
+          this.configService.get<string>('ELEVENLABS_API_KEY'),
+          this.configService.get<string>('ELEVENLABS_PREMIUM_API_KEY'),
         );
       default:
-        return null;
+        return [];
     }
+  }
+
+  private parseApiKeyPool(...rawValues: Array<string | undefined | null>): string[] {
+    const keys = rawValues
+      .flatMap((raw) =>
+        String(raw || '')
+          .split(/[\r\n,;\s]+/)
+          .map((item) => item.trim())
+          .filter(Boolean),
+      )
+      .filter((item) => item.startsWith('sk-'));
+
+    return Array.from(new Set(keys));
+  }
+
+  private orderApiKeys(providerName: string, keys: string[]): string[] {
+    if (keys.length <= 1) return keys;
+    const cursor = this.providerKeyCursor.get(providerName) ?? 0;
+    const start = ((cursor % keys.length) + keys.length) % keys.length;
+    return [...keys.slice(start), ...keys.slice(0, start)];
+  }
+
+  private advanceKeyCursor(providerName: string, keys: string[], usedKey: string) {
+    if (keys.length <= 1) return;
+    const idx = keys.indexOf(usedKey);
+    if (idx < 0) return;
+    this.providerKeyCursor.set(providerName, (idx + 1) % keys.length);
+  }
+
+  private maskApiKey(apiKey: string) {
+    const raw = String(apiKey || '').trim();
+    if (raw.length <= 10) return `${raw.slice(0, 2)}***`;
+    return `${raw.slice(0, 6)}...${raw.slice(-4)}`;
+  }
+
+  private recordKeyResult(
+    providerName: string,
+    apiKey: string,
+    success: boolean,
+    errorMessage: string | null,
+  ) {
+    const masked = this.maskApiKey(apiKey);
+    const providerStats =
+      this.providerKeyStats.get(providerName) ??
+      new Map<
+        string,
+        {
+          successCount: number;
+          failureCount: number;
+          lastSuccessAt: string | null;
+          lastFailureAt: string | null;
+          lastError: string | null;
+        }
+      >();
+
+    if (!this.providerKeyStats.has(providerName)) {
+      this.providerKeyStats.set(providerName, providerStats);
+    }
+
+    const current =
+      providerStats.get(masked) ?? {
+        successCount: 0,
+        failureCount: 0,
+        lastSuccessAt: null,
+        lastFailureAt: null,
+        lastError: null,
+      };
+
+    const now = new Date().toISOString();
+    if (success) {
+      current.successCount += 1;
+      current.lastSuccessAt = now;
+      current.lastError = null;
+    } else {
+      current.failureCount += 1;
+      current.lastFailureAt = now;
+      current.lastError = errorMessage;
+    }
+
+    providerStats.set(masked, current);
   }
 
   /**

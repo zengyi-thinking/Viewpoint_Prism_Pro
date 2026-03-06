@@ -86,6 +86,28 @@ describe('ExportService', () => {
       videoBehaviorEvent: {
         findMany: jest.fn().mockResolvedValue([]),
       },
+      knowledgeDeepAnalysis: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: 'deep_1',
+          version: 1,
+          summary: '本视频重点讲解 Transformer 的整体结构、Encoder/Decoder 分工以及注意力机制的作用。',
+          chapterGraphJson: [
+            { title: 'Transformer 总览', summary: '先建立整体结构认知' },
+          ],
+          conceptGraphJson: [
+            { name: 'Encoder', summary: '负责上下文编码' },
+          ],
+          ambiguitiesJson: [
+            { concept: 'Encoder vs Decoder', clarification: '前者编码输入，后者逐步生成输出' },
+          ],
+          backgroundFactsJson: [
+            { title: '注意力机制', detail: '使模型能关注输入序列中的关键位置' },
+          ],
+          learningRecommendationsJson: [
+            { title: '先看总览图', action: '先理解模块关系再深入公式' },
+          ],
+        }),
+      },
       flashcard: {
         findMany: jest.fn().mockResolvedValue([flashcard]),
       },
@@ -128,6 +150,7 @@ describe('ExportService', () => {
     });
 
     expect(result.output.markdownPackage.content).toContain('图文并茂结构化大纲');
+    expect(result.output.markdownPackage.content).toContain('二次理解与背景知识');
     expect(result.output.notesMarkdown).toContain('个性化学习笔记');
     expect(result.output.flashcards.length).toBe(1);
     expect(result.syncedTargets).toEqual(expect.arrayContaining(['notion', 'feishu']));

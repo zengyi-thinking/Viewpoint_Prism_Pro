@@ -608,7 +608,11 @@ export class ChatService {
     }
 
     try {
-      const history = await this.collectHistoryForLlm(sessionId, ignoreHistory);
+      const hasLiveFrameContext = Boolean(frameAnalysisContext?.trim());
+      const history = await this.collectHistoryForLlm(sessionId, {
+        ignoreHistory,
+        visualPriorityMode: hasLiveFrameContext,
+      });
 
       const systemPrompt = this.buildSystemPrompt(
         prism,
@@ -628,7 +632,13 @@ export class ChatService {
             role: m.role === DbMessageRole.USER ? 'user' : 'assistant',
             content: m.content,
           })),
-        { role: 'user', content: userContent },
+        {
+          role: 'user',
+          content:
+            hasLiveFrameContext && frameTimestamp != null
+              ? `[当前画面锚点 ${this.formatSeconds(frameTimestamp)}]\n${userContent}`
+              : userContent,
+        },
       ];
 
       const llm = await this.aiRouter.execute(
@@ -654,7 +664,11 @@ export class ChatService {
     }
   }
 
-  private async collectHistoryForLlm(sessionId: string, ignoreHistory: boolean) {
+  private async collectHistoryForLlm(
+    sessionId: string,
+    options: { ignoreHistory: boolean; visualPriorityMode?: boolean },
+  ) {
+    const { ignoreHistory, visualPriorityMode = false } = options;
     if (ignoreHistory) return [];
 
     const rows = await this.prisma.chatMessage.findMany({
@@ -667,8 +681,12 @@ export class ChatService {
       },
     });
 
-    const ordered = rows.reverse();
-    const maxChars = 4800;
+    const filteredRows = visualPriorityMode
+      ? rows.filter((item) => item.role === DbMessageRole.USER)
+      : rows;
+
+    const ordered = filteredRows.reverse();
+    const maxChars = visualPriorityMode ? 2200 : 4800;
     let budget = maxChars;
     const selected: Array<{ role: DbMessageRole; content: string }> = [];
 
@@ -936,8 +954,10 @@ export class ChatService {
         '',
         '## 回答要求',
         '1. 基于提供的上下文信息，给出具体、有见地的回答',
-        '2. 如果有画面分析，优先引用视觉证据进行解释',
+        '2. 如果有画面分析，必须优先引用当前视觉证据进行解释',
         '2.1 当画面分析存在时，不要要求用户再次提供视频链接或画面截图。',
+        '2.2 如果当前画面分析与历史回答冲突，必须以当前画面分析为准，不得复述上一帧内容。',
+        '2.3 当用户在不同暂停点连续提问相似问题时，视为新的画面问题，逐帧回答。',
         '3. 优先使用视频中的实际内容，避免泛泛而谈',
         '4. 回答结构清晰，使用列表、分段等方式提高可读性',
         '5. 避免模板化语言，如"根据视频内容"、"一般来说"等套话',

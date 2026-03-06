@@ -1,10 +1,14 @@
 import { Injectable } from '@nestjs/common';
+import { AiRouterService } from '../../infrastructure/ai-router/ai-router.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { UpdateSettingsDto } from './dto';
 
 @Injectable()
 export class SettingsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly aiRouter: AiRouterService,
+  ) {}
 
   async getSettings(userId: string) {
     const settings = await this.prisma.userSettings.findUnique({
@@ -39,6 +43,13 @@ export class SettingsService {
     return {
       userId,
       settings: this.toSafeSettings(updated),
+    };
+  }
+
+  getProviderKeyPoolStats() {
+    return {
+      providers: this.aiRouter.getProviderKeyPoolStats(),
+      generatedAt: new Date().toISOString(),
     };
   }
 
