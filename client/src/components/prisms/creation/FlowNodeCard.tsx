@@ -246,30 +246,30 @@ function FlowNodeCardComponent({ id, data, selected }: FlowNodeCardProps) {
         ? 'text-[#FCA5A5] bg-[#EF4444]/12 border-[#EF4444]/35'
         : precheckLevel === 'suggest_improve'
           ? 'text-[#FCD34D] bg-[#F59E0B]/12 border-[#F59E0B]/35'
-          : 'text-[#9CA3AF] bg-[#2D2D3A] border-[#2D2D3A]';
+          : 'text-[var(--creation-text-secondary)] bg-[var(--creation-bg-elevated)] border-[var(--creation-border-strong)]';
 
   return (
     <div
       className={[
-        'w-[360px] rounded-xl border-2 bg-[#1E1E24] transition-all duration-200',
+        'w-[360px] rounded-xl border-2 bg-[var(--creation-bg-surface)] transition-all duration-200',
         selected
-          ? 'border-[#E91E8C] shadow-lg shadow-[#E91E8C]/20'
-          : 'border-[#2D2D3A] hover:border-[#3D3D4A]',
+          ? 'border-[var(--creation-accent)] shadow-lg shadow-[var(--creation-accent)]/20'
+          : 'border-[var(--creation-border-strong)] hover:border-[var(--creation-border-hover)]',
       ].join(' ')}
       onDoubleClick={handleDoubleClick}
     >
       <Handle
         type="target"
         position={Position.Left}
-        className="!h-3 !w-3 !border-2 !border-[#1E1E24] !bg-[#E91E8C]"
+        className="!h-3 !w-3 !border-2 !border-[var(--creation-bg-surface)] !bg-[var(--creation-accent)]"
       />
 
-      <div className="flex items-center justify-between border-b border-[#2D2D3A] px-3 py-2">
+      <div className="flex items-center justify-between border-b border-[var(--creation-border-strong)] px-3 py-2">
         <div className="flex items-center gap-2">
-          <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-[#E91E8C]/20 text-xs font-bold text-[#E91E8C]">
+          <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-[var(--creation-accent)]/20 text-xs font-bold text-[var(--creation-accent)]">
             {orderIndex + 1}
           </span>
-          <span className="text-xs font-medium text-[#E5E5E5]">
+          <span className="text-xs font-medium text-[var(--creation-text-primary)]">
             {isBranchNode ? '分支节点' : '主干节点'}
           </span>
           {isBranchNode && branchName && (
@@ -278,7 +278,7 @@ function FlowNodeCardComponent({ id, data, selected }: FlowNodeCardProps) {
             </span>
           )}
           {!isBranchNode && (childBranchCount || 0) > 0 && (
-            <span className="rounded-full bg-[#2D2D3A] px-2 py-0.5 text-[10px] text-[#9CA3AF]">
+            <span className="rounded-full bg-[var(--creation-bg-elevated)] px-2 py-0.5 text-[10px] text-[var(--creation-text-secondary)]">
               {childBranchCount} 分支
             </span>
           )}
@@ -306,12 +306,12 @@ function FlowNodeCardComponent({ id, data, selected }: FlowNodeCardProps) {
                   ? '建议优化'
                   : '未预检'}
           </span>
-          <span className="rounded-full bg-[#1A1A22] px-2 py-0.5 text-[10px] text-[#9CA3AF]">
+          <span className="rounded-full bg-[#1A1A22] px-2 py-0.5 text-[10px] text-[var(--creation-text-secondary)]">
             质量 {qualityScore != null ? Math.round(qualityScore) : '-'}
           </span>
           <button
             onClick={handleDelete}
-            className="rounded p-1 text-[#9CA3AF] transition hover:bg-[#3B1F26] hover:text-[#F87171]"
+            className="rounded p-1 text-[var(--creation-text-secondary)] transition hover:bg-[#3B1F26] hover:text-[#F87171]"
             title="删除节点"
           >
             <Trash2 className="h-3.5 w-3.5" />
@@ -319,19 +319,19 @@ function FlowNodeCardComponent({ id, data, selected }: FlowNodeCardProps) {
         </div>
       </div>
 
-      <div className="space-y-2 border-b border-[#2D2D3A] px-3 py-2">
-        <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#6B7280]">叙事意图层</div>
+      <div className="space-y-2 border-b border-[var(--creation-border-strong)] px-3 py-2">
+        <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--creation-text-muted)]">叙事意图层</div>
         <div>
-          <label className="text-[10px] text-[#6B7280]">节点文案</label>
+          <label className="text-[10px] text-[var(--creation-text-muted)]">节点文案</label>
           <textarea
             value={String(data.scriptSegment || '')}
             onChange={(e) => updateNodeLocalData(id, { scriptSegment: e.target.value })}
             rows={2}
-            className="mt-1 w-full resize-y rounded-md border border-[#2D2D3A] bg-[#14141C] px-2 py-1 text-xs text-[#E5E7EB] outline-none focus:border-[#E91E8C]"
+            className="mt-1 w-full resize-y rounded-md border border-[var(--creation-border-strong)] bg-[var(--creation-bg-input)] px-2 py-1 text-xs text-[var(--creation-text-primary)] outline-none focus:border-[var(--creation-accent)]"
           />
         </div>
         <div>
-          <label className="text-[10px] text-[#6B7280]">画面提示词</label>
+          <label className="text-[10px] text-[var(--creation-text-muted)]">画面提示词</label>
           <textarea
             value={String(data.prompt || '')}
             onChange={(e) => {
@@ -342,37 +342,37 @@ function FlowNodeCardComponent({ id, data, selected }: FlowNodeCardProps) {
               });
             }}
             rows={2}
-            className="mt-1 w-full resize-y rounded-md border border-[#2D2D3A] bg-[#14141C] px-2 py-1 text-xs text-[#E5E7EB] outline-none focus:border-[#E91E8C]"
+            className="mt-1 w-full resize-y rounded-md border border-[var(--creation-border-strong)] bg-[var(--creation-bg-input)] px-2 py-1 text-xs text-[var(--creation-text-primary)] outline-none focus:border-[var(--creation-accent)]"
           />
         </div>
         <div className="flex items-center gap-2">
           <button
             onClick={persistCopyEdit}
-            className="rounded-md bg-[#2D2D3A] px-2 py-1 text-[10px] text-[#E5E7EB] transition hover:bg-[#3A3A4C]"
+            className="rounded-md bg-[var(--creation-bg-elevated)] px-2 py-1 text-[10px] text-[var(--creation-text-primary)] transition hover:bg-[#3A3A4C]"
           >
             保存文案
           </button>
           <button
             onClick={() => setIsEditingCopy((v) => !v)}
-            className="rounded-md border border-[#2D2D3A] px-2 py-1 text-[10px] text-[#9CA3AF] transition hover:bg-[#2D2D3A] hover:text-white"
+            className="rounded-md border border-[var(--creation-border-strong)] px-2 py-1 text-[10px] text-[var(--creation-text-secondary)] transition hover:bg-[var(--creation-bg-elevated)] hover:text-[var(--creation-text-primary)]"
           >
             AI 调整
           </button>
         </div>
         {isEditingCopy && (
-          <div className="space-y-2 rounded-md border border-[#2D2D3A] bg-[#14141C] p-2">
-            <label className="text-[10px] text-[#9CA3AF]">输入新的调整要求</label>
+          <div className="space-y-2 rounded-md border border-[var(--creation-border-strong)] bg-[var(--creation-bg-input)] p-2">
+            <label className="text-[10px] text-[var(--creation-text-secondary)]">输入新的调整要求</label>
             <textarea
               value={copyRequirement}
               onChange={(e) => setCopyRequirement(e.target.value)}
               rows={2}
               placeholder="例如：语气更热情，镜头更紧凑，强调产品卖点..."
-              className="w-full resize-y rounded-md border border-[#2D2D3A] bg-[#101017] px-2 py-1 text-xs text-[#E5E7EB] outline-none focus:border-[#E91E8C]"
+              className="w-full resize-y rounded-md border border-[var(--creation-border-strong)] bg-[var(--creation-bg-input-deep)] px-2 py-1 text-xs text-[var(--creation-text-primary)] outline-none focus:border-[var(--creation-accent)]"
             />
             <button
               onClick={handleAiRefineCopy}
               disabled={savingCopy || !copyRequirement.trim()}
-              className="rounded-md bg-[#E91E8C] px-2 py-1 text-[10px] text-white transition hover:bg-[#D11B7A] disabled:opacity-50"
+              className="rounded-md bg-[var(--creation-accent)] px-2 py-1 text-[10px] text-[var(--creation-text-primary)] transition hover:bg-[var(--creation-accent-hover)] disabled:opacity-50"
             >
               {savingCopy ? <Loader2 className="inline h-3 w-3 animate-spin" /> : <Wand2 className="inline h-3 w-3" />}
               <span className="ml-1">AI 重调文案</span>
@@ -380,21 +380,21 @@ function FlowNodeCardComponent({ id, data, selected }: FlowNodeCardProps) {
           </div>
         )}
 
-        <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#6B7280] pt-1">提示词层</div>
-        <div className="space-y-2 rounded-md border border-[#2D2D3A] bg-[#14141C] p-2">
-          <label className="text-[10px] text-[#9CA3AF]">节点拓展（生成多个下一节点候选）</label>
+        <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--creation-text-muted)] pt-1">提示词层</div>
+        <div className="space-y-2 rounded-md border border-[var(--creation-border-strong)] bg-[var(--creation-bg-input)] p-2">
+          <label className="text-[10px] text-[var(--creation-text-secondary)]">节点拓展（生成多个下一节点候选）</label>
           <textarea
             value={expandIdea}
             onChange={(e) => setExpandIdea(e.target.value)}
             rows={2}
             placeholder="输入你的意向，例如：转到冲突升级、节奏更快、情绪转折..."
-            className="w-full resize-y rounded-md border border-[#2D2D3A] bg-[#101017] px-2 py-1 text-xs text-[#E5E7EB] outline-none focus:border-[#E91E8C]"
+            className="w-full resize-y rounded-md border border-[var(--creation-border-strong)] bg-[var(--creation-bg-input-deep)] px-2 py-1 text-xs text-[var(--creation-text-primary)] outline-none focus:border-[var(--creation-accent)]"
           />
           <div className="flex items-center gap-2">
             <select
               value={expandCount}
               onChange={(e) => setExpandCount(Number(e.target.value))}
-              className="rounded-md border border-[#2D2D3A] bg-[#101017] px-2 py-1 text-[10px] text-[#E5E7EB]"
+              className="rounded-md border border-[var(--creation-border-strong)] bg-[var(--creation-bg-input-deep)] px-2 py-1 text-[10px] text-[var(--creation-text-primary)]"
             >
               <option value={2}>2 个候选</option>
               <option value={3}>3 个候选</option>
@@ -403,7 +403,7 @@ function FlowNodeCardComponent({ id, data, selected }: FlowNodeCardProps) {
             <button
               onClick={handleGenerateCandidates}
               disabled={expanding || !expandIdea.trim()}
-              className="rounded-md bg-[#5B21B6] px-2 py-1 text-[10px] text-white transition hover:bg-[#6D28D9] disabled:opacity-50"
+              className="rounded-md bg-[#5B21B6] px-2 py-1 text-[10px] text-[var(--creation-text-primary)] transition hover:bg-[#6D28D9] disabled:opacity-50"
             >
               {expanding ? <Loader2 className="inline h-3 w-3 animate-spin" /> : <Wand2 className="inline h-3 w-3" />}
               <span className="ml-1">生成候选</span>
@@ -415,20 +415,20 @@ function FlowNodeCardComponent({ id, data, selected }: FlowNodeCardProps) {
               {candidateList.map((candidate, index) => (
                 <div
                   key={`${id}-candidate-${index}`}
-                  className="rounded-md border border-[#2D2D3A] bg-[#0F1016] p-2"
+                  className="rounded-md border border-[var(--creation-border-strong)] bg-[#0F1016] p-2"
                 >
                   <div className="mb-1 text-[10px] font-medium text-[#D8B4FE]">候选 {index + 1}</div>
-                  <div className="space-y-1 text-[10px] text-[#D1D5DB]">
-                    <div><span className="text-[#9CA3AF]">内容：</span>{candidate.scriptSegment}</div>
-                    <div><span className="text-[#9CA3AF]">视频提示词：</span>{candidate.videoPrompt}</div>
-                    <div><span className="text-[#9CA3AF]">画面提示词：</span>{candidate.sceneFramePrompt}</div>
-                    <div><span className="text-[#9CA3AF]">首帧提示词：</span>{candidate.firstFramePrompt}</div>
-                    <div><span className="text-[#9CA3AF]">尾帧提示词：</span>{candidate.lastFramePrompt}</div>
+                  <div className="space-y-1 text-[10px] text-[var(--creation-text-primary)]">
+                    <div><span className="text-[var(--creation-text-secondary)]">内容：</span>{candidate.scriptSegment}</div>
+                    <div><span className="text-[var(--creation-text-secondary)]">视频提示词：</span>{candidate.videoPrompt}</div>
+                    <div><span className="text-[var(--creation-text-secondary)]">画面提示词：</span>{candidate.sceneFramePrompt}</div>
+                    <div><span className="text-[var(--creation-text-secondary)]">首帧提示词：</span>{candidate.firstFramePrompt}</div>
+                    <div><span className="text-[var(--creation-text-secondary)]">尾帧提示词：</span>{candidate.lastFramePrompt}</div>
                   </div>
                   <button
                     onClick={() => handleAdoptCandidate(candidate, index)}
                     disabled={adoptingIndex !== null}
-                    className="mt-2 rounded-md bg-[#E91E8C] px-2 py-1 text-[10px] text-white transition hover:bg-[#D11B7A] disabled:opacity-50"
+                    className="mt-2 rounded-md bg-[var(--creation-accent)] px-2 py-1 text-[10px] text-[var(--creation-text-primary)] transition hover:bg-[var(--creation-accent-hover)] disabled:opacity-50"
                   >
                     {adoptingIndex === index ? (
                       <>
@@ -447,33 +447,33 @@ function FlowNodeCardComponent({ id, data, selected }: FlowNodeCardProps) {
       </div>
 
       <div className="space-y-2 px-3 py-2">
-        <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#6B7280]">画面锚点层</div>
+        <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--creation-text-muted)]">画面锚点层</div>
         {isFirstMainNode ? (
           <>
             <div>
-              <label className="text-[10px] text-[#6B7280]">首帧提示词</label>
+              <label className="text-[10px] text-[var(--creation-text-muted)]">首帧提示词</label>
               <input
                 value={String(data.firstFramePrompt || '')}
                 onChange={(e) => updateNodeLocalData(id, { firstFramePrompt: e.target.value })}
-                className="mt-1 w-full rounded-md border border-[#2D2D3A] bg-[#14141C] px-2 py-1 text-xs text-[#E5E7EB] outline-none focus:border-[#E91E8C]"
+                className="mt-1 w-full rounded-md border border-[var(--creation-border-strong)] bg-[var(--creation-bg-input)] px-2 py-1 text-xs text-[var(--creation-text-primary)] outline-none focus:border-[var(--creation-accent)]"
               />
             </div>
             <div>
-              <label className="text-[10px] text-[#6B7280]">尾帧提示词</label>
+              <label className="text-[10px] text-[var(--creation-text-muted)]">尾帧提示词</label>
               <input
                 value={String(data.lastFramePrompt || '')}
                 onChange={(e) => updateNodeLocalData(id, { lastFramePrompt: e.target.value })}
-                className="mt-1 w-full rounded-md border border-[#2D2D3A] bg-[#14141C] px-2 py-1 text-xs text-[#E5E7EB] outline-none focus:border-[#E91E8C]"
+                className="mt-1 w-full rounded-md border border-[var(--creation-border-strong)] bg-[var(--creation-bg-input)] px-2 py-1 text-xs text-[var(--creation-text-primary)] outline-none focus:border-[var(--creation-accent)]"
               />
             </div>
           </>
         ) : (
           <div>
-            <label className="text-[10px] text-[#6B7280]">画面帧提示词（承接上一节点尾帧）</label>
+            <label className="text-[10px] text-[var(--creation-text-muted)]">画面帧提示词（承接上一节点尾帧）</label>
             <input
               value={String(data.sceneFramePrompt || '')}
               onChange={(e) => updateNodeLocalData(id, { sceneFramePrompt: e.target.value })}
-              className="mt-1 w-full rounded-md border border-[#2D2D3A] bg-[#14141C] px-2 py-1 text-xs text-[#E5E7EB] outline-none focus:border-[#E91E8C]"
+              className="mt-1 w-full rounded-md border border-[var(--creation-border-strong)] bg-[var(--creation-bg-input)] px-2 py-1 text-xs text-[var(--creation-text-primary)] outline-none focus:border-[var(--creation-accent)]"
             />
           </div>
         )}
@@ -481,92 +481,92 @@ function FlowNodeCardComponent({ id, data, selected }: FlowNodeCardProps) {
         {isFirstMainNode ? (
           <div className="grid grid-cols-2 gap-2">
             <div className="relative">
-              <div className="aspect-video overflow-hidden rounded-lg bg-[#2D2D3A]">
+              <div className="aspect-video overflow-hidden rounded-lg bg-[var(--creation-bg-elevated)]">
                 {firstFrameUrl ? (
                   <img src={firstFrameUrl} alt="首帧" className="h-full w-full object-cover" />
                 ) : (
                   <div className="flex h-full w-full items-center justify-center">
-                    <ImagePlus className="h-4 w-4 text-[#6B7280]" />
+                    <ImagePlus className="h-4 w-4 text-[var(--creation-text-muted)]" />
                   </div>
                 )}
               </div>
               <button
                 onClick={toggleFirstLock}
-                className="absolute right-1 top-1 rounded p-1 transition hover:bg-[#2D2D3A]"
+                className="absolute right-1 top-1 rounded p-1 transition hover:bg-[var(--creation-bg-elevated)]"
                 title={firstFrameLocked ? '解锁首帧' : '锁定首帧'}
               >
                 {firstFrameLocked ? (
                   <Lock className="h-3 w-3 text-[#F59E0B]" />
                 ) : (
-                  <Unlock className="h-3 w-3 text-[#6B7280]" />
+                  <Unlock className="h-3 w-3 text-[var(--creation-text-muted)]" />
                 )}
               </button>
-              <span className="absolute bottom-1 left-1 rounded bg-black/60 px-1 py-0.5 text-[9px] text-white">
+              <span className="absolute bottom-1 left-1 rounded bg-black/60 px-1 py-0.5 text-[9px] text-[var(--creation-text-primary)]">
                 首帧
               </span>
             </div>
             <div className="relative">
-              <div className="aspect-video overflow-hidden rounded-lg bg-[#2D2D3A]">
+              <div className="aspect-video overflow-hidden rounded-lg bg-[var(--creation-bg-elevated)]">
                 {lastFrameUrl ? (
                   <img src={lastFrameUrl} alt="尾帧" className="h-full w-full object-cover" />
                 ) : (
                   <div className="flex h-full w-full items-center justify-center">
-                    <ImagePlus className="h-4 w-4 text-[#6B7280]" />
+                    <ImagePlus className="h-4 w-4 text-[var(--creation-text-muted)]" />
                   </div>
                 )}
               </div>
               <button
                 onClick={toggleLastLock}
-                className="absolute right-1 top-1 rounded p-1 transition hover:bg-[#2D2D3A]"
+                className="absolute right-1 top-1 rounded p-1 transition hover:bg-[var(--creation-bg-elevated)]"
                 title={lastFrameLocked ? '解锁尾帧' : '锁定尾帧'}
               >
                 {lastFrameLocked ? (
                   <Lock className="h-3 w-3 text-[#F59E0B]" />
                 ) : (
-                  <Unlock className="h-3 w-3 text-[#6B7280]" />
+                  <Unlock className="h-3 w-3 text-[var(--creation-text-muted)]" />
                 )}
               </button>
-              <span className="absolute bottom-1 left-1 rounded bg-black/60 px-1 py-0.5 text-[9px] text-white">
+              <span className="absolute bottom-1 left-1 rounded bg-black/60 px-1 py-0.5 text-[9px] text-[var(--creation-text-primary)]">
                 尾帧
               </span>
             </div>
           </div>
         ) : (
           <div className="relative">
-            <div className="aspect-video overflow-hidden rounded-lg bg-[#2D2D3A]">
+            <div className="aspect-video overflow-hidden rounded-lg bg-[var(--creation-bg-elevated)]">
               {sceneFrameUrl ? (
                 <img src={sceneFrameUrl} alt="画面帧" className="h-full w-full object-cover" />
               ) : (
                 <div className="flex h-full w-full items-center justify-center">
-                  <ImagePlus className="h-4 w-4 text-[#6B7280]" />
+                  <ImagePlus className="h-4 w-4 text-[var(--creation-text-muted)]" />
                 </div>
               )}
             </div>
             <button
               onClick={toggleFirstLock}
-              className="absolute right-1 top-1 rounded p-1 transition hover:bg-[#2D2D3A]"
+              className="absolute right-1 top-1 rounded p-1 transition hover:bg-[var(--creation-bg-elevated)]"
               title={firstFrameLocked ? '解锁画面帧' : '锁定画面帧'}
             >
               {firstFrameLocked ? (
                 <Lock className="h-3 w-3 text-[#F59E0B]" />
               ) : (
-                <Unlock className="h-3 w-3 text-[#6B7280]" />
+                <Unlock className="h-3 w-3 text-[var(--creation-text-muted)]" />
               )}
             </button>
-            <span className="absolute bottom-1 left-1 rounded bg-black/60 px-1 py-0.5 text-[9px] text-white">
+            <span className="absolute bottom-1 left-1 rounded bg-black/60 px-1 py-0.5 text-[9px] text-[var(--creation-text-primary)]">
               画面帧
             </span>
           </div>
         )}
       </div>
 
-      <div className="space-y-2 border-t border-[#2D2D3A] px-3 py-2">
-        <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#6B7280]">渲染状态层</div>
+      <div className="space-y-2 border-t border-[var(--creation-border-strong)] px-3 py-2">
+        <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--creation-text-muted)]">渲染状态层</div>
         <div className="flex gap-1">
           <button
             onClick={handlePrecheck}
             disabled={prechecking}
-            className="flex-1 rounded-lg border border-[#2D2D3A] bg-[#1C1D26] py-1.5 text-[10px] text-[#E5E7EB] transition hover:bg-[#2A2C38] disabled:opacity-50"
+            className="flex-1 rounded-lg border border-[var(--creation-border-strong)] bg-[#1C1D26] py-1.5 text-[10px] text-[var(--creation-text-primary)] transition hover:bg-[#2A2C38] disabled:opacity-50"
           >
             {prechecking ? <Loader2 className="mr-1 inline h-3 w-3 animate-spin" /> : <AlertCircle className="mr-1 inline h-3 w-3" />}
             预检
@@ -574,7 +574,7 @@ function FlowNodeCardComponent({ id, data, selected }: FlowNodeCardProps) {
           <button
             onClick={handleScore}
             disabled={scoring}
-            className="flex-1 rounded-lg border border-[#2D2D3A] bg-[#1C1D26] py-1.5 text-[10px] text-[#E5E7EB] transition hover:bg-[#2A2C38] disabled:opacity-50"
+            className="flex-1 rounded-lg border border-[var(--creation-border-strong)] bg-[#1C1D26] py-1.5 text-[10px] text-[var(--creation-text-primary)] transition hover:bg-[#2A2C38] disabled:opacity-50"
           >
             {scoring ? <Loader2 className="mr-1 inline h-3 w-3 animate-spin" /> : <Wand2 className="mr-1 inline h-3 w-3" />}
             质量评分
@@ -583,7 +583,7 @@ function FlowNodeCardComponent({ id, data, selected }: FlowNodeCardProps) {
             <button
               onClick={handleCompareBranch}
               disabled={compareLoading}
-              className="flex-1 rounded-lg border border-[#2D2D3A] bg-[#1C1D26] py-1.5 text-[10px] text-[#E5E7EB] transition hover:bg-[#2A2C38] disabled:opacity-50"
+              className="flex-1 rounded-lg border border-[var(--creation-border-strong)] bg-[#1C1D26] py-1.5 text-[10px] text-[var(--creation-text-primary)] transition hover:bg-[#2A2C38] disabled:opacity-50"
             >
               {compareLoading ? <Loader2 className="mr-1 inline h-3 w-3 animate-spin" /> : <GitMerge className="mr-1 inline h-3 w-3" />}
               分支对比
@@ -592,7 +592,7 @@ function FlowNodeCardComponent({ id, data, selected }: FlowNodeCardProps) {
         </div>
 
         {qualityBreakdown ? (
-          <div className="rounded-lg border border-[#2D2D3A] bg-[#14141C] px-2 py-1.5 text-[10px] text-[#AEB4BF]">
+          <div className="rounded-lg border border-[var(--creation-border-strong)] bg-[var(--creation-bg-input)] px-2 py-1.5 text-[10px] text-[#AEB4BF]">
             提示词完整度 {Math.round(qualityBreakdown.promptCompleteness)} · 连续性 {Math.round(qualityBreakdown.continuity)} · 渲染稳定性 {Math.round(qualityBreakdown.renderStability)}
           </div>
         ) : null}
@@ -604,8 +604,8 @@ function FlowNodeCardComponent({ id, data, selected }: FlowNodeCardProps) {
         ) : null}
 
         {compareResult ? (
-          <div className="rounded-lg border border-[#2D2D3A] bg-[#14141C] p-2 text-[10px] text-[#CBD5E1]">
-            <div className="font-medium text-[#E5E7EB]">
+          <div className="rounded-lg border border-[var(--creation-border-strong)] bg-[var(--creation-bg-input)] p-2 text-[10px] text-[#CBD5E1]">
+            <div className="font-medium text-[var(--creation-text-primary)]">
               合并建议：
               {compareResult.recommendation === 'merge_branch'
                 ? '合并分支'
@@ -613,10 +613,10 @@ function FlowNodeCardComponent({ id, data, selected }: FlowNodeCardProps) {
                   ? '保留主干'
                   : '人工复核'}
             </div>
-            <div className="mt-1 text-[#9CA3AF]">
+            <div className="mt-1 text-[var(--creation-text-secondary)]">
               综合差值 {compareResult.delta.overall > 0 ? '+' : ''}{compareResult.delta.overall.toFixed(1)}
             </div>
-            <div className="mt-1 text-[#9CA3AF]">{compareResult.reasons[0]}</div>
+            <div className="mt-1 text-[var(--creation-text-secondary)]">{compareResult.reasons[0]}</div>
           </div>
         ) : null}
 
@@ -626,7 +626,7 @@ function FlowNodeCardComponent({ id, data, selected }: FlowNodeCardProps) {
               <button
                 onClick={triggerFirstFrame}
                 disabled={isGeneratingFrame}
-                className="flex-1 rounded-lg bg-[#2D2D3A] py-1.5 text-[10px] font-medium text-[#9CA3AF] transition hover:bg-[#3D3D4A] hover:text-white disabled:opacity-50"
+                className="flex-1 rounded-lg bg-[var(--creation-bg-elevated)] py-1.5 text-[10px] font-medium text-[var(--creation-text-secondary)] transition hover:bg-[var(--creation-border-hover)] hover:text-[var(--creation-text-primary)] disabled:opacity-50"
               >
                 {isGeneratingFrame ? <Loader2 className="mr-1 inline h-3 w-3 animate-spin" /> : <ImagePlus className="mr-1 inline h-3 w-3" />}
                 首帧
@@ -634,7 +634,7 @@ function FlowNodeCardComponent({ id, data, selected }: FlowNodeCardProps) {
               <button
                 onClick={triggerLastFrame}
                 disabled={isGeneratingFrame}
-                className="flex-1 rounded-lg bg-[#2D2D3A] py-1.5 text-[10px] font-medium text-[#9CA3AF] transition hover:bg-[#3D3D4A] hover:text-white disabled:opacity-50"
+                className="flex-1 rounded-lg bg-[var(--creation-bg-elevated)] py-1.5 text-[10px] font-medium text-[var(--creation-text-secondary)] transition hover:bg-[var(--creation-border-hover)] hover:text-[var(--creation-text-primary)] disabled:opacity-50"
               >
                 {isGeneratingFrame ? <Loader2 className="mr-1 inline h-3 w-3 animate-spin" /> : <ImagePlus className="mr-1 inline h-3 w-3" />}
                 尾帧
@@ -644,7 +644,7 @@ function FlowNodeCardComponent({ id, data, selected }: FlowNodeCardProps) {
             <button
               onClick={triggerFirstFrame}
               disabled={isGeneratingFrame}
-              className="flex-1 rounded-lg bg-[#2D2D3A] py-1.5 text-[10px] font-medium text-[#9CA3AF] transition hover:bg-[#3D3D4A] hover:text-white disabled:opacity-50"
+              className="flex-1 rounded-lg bg-[var(--creation-bg-elevated)] py-1.5 text-[10px] font-medium text-[var(--creation-text-secondary)] transition hover:bg-[var(--creation-border-hover)] hover:text-[var(--creation-text-primary)] disabled:opacity-50"
             >
               {isGeneratingFrame ? <Loader2 className="mr-1 inline h-3 w-3 animate-spin" /> : <ImagePlus className="mr-1 inline h-3 w-3" />}
               生成画面帧
@@ -653,7 +653,7 @@ function FlowNodeCardComponent({ id, data, selected }: FlowNodeCardProps) {
           <button
             onClick={handleRender}
             disabled={isRendering || renderStatus === 'PROCESSING'}
-            className="flex-1 rounded-lg bg-[#E91E8C] py-1.5 text-[10px] font-medium text-white transition hover:bg-[#D11B7A] disabled:opacity-50"
+            className="flex-1 rounded-lg bg-[var(--creation-accent)] py-1.5 text-[10px] font-medium text-[var(--creation-text-primary)] transition hover:bg-[var(--creation-accent-hover)] disabled:opacity-50"
           >
             {isRendering || renderStatus === 'PROCESSING' ? (
               <Loader2 className="mr-1 inline h-3 w-3 animate-spin" />
@@ -666,13 +666,13 @@ function FlowNodeCardComponent({ id, data, selected }: FlowNodeCardProps) {
 
         {(isRendering || renderStatus === 'PROCESSING' || renderProgress > 0) && (
           <div>
-            <div className="mb-1 flex items-center justify-between text-[10px] text-[#9CA3AF]">
+            <div className="mb-1 flex items-center justify-between text-[10px] text-[var(--creation-text-secondary)]">
               <span>渲染进度</span>
               <span>{Math.max(0, Math.min(100, Math.round(renderProgress)))}%</span>
             </div>
-            <div className="h-1.5 w-full overflow-hidden rounded bg-[#2D2D3A]">
+            <div className="h-1.5 w-full overflow-hidden rounded bg-[var(--creation-bg-elevated)]">
               <div
-                className="h-full bg-gradient-to-r from-[#E91E8C] to-[#9C27B0] transition-all"
+                className="h-full bg-gradient-to-r from-[var(--creation-accent)] to-[var(--creation-accent-hover)] transition-all"
                 style={{ width: `${Math.max(0, Math.min(100, renderProgress))}%` }}
               />
             </div>
@@ -680,8 +680,8 @@ function FlowNodeCardComponent({ id, data, selected }: FlowNodeCardProps) {
         )}
 
         {renderedVideoUrl && (
-          <div className="rounded-lg border border-[#2D2D3A] bg-[#14141C] p-2">
-            <div className="mb-1 text-[10px] text-[#9CA3AF]">生成结果预览</div>
+          <div className="rounded-lg border border-[var(--creation-border-strong)] bg-[var(--creation-bg-input)] p-2">
+            <div className="mb-1 text-[10px] text-[var(--creation-text-secondary)]">生成结果预览</div>
             <video src={renderedVideoUrl} controls className="w-full rounded bg-black" />
             <a
               href={renderedVideoUrl}
@@ -721,7 +721,7 @@ function FlowNodeCardComponent({ id, data, selected }: FlowNodeCardProps) {
       <Handle
         type="source"
         position={Position.Right}
-        className="!h-3 !w-3 !border-2 !border-[#1E1E24] !bg-[#E91E8C]"
+        className="!h-3 !w-3 !border-2 !border-[var(--creation-bg-surface)] !bg-[var(--creation-accent)]"
       />
     </div>
   );

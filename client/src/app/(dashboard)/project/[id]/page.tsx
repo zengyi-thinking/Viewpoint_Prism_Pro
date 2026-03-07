@@ -27,11 +27,12 @@ export default function WorkbenchPage({ params }: { params: Promise<{ id: string
 
   if (loading) {
     return (
-      <div className="flex h-screen items-center justify-center bg-[#0a0a0f]">
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-white/10 border-t-white/50" />
+      <div className="flex h-screen items-center justify-center bg-bg-primary">
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-border-subtle border-t-text-secondary" />
       </div>
     );
   }
 
   return <WorkbenchShell projectName={project?.name} projectId={id} />;
 }
+

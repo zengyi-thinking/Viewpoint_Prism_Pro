@@ -1,12 +1,12 @@
-'use client';
+﻿'use client';
 
-import { useState, useRef } from 'react';
-import { videoApi, VideoSourceType } from '@/services/video.api';
+import { useRef, useState } from 'react';
+import { videoApi, VideoSource, VideoSourceType } from '@/services/video.api';
 
 interface UploadVideoModalProps {
   projectId: string;
   onClose: () => void;
-  onSuccess: () => void;
+  onSuccess: (video?: VideoSource) => void;
 }
 
 export function UploadVideoModal({ projectId, onClose, onSuccess }: UploadVideoModalProps) {
@@ -27,10 +27,7 @@ export function UploadVideoModal({ projectId, onClose, onSuccess }: UploadVideoM
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Auto-fill title from filename
-    const fileTitle = file.name.replace(/\.[^/.]+$/, '');
-    setTitle(fileTitle);
-
+    setTitle(file.name.replace(/\.[^/.]+$/, ''));
     await uploadFile(file);
   };
 
@@ -40,17 +37,16 @@ export function UploadVideoModal({ projectId, onClose, onSuccess }: UploadVideoM
     setProgress(0);
 
     try {
-      await videoApi.upload(projectId, file, (progress) => {
-        setProgress(progress);
+      const uploadedVideo = await videoApi.upload(projectId, file, (value) => {
+        setProgress(value);
       });
-      onSuccess();
+      onSuccess(uploadedVideo);
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Upload failed');
+      setError(err instanceof Error ? err.message : '上传失败');
     } finally {
       setIsUploading(false);
       setProgress(0);
-      // Reset file input
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
       }
@@ -63,7 +59,7 @@ export function UploadVideoModal({ projectId, onClose, onSuccess }: UploadVideoM
       return;
     }
     if (!url.trim()) {
-      setError('请输入视频URL');
+      setError('请输入视频 URL');
       return;
     }
 
@@ -71,15 +67,15 @@ export function UploadVideoModal({ projectId, onClose, onSuccess }: UploadVideoM
     setError(null);
 
     try {
-      await videoApi.import(projectId, {
+      const importedVideo = await videoApi.import(projectId, {
         title: title.trim(),
         sourceType,
         sourceUrl: url.trim(),
       });
-      onSuccess();
+      onSuccess(importedVideo);
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Import failed');
+      setError(err instanceof Error ? err.message : '导入失败');
     } finally {
       setIsUploading(false);
     }
@@ -88,7 +84,6 @@ export function UploadVideoModal({ projectId, onClose, onSuccess }: UploadVideoM
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
       <div className="panel w-full max-w-[32rem] rounded-2xl p-6">
-        {/* Header */}
         <div className="mb-6 flex items-center justify-between">
           <h2 className="text-lg font-semibold text-text-primary">添加视频</h2>
           <button
@@ -102,7 +97,6 @@ export function UploadVideoModal({ projectId, onClose, onSuccess }: UploadVideoM
           </button>
         </div>
 
-        {/* Upload Type Tabs */}
         <div className="mb-6 flex gap-2 border-b border-border-subtle pb-2">
           <button
             onClick={() => setUploadType('file')}
@@ -128,14 +122,12 @@ export function UploadVideoModal({ projectId, onClose, onSuccess }: UploadVideoM
           </button>
         </div>
 
-        {/* Error Message */}
         {error && (
           <div className="mb-4 rounded-lg bg-red-500/10 px-4 py-2 text-sm text-red-400">
             {error}
           </div>
         )}
 
-        {/* File Upload */}
         {uploadType === 'file' && (
           <div>
             <input
@@ -157,7 +149,7 @@ export function UploadVideoModal({ projectId, onClose, onSuccess }: UploadVideoM
                 <line x1="12" y1="3" x2="12" y2="15" />
               </svg>
               <p className="mt-3 text-sm text-text-secondary">点击选择视频文件</p>
-              <p className="mt-1 text-xs text-text-tertiary">支持 MP4, WebM, MOV 等格式</p>
+              <p className="mt-1 text-xs text-text-tertiary">支持 MP4、WebM、MOV 等格式</p>
               <p className="mt-1 text-xs text-text-tertiary opacity-60">最大 2GB</p>
             </div>
 
@@ -178,14 +170,10 @@ export function UploadVideoModal({ projectId, onClose, onSuccess }: UploadVideoM
           </div>
         )}
 
-        {/* URL Import */}
         {uploadType === 'url' && (
           <div className="space-y-4">
-            {/* Title */}
             <div>
-              <label className="mb-1.5 block text-xs font-medium text-text-tertiary">
-                视频标题
-              </label>
+              <label className="mb-1.5 block text-xs font-medium text-text-tertiary">视频标题</label>
               <input
                 type="text"
                 value={title}
@@ -196,11 +184,8 @@ export function UploadVideoModal({ projectId, onClose, onSuccess }: UploadVideoM
               />
             </div>
 
-            {/* Source Type */}
             <div>
-              <label className="mb-1.5 block text-xs font-medium text-text-tertiary">
-                视频源类型
-              </label>
+              <label className="mb-1.5 block text-xs font-medium text-text-tertiary">视频源类型</label>
               <select
                 value={sourceType}
                 onChange={(e) => setSourceType(e.target.value as VideoSourceType)}
@@ -213,24 +198,24 @@ export function UploadVideoModal({ projectId, onClose, onSuccess }: UploadVideoM
               </select>
             </div>
 
-            {/* URL */}
             <div>
-              <label className="mb-1.5 block text-xs font-medium text-text-tertiary">
-                视频链接
-              </label>
+              <label className="mb-1.5 block text-xs font-medium text-text-tertiary">视频链接</label>
               <input
                 type="url"
                 value={url}
                 onChange={(e) => setUrl(e.target.value)}
-                placeholder={sourceType === 'YOUTUBE' ? 'https://www.youtube.com/watch?v=...' :
-                         sourceType === 'BILIBILI' ? 'https://www.bilibili.com/video/...' :
-                         'https://example.com/video.mp4'}
+                placeholder={
+                  sourceType === 'YOUTUBE'
+                    ? 'https://www.youtube.com/watch?v=...'
+                    : sourceType === 'BILIBILI'
+                      ? 'https://www.bilibili.com/video/...'
+                      : 'https://example.com/video.mp4'
+                }
                 className="input w-full"
                 disabled={isUploading}
               />
             </div>
 
-            {/* Import Button */}
             <button
               onClick={handleUrlImport}
               disabled={isUploading}

@@ -8,7 +8,7 @@ export function PrismPanelHost() {
   if (!activePrism) {
     return (
       <div className="flex h-full items-center justify-center">
-        <p className="text-xs text-white/10">选择右侧棱镜</p>
+        <p className="text-xs text-text-tertiary">选择右侧棱镜</p>
       </div>
     );
   }
@@ -41,12 +41,12 @@ export function PrismPanelHost() {
   return (
     <div className="flex h-full flex-col">
       {/* Panel header */}
-      <div className="border-b border-white/5 px-5 py-4">
+      <div className="border-b border-border-subtle px-5 py-4">
         <div className="flex items-center gap-2.5">
           <span className="h-2 w-2 rounded-full" style={{ background: config.color }} />
-          <h3 className="text-sm font-semibold text-white/80">{config.title}</h3>
+          <h3 className="text-sm font-semibold text-text-primary">{config.title}</h3>
         </div>
-        <p className="mt-1 text-xs text-white/25">{config.description}</p>
+        <p className="mt-1 text-xs text-text-secondary">{config.description}</p>
       </div>
 
       {/* Panel body - placeholder for each prism */}
@@ -59,14 +59,14 @@ export function PrismPanelHost() {
             <path d="M14 2L26 24H2L14 2Z" stroke={config.color} strokeWidth="1.5" fill="none" />
           </svg>
         </div>
-        <p className="text-xs text-white/20">请先选择视频开始分析</p>
-        <p className="text-[10px] text-white/10">功能开发中...</p>
+        <p className="text-xs text-text-secondary">请先选择视频开始分析</p>
+        <p className="text-[10px] text-text-tertiary">功能开发中...</p>
       </div>
 
       {/* Panel footer actions */}
-      <div className="border-t border-white/5 px-5 py-3">
+      <div className="border-t border-border-subtle px-5 py-3">
         <button
-          className="w-full rounded-lg py-2 text-xs font-medium text-white/30 transition"
+          className="w-full rounded-lg py-2 text-xs font-medium text-text-tertiary transition"
           style={{ background: `${config.color}10` }}
           disabled
         >
@@ -76,3 +76,4 @@ export function PrismPanelHost() {
     </div>
   );
 }
+

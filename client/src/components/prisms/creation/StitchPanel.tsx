@@ -63,16 +63,16 @@ export function StitchPanel({ videoId, isOpen, onClose }: StitchPanelProps) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-      <div className="relative w-full max-w-2xl rounded-2xl bg-[#1E1E24] border border-[#2D2D3A] shadow-2xl overflow-hidden">
+      <div className="relative w-full max-w-2xl rounded-2xl bg-[var(--creation-bg-surface)] border border-[var(--creation-border-strong)] shadow-2xl overflow-hidden">
         {/* 头部 */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-[#2D2D3A]">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-[var(--creation-border-strong)]">
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-[#E91E8C] to-[#9C27B0]">
-              <Film className="h-5 w-5 text-white" />
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-[var(--creation-accent)] to-[var(--creation-accent-hover)]">
+              <Film className="h-5 w-5 text-[var(--creation-text-primary)]" />
             </div>
             <div>
-              <h2 className="text-lg font-semibold text-white">串联导出</h2>
-              <p className="text-sm text-[#9CA3AF]">
+              <h2 className="text-lg font-semibold text-[var(--creation-text-primary)]">串联导出</h2>
+              <p className="text-sm text-[var(--creation-text-secondary)]">
                 {completedNodes.length}/{totalNodes} 节点已完成渲染
               </p>
             </div>
@@ -81,7 +81,7 @@ export function StitchPanel({ videoId, isOpen, onClose }: StitchPanelProps) {
             variant="ghost"
             size="sm"
             onClick={onClose}
-            className="text-[#9CA3AF] hover:text-white"
+            className="text-[var(--creation-text-secondary)] hover:text-[var(--creation-text-primary)]"
           >
             <X className="h-5 w-5" />
           </Button>
@@ -91,10 +91,10 @@ export function StitchPanel({ videoId, isOpen, onClose }: StitchPanelProps) {
         <div className="p-6 space-y-6">
           {/* 节点预览 */}
           <div className="space-y-3">
-            <h3 className="text-sm font-medium text-[#9CA3AF]">节点预览</h3>
+            <h3 className="text-sm font-medium text-[var(--creation-text-secondary)]">节点预览</h3>
             <div className="flex gap-2 overflow-x-auto pb-2">
               {nodes.length === 0 ? (
-                <div className="flex items-center justify-center w-full h-20 rounded-xl bg-[#121218] text-[#6B7280]">
+                <div className="flex items-center justify-center w-full h-20 rounded-xl bg-[var(--creation-bg-canvas)] text-[var(--creation-text-muted)]">
                   暂无节点，请先添加节点
                 </div>
               ) : (
@@ -103,7 +103,7 @@ export function StitchPanel({ videoId, isOpen, onClose }: StitchPanelProps) {
                   .map((node, index) => (
                     <div
                       key={node.id}
-                      className="relative flex-shrink-0 w-24 h-16 rounded-lg overflow-hidden border-2 bg-[#121218]"
+                      className="relative flex-shrink-0 w-24 h-16 rounded-lg overflow-hidden border-2 bg-[var(--creation-bg-canvas)]"
                     >
                       {/* 缩略图 */}
                       {node.data.firstFrameUrl ? (
@@ -113,8 +113,8 @@ export function StitchPanel({ videoId, isOpen, onClose }: StitchPanelProps) {
                           className="w-full h-full object-cover"
                         />
                       ) : (
-                        <div className="flex items-center justify-center w-full h-full bg-[#2D2D3A]">
-                          <Play className="h-6 w-6 text-[#6B7280]" />
+                        <div className="flex items-center justify-center w-full h-full bg-[var(--creation-bg-elevated)]">
+                          <Play className="h-6 w-6 text-[var(--creation-text-muted)]" />
                         </div>
                       )}
 
@@ -123,7 +123,7 @@ export function StitchPanel({ videoId, isOpen, onClose }: StitchPanelProps) {
                         {node.data.renderStatus === 'COMPLETED' ? (
                           <CheckCircle2 className="h-4 w-4 text-[#10B981]" />
                         ) : node.data.renderStatus === 'PROCESSING' ? (
-                          <Loader2 className="h-4 w-4 text-[#E91E8C] animate-spin" />
+                          <Loader2 className="h-4 w-4 text-[var(--creation-accent)] animate-spin" />
                         ) : node.data.renderStatus === 'FAILED' ? (
                           <AlertCircle className="h-4 w-4 text-[#EF4444]" />
                         ) : (
@@ -132,7 +132,7 @@ export function StitchPanel({ videoId, isOpen, onClose }: StitchPanelProps) {
                       </div>
 
                       {/* 序号 */}
-                      <div className="absolute bottom-1 left-1 rounded bg-black/60 px-1.5 py-0.5 text-[10px] font-medium text-white">
+                      <div className="absolute bottom-1 left-1 rounded bg-black/60 px-1.5 py-0.5 text-[10px] font-medium text-[var(--creation-text-primary)]">
                         {index + 1}
                       </div>
                     </div>
@@ -142,23 +142,23 @@ export function StitchPanel({ videoId, isOpen, onClose }: StitchPanelProps) {
           </div>
 
           {/* 串联设置 */}
-          <div className="space-y-4 rounded-xl bg-[#121218] p-4">
+          <div className="space-y-4 rounded-xl bg-[var(--creation-bg-canvas)] p-4">
             <div className="flex items-center gap-2">
-              <Settings className="h-4 w-4 text-[#E91E8C]" />
-              <h3 className="text-sm font-medium text-white">串联设置</h3>
+              <Settings className="h-4 w-4 text-[var(--creation-accent)]" />
+              <h3 className="text-sm font-medium text-[var(--creation-text-primary)]">串联设置</h3>
             </div>
 
             <div className="space-y-3">
               {/* 配音开关 */}
               <label className="flex items-center justify-between cursor-pointer">
                 <div className="flex items-center gap-3">
-                  <Volume2 className="h-4 w-4 text-[#9CA3AF]" />
-                  <span className="text-sm text-white">包含配音</span>
+                  <Volume2 className="h-4 w-4 text-[var(--creation-text-secondary)]" />
+                  <span className="text-sm text-[var(--creation-text-primary)]">包含配音</span>
                 </div>
                 <button
                   onClick={() => setIncludeNarration(!includeNarration)}
                   className={`relative h-6 w-11 rounded-full transition-colors ${
-                    includeNarration ? 'bg-[#E91E8C]' : 'bg-[#2D2D3A]'
+                    includeNarration ? 'bg-[var(--creation-accent)]' : 'bg-[var(--creation-bg-elevated)]'
                   }`}
                 >
                   <span
@@ -172,13 +172,13 @@ export function StitchPanel({ videoId, isOpen, onClose }: StitchPanelProps) {
               {/* BGM 开关 */}
               <label className="flex items-center justify-between cursor-pointer">
                 <div className="flex items-center gap-3">
-                  <Music className="h-4 w-4 text-[#9CA3AF]" />
-                  <span className="text-sm text-white">包含背景音乐</span>
+                  <Music className="h-4 w-4 text-[var(--creation-text-secondary)]" />
+                  <span className="text-sm text-[var(--creation-text-primary)]">包含背景音乐</span>
                 </div>
                 <button
                   onClick={() => setIncludeBgm(!includeBgm)}
                   className={`relative h-6 w-11 rounded-full transition-colors ${
-                    includeBgm ? 'bg-[#E91E8C]' : 'bg-[#2D2D3A]'
+                    includeBgm ? 'bg-[var(--creation-accent)]' : 'bg-[var(--creation-bg-elevated)]'
                   }`}
                 >
                   <span
@@ -193,8 +193,8 @@ export function StitchPanel({ videoId, isOpen, onClose }: StitchPanelProps) {
               {includeBgm && (
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
-                    <span className="text-sm text-[#9CA3AF]">BGM 音量</span>
-                    <span className="text-sm text-white">{bgmVolume}%</span>
+                    <span className="text-sm text-[var(--creation-text-secondary)]">BGM 音量</span>
+                    <span className="text-sm text-[var(--creation-text-primary)]">{bgmVolume}%</span>
                   </div>
                   <input
                     type="range"
@@ -202,7 +202,7 @@ export function StitchPanel({ videoId, isOpen, onClose }: StitchPanelProps) {
                     max="100"
                     value={bgmVolume}
                     onChange={(e) => setBgmVolume(Number(e.target.value))}
-                    className="w-full h-2 bg-[#2D2D3A] rounded-lg appearance-none cursor-pointer accent-[#E91E8C]"
+                    className="w-full h-2 bg-[var(--creation-bg-elevated)] rounded-lg appearance-none cursor-pointer accent-[#E91E8C]"
                   />
                 </div>
               )}
@@ -210,8 +210,8 @@ export function StitchPanel({ videoId, isOpen, onClose }: StitchPanelProps) {
           </div>
 
           {/* 导出格式选择 */}
-          <div className="space-y-4 rounded-xl bg-[#121218] p-4">
-            <h3 className="text-sm font-medium text-white">导出格式</h3>
+          <div className="space-y-4 rounded-xl bg-[var(--creation-bg-canvas)] p-4">
+            <h3 className="text-sm font-medium text-[var(--creation-text-primary)]">导出格式</h3>
             <div className="flex gap-2">
               {(['mp4', 'webm', 'json'] as const).map((format) => (
                 <button
@@ -219,8 +219,8 @@ export function StitchPanel({ videoId, isOpen, onClose }: StitchPanelProps) {
                   onClick={() => setExportFormat(format)}
                   className={`flex-1 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
                     exportFormat === format
-                      ? 'bg-[#E91E8C] text-white'
-                      : 'bg-[#2D2D3A] text-[#9CA3AF] hover:bg-[#3D3D4A]'
+                      ? 'bg-[var(--creation-accent)] text-[var(--creation-text-primary)]'
+                      : 'bg-[var(--creation-bg-elevated)] text-[var(--creation-text-secondary)] hover:bg-[var(--creation-border-hover)]'
                   }`}
                 >
                   {format.toUpperCase()}
@@ -234,9 +234,9 @@ export function StitchPanel({ videoId, isOpen, onClose }: StitchPanelProps) {
             <div className="space-y-3">
               {/* 串联任务状态 */}
               {stitchTask && (
-                <div className="flex items-center gap-3 rounded-xl bg-[#121218] p-4">
+                <div className="flex items-center gap-3 rounded-xl bg-[var(--creation-bg-canvas)] p-4">
                   {stitchTask.status === 'PROCESSING' ? (
-                    <Loader2 className="h-5 w-5 animate-spin text-[#E91E8C]" />
+                    <Loader2 className="h-5 w-5 animate-spin text-[var(--creation-accent)]" />
                   ) : stitchTask.status === 'COMPLETED' ? (
                     <CheckCircle2 className="h-5 w-5 text-[#10B981]" />
                   ) : stitchTask.status === 'FAILED' ? (
@@ -245,8 +245,8 @@ export function StitchPanel({ videoId, isOpen, onClose }: StitchPanelProps) {
                     <div className="h-5 w-5 rounded-full border-2 border-[#6B7280]" />
                   )}
                   <div className="flex-1">
-                    <div className="text-sm font-medium text-white">串联进度</div>
-                    <div className="text-xs text-[#9CA3AF]">
+                    <div className="text-sm font-medium text-[var(--creation-text-primary)]">串联进度</div>
+                    <div className="text-xs text-[var(--creation-text-secondary)]">
                       {stitchTask.status === 'PROCESSING'
                         ? '正在拼接视频...'
                         : stitchTask.status === 'COMPLETED'
@@ -271,9 +271,9 @@ export function StitchPanel({ videoId, isOpen, onClose }: StitchPanelProps) {
 
               {/* 导出任务状态 */}
               {exportTask && (
-                <div className="flex items-center gap-3 rounded-xl bg-[#121218] p-4">
+                <div className="flex items-center gap-3 rounded-xl bg-[var(--creation-bg-canvas)] p-4">
                   {exportTask.status === 'PROCESSING' ? (
-                    <Loader2 className="h-5 w-5 animate-spin text-[#E91E8C]" />
+                    <Loader2 className="h-5 w-5 animate-spin text-[var(--creation-accent)]" />
                   ) : exportTask.status === 'COMPLETED' ? (
                     <CheckCircle2 className="h-5 w-5 text-[#10B981]" />
                   ) : exportTask.status === 'FAILED' ? (
@@ -282,10 +282,10 @@ export function StitchPanel({ videoId, isOpen, onClose }: StitchPanelProps) {
                     <div className="h-5 w-5 rounded-full border-2 border-[#6B7280]" />
                   )}
                   <div className="flex-1">
-                    <div className="text-sm font-medium text-white">
+                    <div className="text-sm font-medium text-[var(--creation-text-primary)]">
                       导出进度 ({exportTask.format?.toUpperCase()})
                     </div>
-                    <div className="text-xs text-[#9CA3AF]">
+                    <div className="text-xs text-[var(--creation-text-secondary)]">
                       {exportTask.status === 'PROCESSING'
                         ? '正在导出...'
                         : exportTask.status === 'COMPLETED'
@@ -312,11 +312,11 @@ export function StitchPanel({ videoId, isOpen, onClose }: StitchPanelProps) {
         </div>
 
         {/* 底部操作栏 */}
-        <div className="flex items-center gap-3 px-6 py-4 border-t border-[#2D2D3A] bg-[#1E1E24]">
+        <div className="flex items-center gap-3 px-6 py-4 border-t border-[var(--creation-border-strong)] bg-[var(--creation-bg-surface)]">
           <Button
             onClick={handleStitch}
             disabled={isStitching || completedNodes.length === 0}
-            className="flex-1 bg-gradient-to-r from-[#E91E8C] to-[#9C27B0] hover:opacity-90"
+            className="flex-1 bg-gradient-to-r from-[var(--creation-accent)] to-[var(--creation-accent-hover)] hover:opacity-90"
           >
             {isStitching ? (
               <>
@@ -334,7 +334,7 @@ export function StitchPanel({ videoId, isOpen, onClose }: StitchPanelProps) {
             onClick={handleExport}
             disabled={isExporting || completedNodes.length === 0}
             variant="outline"
-            className="flex-1 border-[#2D2D3A] hover:bg-[#2D2D3A]"
+            className="flex-1 border-[var(--creation-border-strong)] hover:bg-[var(--creation-bg-elevated)]"
           >
             {isExporting ? (
               <>

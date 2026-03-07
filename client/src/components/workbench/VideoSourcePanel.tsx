@@ -1,11 +1,11 @@
-'use client';
+﻿'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { videoApi, VideoSource } from '@/services/video.api';
 import { knowledgeApi } from '@/services/knowledge.api';
-import { UploadVideoModal } from './UploadVideoModal';
+import { videoApi, VideoSource } from '@/services/video.api';
 import { useWorkbenchStore } from '@/stores/workbench.store';
+import { UploadVideoModal } from './UploadVideoModal';
 
 interface VideoSourcePanelProps {
   projectId?: string;
@@ -25,7 +25,6 @@ export function VideoSourcePanel({
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const queryClient = useQueryClient();
 
-  // WorkbenchStore state
   const {
     selectedVideoIds,
     toggleVideoSelection,
@@ -34,26 +33,22 @@ export function VideoSourcePanel({
     currentVideo,
   } = useWorkbenchStore();
 
-  // 使用 React Query 获取视频列表
   const { data: videos = [], isLoading } = useQuery({
     queryKey: ['videos', projectId],
     queryFn: () => videoApi.list(projectId!),
     enabled: !!projectId,
   });
 
-  // 切项目时如果当前视频属于其他项目，立即清掉，避免右侧面板继续请求旧视频。
   useEffect(() => {
-    if (!projectId) return;
-    if (!currentVideo) return;
+    if (!projectId || !currentVideo) return;
     if (currentVideo.projectId !== projectId) {
       setCurrentVideo(null);
     }
   }, [projectId, currentVideo, setCurrentVideo]);
 
-  // 自动绑定首个有效视频，避免右侧面板持有无效上下文。
   useEffect(() => {
-    if (!projectId) return;
-    if (isLoading) return;
+    if (!projectId || isLoading) return;
+
     if (videos.length === 0) {
       if (currentVideo) {
         setCurrentVideo(null);
@@ -65,21 +60,28 @@ export function VideoSourcePanel({
       ? videos.find((video) => video.id === currentVideo.id)
       : null;
 
-    if (matchedCurrent) return;
-    setCurrentVideo(videos[0]);
+    if (!matchedCurrent) {
+      setCurrentVideo(videos[0]);
+    }
   }, [projectId, isLoading, videos, currentVideo, setCurrentVideo]);
 
-  // 上传成功后失效缓存，触发重新获取
-  const handleUploadSuccess = () => {
-    queryClient.invalidateQueries({ queryKey: ['videos', projectId] });
-  };
-
-  // Filter videos by search
-  const filtered = videos.filter((v) =>
-    v.title.toLowerCase().includes(search.toLowerCase()),
+  const filtered = useMemo(
+    () => videos.filter((v) => v.title.toLowerCase().includes(search.toLowerCase())),
+    [videos, search],
   );
 
-  // Format duration
+  const handleUploadSuccess = (uploadedVideo?: VideoSource) => {
+    if (uploadedVideo && projectId) {
+      queryClient.setQueryData<VideoSource[]>(['videos', projectId], (existing = []) => {
+        const withoutOld = existing.filter((video) => video.id !== uploadedVideo.id);
+        return [uploadedVideo, ...withoutOld];
+      });
+      setCurrentVideo(uploadedVideo);
+    }
+
+    void queryClient.invalidateQueries({ queryKey: ['videos', projectId] });
+  };
+
   const formatDuration = (seconds?: number) => {
     if (!seconds) return '--:--';
     const mins = Math.floor(seconds / 60);
@@ -87,12 +89,10 @@ export function VideoSourcePanel({
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
-  // Handle video play (click on card, not checkbox)
   const handleVideoPlay = (video: VideoSource) => {
     setCurrentVideo(video);
   };
 
-  // Handle confirm analyze (analyze selected videos one-by-one on backend)
   const handleConfirmImport = async () => {
     if (selectedVideoIds.length === 0 || isAnalyzing) return;
 
@@ -111,17 +111,18 @@ export function VideoSourcePanel({
 
       await queryClient.invalidateQueries({ queryKey: ['videos', projectId] });
 
-      // 勾选导入后自动绑定一个当前视频，避免聊天没有视频上下文。
       if (!currentVideo && firstSelectedVideo) {
         setCurrentVideo(firstSelectedVideo);
       }
 
+      const failedDetails = batchResult.results
+        .filter((item) => item.status === 'failed')
+        .map((item) => `- ${item.videoId}: ${item.error || '未知错误'}`)
+        .join('\n');
+
       alert(
         batchResult.failed > 0
-          ? `分析完成：成功 ${batchResult.completed} 个，失败 ${batchResult.failed} 个。\n\n失败详情：\n${batchResult.results
-              .filter((item) => item.status === 'failed')
-              .map((item) => `- ${item.videoId}: ${item.error || '未知错误'}`)
-              .join('\n')}`
+          ? `分析完成：成功 ${batchResult.completed} 个，失败 ${batchResult.failed} 个。\n\n失败详情：\n${failedDetails}`
           : `分析完成：成功 ${batchResult.completed} 个，失败 ${batchResult.failed} 个。`,
       );
       clearVideoSelection();
@@ -134,7 +135,6 @@ export function VideoSourcePanel({
     }
   };
 
-  // Handle delete video
   const handleDeleteVideo = async () => {
     if (!deleteConfirmVideo) return;
 
@@ -142,19 +142,15 @@ export function VideoSourcePanel({
     try {
       await videoApi.delete(deleteConfirmVideo.id);
 
-      // If deleted video was currently playing, clear it
       if (currentVideo?.id === deleteConfirmVideo.id) {
         setCurrentVideo(null);
       }
 
-      // Remove from selection if it was selected
       if (selectedVideoIds.includes(deleteConfirmVideo.id)) {
         toggleVideoSelection(deleteConfirmVideo.id);
       }
 
-      // Refresh the video list
-      queryClient.invalidateQueries({ queryKey: ['videos', projectId] });
-
+      await queryClient.invalidateQueries({ queryKey: ['videos', projectId] });
       setDeleteConfirmVideo(null);
     } catch (error) {
       console.error('Failed to delete video:', error);
@@ -164,28 +160,25 @@ export function VideoSourcePanel({
     }
   };
 
-  // Toggle select all
   const handleSelectAll = () => {
     const allIds = filtered.map((v) => v.id);
-    // 如果当前全部选中，则清空；否则选中所有
     if (allIds.length > 0 && selectedVideoIds.length === allIds.length) {
       clearVideoSelection();
-    } else {
-      // Select all filtered videos
-      selectedVideoIds.forEach((id) => {
-        if (!allIds.includes(id)) {
-          toggleVideoSelection(id);
-        }
-      });
-      allIds.forEach((id) => {
-        if (!selectedVideoIds.includes(id)) {
-          toggleVideoSelection(id);
-        }
-      });
+      return;
     }
+
+    selectedVideoIds.forEach((id) => {
+      if (!allIds.includes(id)) {
+        toggleVideoSelection(id);
+      }
+    });
+    allIds.forEach((id) => {
+      if (!selectedVideoIds.includes(id)) {
+        toggleVideoSelection(id);
+      }
+    });
   };
 
-  // 收起状态：只显示图标
   if (collapsed) {
     return (
       <aside className="flex h-full w-full flex-col items-center py-4">
@@ -206,7 +199,6 @@ export function VideoSourcePanel({
   return (
     <>
       <aside className="panel flex h-full w-full flex-col">
-        {/* Header */}
         <div className="border-b border-border-subtle p-4">
           <div className="mb-3 flex items-center justify-between">
             <h2 className="wb-section-title">视频源</h2>
@@ -229,80 +221,49 @@ export function VideoSourcePanel({
               </button>
             </div>
           </div>
-          {/* Search */}
-          <div className="relative">
-            <svg
-              className="absolute left-3 top-1/2 -translate-y-1/2 text-text-tertiary"
-              width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
-            >
-              <circle cx="11" cy="11" r="8" /><path d="M21 21l-4.35-4.35" />
-            </svg>
-            <input
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="搜索视频..."
-              className="input w-full py-2 pl-9 pr-3 text-sm"
-            />
-          </div>
+
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="搜索视频..."
+            className="input w-full"
+          />
         </div>
 
-        {/* Select All bar (only show when there are videos) */}
         {filtered.length > 0 && (
           <div className="flex items-center justify-between border-b border-border-subtle px-4 py-2">
             <button
               onClick={handleSelectAll}
-              className="flex items-center gap-2 text-sm text-text-secondary transition hover:text-text-primary"
+              className="text-xs text-text-secondary transition hover:text-text-primary"
             >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                {selectedVideoIds.length === filtered.length ? (
-                  <>
-                    <rect x="3" y="3" width="18" height="18" rx="2" />
-                    <path d="M9 12l2 2 4-4" />
-                  </>
-                ) : (
-                  <>
-                    <rect x="3" y="3" width="18" height="18" rx="2" />
-                  </>
-                )}
-              </svg>
               {selectedVideoIds.length === filtered.length ? '取消全选' : '全选'}
             </button>
-            <span className="wb-meta">
-              {selectedVideoIds.length} / {filtered.length}
-            </span>
+            <span className="text-xs text-text-tertiary">已选 {selectedVideoIds.length}</span>
           </div>
         )}
 
-        {/* Video list */}
-        <div className="flex-1 overflow-y-auto p-2">
+        <div className="min-h-0 flex-1 overflow-y-auto p-3">
           {isLoading ? (
-            <div className="flex items-center justify-center py-16">
-              <div className="status-dot status-dot-warning animate-pulse" />
-              <span className="ml-2 text-xs text-text-tertiary">加载中...</span>
-            </div>
-          ) : !projectId ? (
-            <div className="flex flex-col items-center justify-center py-16 text-center">
-              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" className="mb-3 text-text-tertiary opacity-30">
-                <rect x="2" y="2" width="20" height="20" rx="2" />
-                <path d="M10 8l6 4-6 4V8z" />
-              </svg>
-              <p className="text-xs text-text-tertiary">请先选择一个项目</p>
+            <div className="flex h-full items-center justify-center text-sm text-text-tertiary">
+              加载中...
             </div>
           ) : filtered.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-16 text-center">
-              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" className="mb-3 text-text-tertiary opacity-30">
-                <rect x="2" y="2" width="20" height="20" rx="2" />
-                <path d="M10 8l6 4-6 4V8z" />
-              </svg>
-              <p className="text-xs text-text-tertiary">暂无视频</p>
-              <p className="mt-1 text-[10px] text-text-tertiary opacity-60">点击"添加"导入视频</p>
+            <div className="flex h-full flex-col items-center justify-center text-center text-text-tertiary">
+              <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-bg-panel-tertiary">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <rect x="2" y="2" width="20" height="20" rx="2" />
+                  <path d="M10 8l6 4-6 4V8z" />
+                </svg>
+              </div>
+              <p className="text-sm text-text-secondary">暂无视频</p>
+              <p className="mt-1 text-xs text-text-tertiary">点击“添加”导入视频</p>
             </div>
           ) : (
             <div className="flex flex-col gap-1">
               {filtered.map((v) => {
                 const isSelected = selectedVideoIds.includes(v.id);
                 const isCurrentlyPlaying = currentVideo?.id === v.id;
+
                 return (
                   <div
                     key={v.id}
@@ -310,11 +271,10 @@ export function VideoSourcePanel({
                       isSelected
                         ? 'bg-accent-primary/10 ring-1 ring-accent-primary/30'
                         : isCurrentlyPlaying
-                        ? 'bg-accent-secondary/20 ring-1 ring-accent-secondary/40'
-                        : 'hover:bg-bg-panel-secondary'
+                          ? 'bg-accent-secondary/20 ring-1 ring-accent-secondary/40'
+                          : 'hover:bg-bg-panel-secondary'
                     }`}
                   >
-                    {/* Checkbox (NotebookLM style) */}
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
@@ -331,52 +291,45 @@ export function VideoSourcePanel({
                       </svg>
                     </button>
 
-                    {/* Video card (clickable for playing) */}
                     <button
                       onClick={() => handleVideoPlay(v)}
                       className="flex flex-1 items-center gap-3 text-left"
                     >
-                      {/* Thumbnail */}
-                      <div className="flex h-10 w-16 shrink-0 items-center justify-center rounded-lg bg-bg-panel-tertiary overflow-hidden">
+                      <div className="flex h-10 w-16 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-bg-panel-tertiary">
                         {v.thumbnailUrl ? (
-                          <img
-                            src={v.thumbnailUrl}
-                            alt={v.title}
-                            className="h-full w-full object-cover"
-                          />
+                          <img src={v.thumbnailUrl} alt={v.title} className="h-full w-full object-cover" />
                         ) : (
                           <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" className="text-text-tertiary opacity-30">
                             <path d="M10 8l6 4-6 4V8z" />
                           </svg>
                         )}
                       </div>
-                      {/* Info */}
+
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-sm font-medium text-text-primary">{v.title}</p>
                         <p className="wb-meta">{formatDuration(v.duration)}</p>
                       </div>
-                      {/* Status indicators */}
+
                       <div className="flex gap-1">
                         {v.transcriptStatus === 'COMPLETED' && (
                           <span className="status-dot status-dot-success" title="转写完成" />
                         )}
                         {v.keyframeStatus === 'COMPLETED' && (
-                          <span className="status-dot status-dot-success" title="关键帧提取完成" />
+                          <span className="status-dot status-dot-success" title="关键帧完成" />
                         )}
                       </div>
                     </button>
 
-                    {/* Delete button */}
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
                         setDeleteConfirmVideo(v);
                       }}
-                      className="opacity-0 group-hover:opacity-100 rounded-lg p-1 text-text-tertiary transition hover:bg-red-500/20 hover:text-red-400"
+                      className="rounded-lg p-1 text-text-tertiary opacity-0 transition hover:bg-red-500/20 hover:text-red-400 group-hover:opacity-100"
                       title="删除视频"
                     >
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" />
+                        <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
                       </svg>
                     </button>
                   </div>
@@ -386,13 +339,12 @@ export function VideoSourcePanel({
           )}
         </div>
 
-        {/* Confirm Analyze Button (show when videos are selected) */}
         {selectedVideoIds.length > 0 && (
           <div className="border-t border-border-subtle p-3">
             <button
               onClick={handleConfirmImport}
               disabled={isAnalyzing}
-              className="w-full rounded-xl bg-accent-primary py-2.5 text-sm font-medium text-text-inverse transition hover:opacity-90"
+              className="w-full rounded-xl bg-accent-primary py-2.5 text-sm font-medium text-text-inverse transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {isAnalyzing ? '分析中...' : `确认分析 (${selectedVideoIds.length})`}
             </button>
@@ -400,7 +352,6 @@ export function VideoSourcePanel({
         )}
       </aside>
 
-      {/* Upload Modal */}
       {showUploadModal && projectId && (
         <UploadVideoModal
           projectId={projectId}
@@ -409,13 +360,12 @@ export function VideoSourcePanel({
         />
       )}
 
-      {/* Delete Confirmation Modal */}
       {deleteConfirmVideo && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
           <div className="panel w-full max-w-[30rem] rounded-2xl p-6">
             <h3 className="mb-4 text-lg font-semibold text-text-primary">删除视频</h3>
             <p className="mb-6 text-sm text-text-secondary">
-              确定要删除视频 <span className="font-medium text-text-primary">"{deleteConfirmVideo.title}"</span> 吗？
+              确定要删除视频 <span className="font-medium text-text-primary">&quot;{deleteConfirmVideo.title}&quot;</span> 吗？
               <br />
               <span className="text-xs text-text-tertiary">此操作将同时删除视频文件和缩略图，无法恢复。</span>
             </p>
@@ -423,14 +373,14 @@ export function VideoSourcePanel({
               <button
                 onClick={() => setDeleteConfirmVideo(null)}
                 disabled={isDeleting}
-                className="rounded-xl px-4 py-2 text-sm font-medium text-text-secondary transition hover:bg-bg-panel-tertiary disabled:opacity-50"
+                className="rounded-lg px-4 py-2 text-sm text-text-tertiary transition hover:bg-bg-panel-secondary hover:text-text-secondary"
               >
                 取消
               </button>
               <button
                 onClick={handleDeleteVideo}
                 disabled={isDeleting}
-                className="rounded-xl bg-red-500 px-4 py-2 text-sm font-medium text-white transition hover:bg-red-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="rounded-lg bg-red-500 px-4 py-2 text-sm font-medium text-white transition hover:bg-red-600 disabled:opacity-50"
               >
                 {isDeleting ? '删除中...' : '确认删除'}
               </button>

@@ -37,9 +37,9 @@ export default function ProjectsPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#0a0a0f]">
+    <div className="min-h-screen bg-bg-primary text-text-primary">
       {/* Top bar */}
-      <header className="sticky top-0 z-40 border-b border-white/5 bg-[#0a0a0f]/80 backdrop-blur-xl">
+      <header className="sticky top-0 z-40 border-b border-border-subtle bg-bg-primary/85 backdrop-blur-xl">
         <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-6">
           <Link href="/" className="flex items-center gap-2 group">
             <div className="relative">
@@ -56,17 +56,17 @@ export default function ProjectsPage() {
               </svg>
               <div className="absolute -inset-1.5 rounded-full bg-gradient-to-r from-[#FF6B35]/20 to-[#E91E8C]/20 blur-lg group-hover:from-[#FF6B35]/30 group-hover:to-[#E91E8C]/30 transition-all" />
             </div>
-            <span className="text-base font-semibold text-white">Viewpoint Prism</span>
+            <span className="text-base font-semibold text-text-primary">Viewpoint Prism</span>
           </Link>
 
           <div className="flex items-center gap-5">
-            <Link href="/settings" className="flex items-center gap-1.5 text-sm text-white/40 transition hover:text-white/70">
+            <Link href="/settings" className="flex items-center gap-1.5 text-sm text-text-secondary transition hover:text-text-primary">
               <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <path d="M12.22 2h-.44a2 2 0 00-2 2v.18a2 2 0 01-1 1.73l-.43.25a2 2 0 01-2 0l-.15-.08a2 2 0 00-2.73.73l-.22.38a2 2 0 01-1.85-1.85l-.15-.08a2 2 0 00-.73-.73 2 2 0 00-1.73 1V7a2 2 0 00-2 2v.18a2 2 0 01-1 1.73l-.43.25a2 2 0 01-2 0l-.15-.08a2 2 0 00-2.73.73l-.22.38a2 2 0 01-1.85-1.85l-.15-.08a2 2 0 00-.73-.73A2 2 0 002 7V5a2 2 0 012-2h.18a2 2 0 001.73-1l.25-.43a2 2 0 010-2l-.08-.15a2 2 0 00.73-2.73l.38-.22a2 2 0 011.85-1.85l.08-.15a2 2 0 00.73-.73 2 2 0 00-1 1.73V4a2 2 0 002 2h.18a2 2 0 001.73-1l.25-.43a2 2 0 010-2l-.08-.15a2 2 0 00.73-2.73l.38-.22a2 2 0 011.85-1.85l.08-.15a2 2 0 00.73-.73zM12 15a3 3 0 100-6 3 3 0 000 6z" />
               </svg>
               设置
             </Link>
-            <button onClick={handleLogout} className="flex items-center gap-1.5 text-sm text-white/40 transition hover:text-white/70">
+            <button onClick={handleLogout} className="flex items-center gap-1.5 text-sm text-text-secondary transition hover:text-text-primary">
               <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4" />
                 <polyline points="16 17 21 12 16 7" />
@@ -82,12 +82,12 @@ export default function ProjectsPage() {
       <main className="mx-auto max-w-7xl px-6 py-10">
         <div className="mb-8 flex items-end justify-between">
           <div>
-            <h1 className="text-3xl font-bold text-white">我的工程</h1>
-            <p className="mt-2 text-sm text-white/30">管理你的视频内容创作工程</p>
+            <h1 className="text-3xl font-bold text-text-primary">我的工程</h1>
+            <p className="mt-2 text-sm text-text-secondary">管理你的视频内容创作工程</p>
           </div>
           <button
             onClick={() => setShowCreate(true)}
-            className="group flex items-center gap-2 rounded-lg bg-gradient-to-r from-[#FF6B35] to-[#E91E8C] px-5 py-2.5 text-sm font-semibold text-white transition-all hover:opacity-90"
+            className="group flex items-center gap-2 rounded-lg bg-gradient-to-r from-[#FF6B35] to-[#E91E8C] px-5 py-2.5 text-sm font-semibold text-text-inverse transition-all hover:opacity-90"
           >
             <svg className="h-4 w-4 transition-transform group-hover:rotate-90" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M12 5v14M5 12h14" />
@@ -98,7 +98,7 @@ export default function ProjectsPage() {
 
         {loading ? (
           <div className="flex items-center justify-center py-32">
-            <div className="h-10 w-10 animate-spin rounded-full border-2 border-white/5 border-t-white/50" />
+            <div className="h-10 w-10 animate-spin rounded-full border-2 border-border-subtle border-t-text-secondary" />
           </div>
         ) : projects.length === 0 ? (
           <EmptyState onCreate={() => setShowCreate(true)} />
@@ -129,21 +129,21 @@ export default function ProjectsPage() {
 
 function EmptyState({ onCreate }: { onCreate: () => void }) {
   return (
-    <div className="relative flex flex-col items-center justify-center rounded-3xl border border-dashed border-white/10 py-24">
+    <div className="relative flex flex-col items-center justify-center rounded-3xl border border-dashed border-border py-24">
       {/* 背景装饰 */}
-      <div className="absolute inset-0 bg-gradient-to-b from-white/[0.02] to-transparent" />
+      <div className="absolute inset-0 bg-gradient-to-b from-bg-panel-secondary/40 to-transparent" />
 
-      <div className="relative mb-6 flex h-20 w-20 items-center justify-center rounded-2xl bg-white/5 ring-1 ring-white/10">
+      <div className="relative mb-6 flex h-20 w-20 items-center justify-center rounded-2xl bg-bg-panel-secondary ring-1 ring-border">
         <svg width="36" height="36" viewBox="0 0 28 28" fill="none" className="opacity-30">
-          <path d="M14 2L26 24H2L14 2Z" stroke="white" strokeWidth="1.5" />
-          <path d="M14 8L20 20H8L14 8Z" fill="white" opacity="0.2" />
+          <path d="M14 2L26 24H2L14 2Z" stroke="currentColor" strokeWidth="1.5" className="text-text-secondary" />
+          <path d="M14 8L20 20H8L14 8Z" fill="currentColor" opacity="0.2" className="text-text-secondary" />
         </svg>
       </div>
-      <p className="relative mb-2 text-base font-medium text-white/50">还没有工程</p>
-      <p className="relative mb-8 text-sm text-white/25">创建你的第一个视频内容工程</p>
+      <p className="relative mb-2 text-base font-medium text-text-primary">还没有工程</p>
+      <p className="relative mb-8 text-sm text-text-secondary">创建你的第一个视频内容工程</p>
       <button
         onClick={onCreate}
-        className="relative group overflow-hidden rounded-lg border border-white/10 bg-white/5 px-6 py-2.5 text-sm font-medium text-white/70 transition-all hover:bg-white/10"
+        className="relative group overflow-hidden rounded-lg border border-border bg-bg-panel px-6 py-2.5 text-sm font-medium text-text-primary transition-all hover:bg-bg-panel-secondary"
       >
         <span className="relative z-10 flex items-center gap-2">
           <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -182,24 +182,24 @@ function ProjectCard({ project, onDelete }: { project: Project; onDelete: () => 
   return (
     <div
       onClick={() => router.push(`/project/${project.id}`)}
-      className="group relative prism-card !p-0 overflow-hidden cursor-pointer transition-all hover:scale-[1.02]"
+      className="group relative prism-card cursor-pointer overflow-hidden !p-0 transition-all hover:scale-[1.02]"
     >
       {/* Cover with gradient overlay */}
       <div className="relative h-36 overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-br from-[#FF6B35]/10 via-[#E91E8C]/10 to-[#4F46E5]/10" />
-        <div className="absolute inset-0 bg-gradient-to-t from-[#0a0a0f] via-transparent to-transparent" />
+        <div className="absolute inset-0 bg-gradient-to-t from-bg-primary/90 via-transparent to-transparent" />
 
         {/* Prism icon overlay */}
         <div className="absolute inset-0 flex items-center justify-center opacity-20 group-hover:opacity-30 transition-opacity">
           <svg width="64" height="64" viewBox="0 0 28 28" fill="none">
-            <path d="M14 2L26 24H2L14 2Z" stroke="white" strokeWidth="1" fill="none" />
-            <path d="M14 8L20 20H8L14 8Z" fill="white" opacity="0.15" />
+            <path d="M14 2L26 24H2L14 2Z" stroke="currentColor" strokeWidth="1" fill="none" className="text-text-primary" />
+            <path d="M14 8L20 20H8L14 8Z" fill="currentColor" opacity="0.15" className="text-text-primary" />
           </svg>
         </div>
 
         {/* Video count badge */}
         {videoCount > 0 && (
-          <div className="absolute top-3 right-3 flex items-center gap-1.5 rounded-full bg-black/40 px-2.5 py-1 text-[10px] text-white/70 backdrop-blur-sm">
+          <div className="absolute top-3 right-3 flex items-center gap-1.5 rounded-full bg-bg-panel/75 px-2.5 py-1 text-[10px] text-text-primary backdrop-blur-sm">
             <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <polygon points="5 3 19 12 5 21 5 3" />
             </svg>
@@ -209,19 +209,19 @@ function ProjectCard({ project, onDelete }: { project: Project; onDelete: () => 
       </div>
 
       <div className="p-5">
-        <h3 className="mb-2 truncate text-base font-semibold text-white group-hover:text-transparent group-hover:bg-gradient-to-r group-hover:from-[#FF6B35] group-hover:to-[#E91E8C] group-hover:bg-clip-text group-hover:text-transparent transition-all">
+        <h3 className="mb-2 truncate text-base font-semibold text-text-primary transition-all group-hover:bg-gradient-to-r group-hover:from-[#FF6B35] group-hover:to-[#E91E8C] group-hover:bg-clip-text group-hover:text-transparent">
           {project.name}
         </h3>
         {project.description && (
-          <p className="mb-4 line-clamp-2 text-xs text-white/30 leading-relaxed">{project.description}</p>
+          <p className="mb-4 line-clamp-2 text-xs leading-relaxed text-text-secondary">{project.description}</p>
         )}
 
-        <div className="flex items-center justify-between border-t border-white/5 pt-4">
-          <span className="text-[10px] text-white/20">{date}</span>
+        <div className="flex items-center justify-between border-t border-border-subtle pt-4">
+          <span className="text-[10px] text-text-tertiary">{date}</span>
           <button
             onClick={handleDelete}
             disabled={deleting}
-            className="rounded p-1.5 text-white/20 opacity-0 transition-all hover:bg-red-500/10 hover:text-red-400 group-hover:opacity-100"
+            className="rounded p-1.5 text-text-tertiary opacity-0 transition-all hover:bg-red-500/10 hover:text-red-400 group-hover:opacity-100"
             aria-label="删除工程"
           >
             {deleting ? (
@@ -267,9 +267,9 @@ function CreateProjectModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={onClose}>
       <div
-        className="relative w-full max-w-lg rounded-2xl border border-white/10 bg-[#0d0d14] shadow-2xl"
+        className="relative w-full max-w-[32rem] rounded-2xl border border-border bg-bg-panel shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header with gradient line */}
@@ -277,13 +277,13 @@ function CreateProjectModal({
 
         <div className="p-8">
           <div className="mb-6">
-            <h2 className="text-2xl font-bold text-white">新建工程</h2>
-            <p className="mt-2 text-sm text-white/30">创建一个新的视频内容工程</p>
+            <h2 className="text-2xl font-bold text-text-primary">新建工程</h2>
+            <p className="mt-2 text-sm text-text-secondary">创建一个新的视频内容工程</p>
           </div>
 
           <form onSubmit={handleSubmit} className="flex flex-col gap-5">
             <div className="space-y-1.5">
-              <label htmlFor="proj-name" className="block text-xs font-medium uppercase tracking-wider text-white/50">
+              <label htmlFor="proj-name" className="block text-xs font-medium uppercase tracking-wider text-text-secondary">
                 工程名称 <span className="text-red-400">*</span>
               </label>
               <input
@@ -294,13 +294,13 @@ function CreateProjectModal({
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder="例如：产品发布会视频分析"
-                className="w-full rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder-white/20 outline-none transition-all focus:border-[#E91E8C]/50 focus:bg-white/[0.08] focus:ring-1 focus:ring-[#E91E8C]/20"
+                className="input w-full px-4 py-3 text-sm"
               />
             </div>
 
             <div className="space-y-1.5">
-              <label htmlFor="proj-desc" className="block text-xs font-medium uppercase tracking-wider text-white/50">
-                描述 <span className="text-white/30">(可选)</span>
+              <label htmlFor="proj-desc" className="block text-xs font-medium uppercase tracking-wider text-text-secondary">
+                描述 <span className="text-text-tertiary">(可选)</span>
               </label>
               <textarea
                 id="proj-desc"
@@ -308,7 +308,7 @@ function CreateProjectModal({
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder="简单描述这个工程的用途..."
-                className="w-full resize-none rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder-white/20 outline-none transition-all focus:border-[#E91E8C]/50 focus:bg-white/[0.08] focus:ring-1 focus:ring-[#E91E8C]/20"
+                className="input w-full resize-none px-4 py-3 text-sm"
               />
             </div>
 
@@ -326,14 +326,14 @@ function CreateProjectModal({
               <button
                 type="button"
                 onClick={onClose}
-                className="rounded-lg border border-white/10 px-5 py-2.5 text-sm text-white/50 transition hover:bg-white/5"
+                className="rounded-lg border border-border px-5 py-2.5 text-sm text-text-secondary transition hover:bg-bg-panel-secondary"
               >
                 取消
               </button>
               <button
                 type="submit"
                 disabled={loading || !name.trim()}
-                className="group relative overflow-hidden rounded-lg bg-gradient-to-r from-[#FF6B35] via-[#E91E8C] to-[#4F46E5] px-5 py-2.5 text-sm font-semibold text-white transition-all hover:opacity-90 disabled:opacity-50"
+                className="group relative overflow-hidden rounded-lg bg-gradient-to-r from-[#FF6B35] via-[#E91E8C] to-[#4F46E5] px-5 py-2.5 text-sm font-semibold text-text-inverse transition-all hover:opacity-90 disabled:opacity-50"
               >
                 <span className="relative z-10 flex items-center gap-2">
                   {loading ? (

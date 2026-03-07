@@ -215,7 +215,13 @@ export default function SettingsPage() {
   };
 
   return (
-    <div className="min-h-screen bg-bg-primary p-6 md:p-8">
+    <div
+      className="min-h-screen w-full bg-bg-primary p-6 md:p-8"
+      style={{
+        writingMode: 'horizontal-tb',
+        textOrientation: 'mixed',
+      }}
+    >
       {/* Header */}
       <header className="mb-8 flex items-center gap-4">
         <Link href="/projects" className="flex items-center gap-2 text-text-secondary transition hover:text-text-primary">
@@ -267,7 +273,7 @@ export default function SettingsPage() {
         </div>
       )}
 
-      <div className="mx-auto mb-6 max-w-3xl rounded-xl border border-border-subtle bg-bg-panel px-4 py-4">
+      <div className="mx-auto mb-6 w-full max-w-[48rem] rounded-xl border border-border-subtle bg-bg-panel px-4 py-4">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
             <h2 className="text-sm font-semibold text-text-primary">服务套餐一键切换</h2>
@@ -317,7 +323,7 @@ export default function SettingsPage() {
       </div>
 
       {/* API Keys 配置列表 */}
-      <div className="mx-auto max-w-3xl space-y-4">
+      <div className="mx-auto w-full max-w-[48rem] space-y-4">
         <div className="mb-4">
           <h2 className="text-sm font-semibold uppercase tracking-wider text-text-tertiary">
             AI 模型提供商
@@ -430,7 +436,7 @@ export default function SettingsPage() {
       </div>
 
       {/* 底部操作 */}
-      <div className="mx-auto mt-8 max-w-3xl">
+      <div className="mx-auto mt-8 w-full max-w-[48rem]">
         <button
           onClick={() => void handleResetAll()}
           className="text-xs text-text-tertiary transition hover:text-text-secondary"

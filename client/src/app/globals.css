@@ -1171,3 +1171,23 @@ body > * {
     display: none;
   }
 }
+
+/* ============================================
+   创作棱镜主题变量
+   ============================================ */
+:root,
+[data-theme] {
+  --creation-bg-canvas: var(--bg-primary);
+  --creation-bg-surface: var(--bg-panel);
+  --creation-bg-overlay: var(--bg-panel);
+  --creation-bg-elevated: var(--bg-panel-secondary);
+  --creation-bg-input: var(--bg-panel-secondary);
+  --creation-bg-input-deep: var(--bg-panel-tertiary);
+  --creation-border-strong: var(--border);
+  --creation-border-hover: var(--border-focus);
+  --creation-text-primary: var(--text-primary);
+  --creation-text-secondary: var(--text-secondary);
+  --creation-text-muted: var(--text-tertiary);
+  --creation-accent: var(--accent-primary);
+  --creation-accent-hover: var(--accent-hover);
+}

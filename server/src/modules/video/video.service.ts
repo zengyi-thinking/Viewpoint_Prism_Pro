@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException, ForbiddenException } from '@nestjs/common';
+﻿import { Injectable, Logger, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { StorageService } from '../../infrastructure/storage/storage.service';
 import { FfmpegService } from '../../infrastructure/media/ffmpeg.service';
@@ -10,6 +10,15 @@ import { decodeMojibakeUtf8, resolveVideoExtension } from './video-filename.util
 @Injectable()
 export class VideoService {
   private readonly logger = new Logger(VideoService.name);
+
+  private isMissingStorageObject(error: unknown): boolean {
+    return Boolean(
+      error &&
+        typeof error === 'object' &&
+        'code' in error &&
+        (error as { code?: string }).code === 'NoSuchKey',
+    );
+  }
 
   constructor(
     private readonly prisma: PrismaService,
@@ -395,7 +404,15 @@ export class VideoService {
       throw new NotFoundException('Video file not found');
     }
 
-    const stream = await this.storage.downloadStream(video.storagePath);
+    let stream: NodeJS.ReadableStream;
+    try {
+      stream = await this.storage.downloadStream(video.storagePath);
+    } catch (error) {
+      if (this.isMissingStorageObject(error)) {
+        throw new NotFoundException('Video file is missing in storage. Please re-upload this video.');
+      }
+      throw error;
+    }
     const meta = await this.storage
       .getMetadata(video.storagePath)
       .catch(() => null as any);
@@ -496,3 +513,5 @@ export class VideoService {
     }
   }
 }
+
+
