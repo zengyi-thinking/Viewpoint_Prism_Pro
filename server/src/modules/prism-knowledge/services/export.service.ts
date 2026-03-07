@@ -24,6 +24,7 @@ interface DbKeyframe {
 interface DbFlashcard {
   id: string;
   assetId: string;
+  title: string | null;
   front: string;
   back: string;
   chapter: string | null;
@@ -78,6 +79,7 @@ export interface KnowledgeSettlementOutput {
   };
   flashcards: Array<{
     id: string;
+    title?: string | null;
     front: string;
     back: string;
     chapter?: string | null;
@@ -252,6 +254,7 @@ export class ExportService {
             notesMarkdown: fusedNotesMarkdown,
             reviewPlanMarkdown,
             flashcards: cards.map((card) => ({
+              title: card.title || this.flashcardService.buildFallbackTitle(card.front, card.chapter),
               front: card.front,
               back: card.back,
               chapter: card.chapter,
@@ -286,6 +289,7 @@ export class ExportService {
             notesMarkdown: fusedNotesMarkdown,
             reviewPlanMarkdown,
             flashcards: cards.map((card) => ({
+              title: card.title || this.flashcardService.buildFallbackTitle(card.front, card.chapter),
               front: card.front,
               back: card.back,
               chapter: card.chapter,
@@ -347,6 +351,7 @@ export class ExportService {
         },
         flashcards: cards.map((card) => ({
           id: card.id,
+          title: card.title || this.flashcardService.buildFallbackTitle(card.front, card.chapter),
           front: card.front,
           back: card.back,
           chapter: card.chapter,
@@ -636,7 +641,8 @@ export class ExportService {
             .slice(0, 40)
             .map((card, idx) => {
               const next = card.nextReview ? card.nextReview.toISOString() : '未安排';
-              return `${idx + 1}. Q: ${card.front}\nA: ${card.back}\n章节: ${card.chapter || '未分章'} | 难度: ${card.difficulty} | 下次复习: ${next}`;
+              const title = card.title || this.flashcardService.buildFallbackTitle(card.front, card.chapter, idx);
+              return `${idx + 1}. ${title}\nQ: ${card.front}\nA: ${card.back}\n章节: ${card.chapter || '未分章'} | 难度: ${card.difficulty} | 下次复习: ${next}`;
             })
             .join('\n\n')
         : '（暂无闪卡）';

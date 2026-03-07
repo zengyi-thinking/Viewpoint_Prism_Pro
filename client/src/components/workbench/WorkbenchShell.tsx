@@ -33,7 +33,10 @@ export function WorkbenchShell({ projectName, projectId }: { projectName?: strin
 
   // 创作棱镜模式：空间折叠
   const isCreationMode = activePrism === 'creation';
-  const effectiveLeftCollapsed = leftCollapsed || isCreationMode;
+  const isKnowledgeMode = activePrism === 'knowledge';
+  const effectiveLeftCollapsed = leftCollapsed || isCreationMode || isKnowledgeMode;
+  const rightPanelWidth =
+    !rightCollapsed && isKnowledgeMode ? 'clamp(520px, 42vw, 760px)' : `${rightWidth}px`;
 
   useEffect(() => {
     const applyResponsiveCollapse = () => {
@@ -313,7 +316,7 @@ export function WorkbenchShell({ projectName, projectId }: { projectName?: strin
             className={`flex h-full min-w-0 overflow-hidden rounded-[16px] border border-border bg-bg-panel transition-all duration-[var(--transition-slower)] ${
               rightCollapsed ? 'panel-collapsed' : ''
             } ${isCreationMode ? 'flex-1 shrink min-w-0' : 'shrink-0'}`}
-            style={isCreationMode ? {} : { width: rightCollapsed ? `${COLLAPSED_WIDTH}px` : `${rightWidth}px` }}
+            style={isCreationMode ? {} : { width: rightCollapsed ? `${COLLAPSED_WIDTH}px` : rightPanelWidth }}
           >
             <PrismSwitcher
               collapsed={rightCollapsed}

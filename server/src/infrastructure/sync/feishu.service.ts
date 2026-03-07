@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
 interface FeishuFlashcard {
+  title?: string | null;
   front: string;
   back: string;
   chapter?: string | null;
@@ -195,7 +196,8 @@ export class FeishuService {
     const flashcardLines = input.flashcards.slice(0, 30).map((card, idx) => {
       const difficulty = Number(card.difficulty ?? 1);
       const review = card.nextReview ? ` | 下次复习: ${card.nextReview}` : '';
-      return `${idx + 1}. Q: ${card.front}\nA: ${card.back}\n章节: ${card.chapter || '未分章'} | 难度: ${difficulty}${review}`;
+      const title = card.title?.trim() ? `${card.title.trim()}\n` : '';
+      return `${idx + 1}. ${title}Q: ${card.front}\nA: ${card.back}\n章节: ${card.chapter || '未分章'} | 难度: ${difficulty}${review}`;
     });
 
     return [

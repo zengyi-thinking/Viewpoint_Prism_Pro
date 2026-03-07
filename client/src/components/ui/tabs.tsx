@@ -39,7 +39,7 @@ export interface TabsListProps {
 
 export function TabsList({ children, className = '' }: TabsListProps) {
   return (
-    <div className={`tabs-list flex gap-0.5 p-0.5 bg-bg-panel-secondary rounded-lg border border-border-subtle ${className}`}>
+    <div className={`tabs-list flex min-w-0 gap-0.5 rounded-lg border border-border-subtle bg-bg-panel-secondary p-0.5 ${className}`}>
       {children}
     </div>
   );
@@ -60,7 +60,7 @@ export function TabsTrigger({ value, children, className = '' }: TabsTriggerProp
       type="button"
       data-state={isActive ? 'active' : 'inactive'}
       onClick={() => onValueChange(value)}
-      className={`tabs-trigger inline-flex items-center justify-center rounded-md px-3 py-1.5 text-[12px] font-medium transition-all duration-[var(--transition-base)] ${
+      className={`tabs-trigger inline-flex shrink-0 items-center justify-center whitespace-nowrap rounded-md px-3 py-1.5 text-[12px] font-medium transition-all duration-[var(--transition-base)] ${
         isActive
           ? 'bg-bg-panel text-text-primary shadow-[var(--shadow-xs)] border border-border'
           : 'text-text-secondary hover:text-text-primary hover:bg-bg-panel-tertiary/50'
@@ -82,4 +82,3 @@ export function TabsContent({ value, children, className = '' }: TabsContentProp
   if (value !== activeValue) return null;
   return <div className={`tabs-content ${className}`}>{children}</div>;
 }
-

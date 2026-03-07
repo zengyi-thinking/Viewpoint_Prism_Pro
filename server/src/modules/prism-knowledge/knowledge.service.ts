@@ -691,14 +691,19 @@ export class KnowledgeService {
         })
       : [];
 
+    const normalizedItems = items.map((item, index) => ({
+      ...item,
+      title: item.title || this.flashcardService.buildFallbackTitle(item.front, item.chapter, index),
+    }));
+
     return {
       userId,
       videoId,
       status: asset?.status ?? 'PENDING',
       assetId: asset?.id ?? null,
-      items,
-      count: items.length,
-      flashcards: items,
+      items: normalizedItems,
+      count: normalizedItems.length,
+      flashcards: normalizedItems,
     };
   }
 
@@ -888,7 +893,10 @@ export class KnowledgeService {
       videoId,
       status: 'completed',
       count: cards.length,
-      items: cards,
+      items: cards.map((card, index) => ({
+        ...card,
+        title: card.title || this.flashcardService.buildFallbackTitle(card.front, card.chapter, index),
+      })),
     };
   }
 

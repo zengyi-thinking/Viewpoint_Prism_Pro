@@ -72,6 +72,7 @@ export class FlashcardService {
       const card = await this.prisma.flashcard.create({
         data: {
           assetId,
+          title: this.truncate(seg.title || this.buildFallbackTitle(seg.front, seg.chapter, idx), 80),
           front,
           back,
           chapter: seg.chapter || `章节 ${idx + 1}`,
@@ -124,8 +125,9 @@ export class FlashcardService {
             role: 'system',
             content: [
               '你是学习设计专家，要基于视频内容生成高质量学习闪卡。',
-              '输出必须是 JSON 数组，每项字段：front, back, chapter, difficulty。',
+              '输出必须是 JSON 数组，每项字段：title, front, back, chapter, difficulty。',
               `卡片数量不超过 ${maxCards}，不少于 ${Math.max(6, Math.floor(maxCards * 0.7))}。`,
+              'title 是便于识别和导出的短标题，要求 8-20 个字，聚焦单一知识点，不要使用泛泛标题。',
               'front 是问题句，back 是简明但具体的答案，必须有可执行或可复述信息。',
               'difficulty 取值 1-5。',
               '优先围绕核心概念、章节主线、易混淆点和学习建议生成闪卡，避免只是把摘要改写成问答。',
@@ -170,6 +172,7 @@ export class FlashcardService {
     const parsed = this.parseJsonArray(text);
     const cards = parsed
       .map((item) => ({
+        title: this.asText(item?.title),
         front: this.asText(item?.front),
         back: this.asText(item?.back),
         chapter: this.asText(item?.chapter) || '核心知识',
@@ -181,6 +184,19 @@ export class FlashcardService {
       throw new Error('闪卡模型返回格式无效');
     }
     return cards;
+  }
+
+  buildFallbackTitle(front: string, chapter?: string | null, index?: number) {
+    const normalizedChapter = this.asText(chapter) || '学习卡片';
+    const normalizedFront = this.asText(front)
+      .replace(/[？?！!。,.，:：]/g, ' ')
+      .replace(/^(什么是|为什么|如何|怎样|请解释|说明|介绍|概述)\s*/u, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+    const core = normalizedFront.slice(0, 18) || '核心知识';
+    return index !== undefined
+      ? `${String(index + 1).padStart(2, '0')}_${normalizedChapter}_${core}`
+      : `${normalizedChapter}_${core}`;
   }
 
   private parseJsonArray(raw: string): any[] {

@@ -1,18 +1,16 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { knowledgeApi } from '../../../services/knowledge.api';
-import {
-  CrystalCard,
-  CrystalCardType,
-  CrystalCardCollection,
-} from '../../../types/crystal-card';
+import { CrystalCard, CrystalCardType } from '../../../types/crystal-card';
 
 interface CrystalCardViewerProps {
   videoId: string;
   onTimeClick?: (timestamp: number) => void;
   className?: string;
 }
+
+type RotationMap = Record<string, number>;
 
 export function CrystalCardViewer({
   videoId,
@@ -28,14 +26,20 @@ export function CrystalCardViewer({
   const [expandedCard, setExpandedCard] = useState<string | null>(null);
   const [categories, setCategories] = useState<string[]>([]);
   const [isDownloadingZip, setIsDownloadingZip] = useState(false);
+  const [cardRotations, setCardRotations] = useState<RotationMap>({});
 
   useEffect(() => {
-    loadCrystalCards();
+    void loadCrystalCards();
   }, [videoId]);
 
   useEffect(() => {
     filterCards();
   }, [cards, selectedType, selectedCategory]);
+
+  const expandedIndex = useMemo(
+    () => filteredCards.findIndex((card) => card.id === expandedCard),
+    [expandedCard, filteredCards],
+  );
 
   const loadCrystalCards = async () => {
     try {
@@ -44,8 +48,8 @@ export function CrystalCardViewer({
 
       if (response?.cards) {
         setCards(response.cards);
+        setExpandedCard(response.cards[0]?.id ?? null);
 
-        // 提取所有类别
         const cats = [
           'ALL',
           ...new Set(response.cards.map((card) => card.category || '未分类')),
@@ -72,20 +76,32 @@ export function CrystalCardViewer({
       );
     }
 
-    // 按重要性排序
     filtered.sort((a, b) => b.importance - a.importance);
-
     setFilteredCards(filtered);
+
+    if (filtered.length > 0 && !filtered.some((card) => card.id === expandedCard)) {
+      setExpandedCard(filtered[0].id);
+    }
   };
 
   const handleCardExpand = (cardId: string) => {
-    setExpandedCard(expandedCard === cardId ? null : cardId);
+    setExpandedCard((current) => (current === cardId ? null : cardId));
   };
 
   const handleTimeClick = (card: CrystalCard) => {
     if (card.timestamp && onTimeClick) {
       onTimeClick(card.timestamp);
     }
+  };
+
+  const updateRotation = (cardId: string, next: number) => {
+    const clamped = Math.max(-18, Math.min(18, next));
+    setCardRotations((prev) => ({ ...prev, [cardId]: clamped }));
+  };
+
+  const nudgeRotation = (cardId: string, delta: number) => {
+    const current = cardRotations[cardId] ?? 0;
+    updateRotation(cardId, current + delta);
   };
 
   const handleRegenerate = async () => {
@@ -249,138 +265,61 @@ export function CrystalCardViewer({
     }
   };
 
-  const getCardTypeLabel = (type: CrystalCardType): string => {
-    const labels: Record<CrystalCardType, string> = {
-      [CrystalCardType.CONCEPT]: '概念',
-      [CrystalCardType.TIMELINE]: '时间线',
-      [CrystalCardType.COMPARISON]: '对比',
-      [CrystalCardType.INSIGHT]: '洞察',
-      [CrystalCardType.QUOTE]: '引用',
-      [CrystalCardType.KEYFRAME]: '关键帧',
-      [CrystalCardType.QA]: '问答',
-      [CrystalCardType.SUMMARY]: '摘要',
-    };
-    return labels[type] || type;
-  };
-
-  const getCardTypeIcon = (type: CrystalCardType): string => {
-    const icons: Record<CrystalCardType, string> = {
-      [CrystalCardType.CONCEPT]: '💡',
-      [CrystalCardType.TIMELINE]: '📅',
-      [CrystalCardType.COMPARISON]: '⚖️',
-      [CrystalCardType.INSIGHT]: '🔍',
-      [CrystalCardType.QUOTE]: '💬',
-      [CrystalCardType.KEYFRAME]: '🖼️',
-      [CrystalCardType.QA]: '❓',
-      [CrystalCardType.SUMMARY]: '📝',
-    };
-    return icons[type] || '📄';
-  };
-
-  const getDifficultyColor = (difficulty: number): string => {
-    if (difficulty <= 2) return 'text-green-400';
-    if (difficulty <= 4) return 'text-yellow-400';
-    return 'text-red-400';
-  };
-
-  const getImportanceStars = (importance: number): string => {
-    return '⭐'.repeat(Math.min(importance, 5));
-  };
-
-  const getSourceInfo = (card: CrystalCard) => {
-    const source =
-      card.sourceType ||
-      (typeof card.metadata?.source === 'string' ? String(card.metadata.source) : '') ||
-      (card.type === CrystalCardType.QA
-        ? 'qa'
-        : card.type === CrystalCardType.KEYFRAME
-          ? 'keyframe'
-          : 'outline');
-
-    switch (source) {
-      case 'deepAnalysis':
-      case 'deep_analysis':
-        return {
-          label: '深度分析',
-          className: 'border-sky-500/30 bg-sky-500/10 text-sky-200',
-        };
-      case 'qa':
-      case 'chat':
-        return {
-          label: 'Q&A',
-          className: 'border-amber-500/30 bg-amber-500/10 text-amber-200',
-        };
-      case 'keyframe':
-        return {
-          label: '关键帧',
-          className: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-200',
-        };
-      case 'outline_service':
-      case 'outline':
-      default:
-        return {
-          label: '大纲',
-          className: 'border-violet-500/30 bg-violet-500/10 text-violet-200',
-        };
-    }
-  };
-
   return (
-    <div className={`crystal-card-viewer h-full min-h-0 flex flex-col ${className}`}>
-      {/* 顶部工具栏 */}
-      <div className="flex items-center justify-between mb-4 p-4 rounded-lg bg-[var(--bg-panel-secondary)] border border-[var(--border-subtle)]">
-        <div className="flex items-center gap-4">
-          <h3 className="text-lg font-semibold text-[var(--text-primary)]">
-            晶体蜂巢
-          </h3>
-          <span className="text-sm text-[var(--text-secondary)]">
-            {filteredCards.length} 张卡片
-          </span>
-        </div>
-
-        <div className="flex items-center gap-3">
-          {/* 视图切换 */}
-          <div className="flex items-center gap-1 bg-[var(--bg-primary)] rounded-lg p-1">
-            <button
-              onClick={() => setViewMode('grid')}
-              className={`p-2 rounded transition-colors ${
-                viewMode === 'grid'
-                  ? 'bg-[var(--accent-primary)] text-white'
-                  : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
-              }`}
-              title="网格视图"
-            >
-              ⊞
-            </button>
-            <button
-              onClick={() => setViewMode('list')}
-              className={`p-2 rounded transition-colors ${
-                viewMode === 'list'
-                  ? 'bg-[var(--accent-primary)] text-white'
-                  : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
-              }`}
-              title="列表视图"
-            >
-              ☰
-            </button>
+    <div className={`crystal-card-viewer flex h-full min-h-0 flex-col ${className}`}>
+      <div className="mb-4 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-panel-secondary)] p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-4">
+            <h3 className="text-lg font-semibold text-[var(--text-primary)]">
+              晶体蜂巢
+            </h3>
+            <span className="text-sm text-[var(--text-secondary)]">
+              {filteredCards.length} 张卡片
+            </span>
           </div>
 
-          <button
-            onClick={handleRegenerate}
-            disabled={loading}
-            className="px-3 py-1.5 bg-[var(--accent-primary)] hover:bg-[var(--accent-hover)] text-white rounded-lg text-sm transition-colors disabled:opacity-50"
-          >
-            {loading ? '生成中...' : '重新生成'}
-          </button>
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-1 rounded-lg bg-[var(--bg-primary)] p-1">
+              <button
+                onClick={() => setViewMode('grid')}
+                className={`rounded p-2 transition-colors ${
+                  viewMode === 'grid'
+                    ? 'bg-[var(--accent-primary)] text-white'
+                    : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                }`}
+                title="蜂巢视图"
+              >
+                ⬢
+              </button>
+              <button
+                onClick={() => setViewMode('list')}
+                className={`rounded p-2 transition-colors ${
+                  viewMode === 'list'
+                    ? 'bg-[var(--accent-primary)] text-white'
+                    : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                }`}
+                title="列表视图"
+              >
+                ☰
+              </button>
+            </div>
+
+            <button
+              onClick={handleRegenerate}
+              disabled={loading}
+              className="rounded-lg bg-[var(--accent-primary)] px-3 py-1.5 text-sm text-white transition-colors hover:bg-[var(--accent-hover)] disabled:opacity-50"
+            >
+              {loading ? '生成中...' : '重新生成'}
+            </button>
+          </div>
         </div>
       </div>
 
       <div className="flex-1 min-h-0 overflow-auto">
-        {/* 筛选器 */}
-        <div className="flex flex-wrap gap-2 mb-4">
+        <div className="mb-4 flex flex-wrap gap-2">
           <button
             onClick={() => setSelectedType('ALL')}
-            className={`px-3 py-1.5 rounded-full text-sm transition-colors ${
+            className={`rounded-full px-3 py-1.5 text-sm transition-colors ${
               selectedType === 'ALL'
                 ? 'bg-[var(--accent-primary)] text-white'
                 : 'bg-[var(--bg-panel-secondary)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
@@ -392,7 +331,7 @@ export function CrystalCardViewer({
             <button
               key={type}
               onClick={() => setSelectedType(type)}
-              className={`px-3 py-1.5 rounded-full text-sm transition-colors ${
+              className={`rounded-full px-3 py-1.5 text-sm transition-colors ${
                 selectedType === type
                   ? 'bg-[var(--accent-primary)] text-white'
                   : 'bg-[var(--bg-panel-secondary)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
@@ -403,16 +342,15 @@ export function CrystalCardViewer({
           ))}
         </div>
 
-        {/* 类别筛选 */}
         {categories.length > 1 && (
-          <div className="flex flex-wrap gap-2 mb-4">
+          <div className="mb-4 flex flex-wrap gap-2">
             {categories.map((category) => (
               <button
                 key={category}
                 onClick={() => setSelectedCategory(category)}
-                className={`px-3 py-1 rounded-lg text-xs transition-colors ${
+                className={`rounded-lg px-3 py-1 text-xs transition-colors ${
                   selectedCategory === category
-                    ? 'bg-[var(--accent-muted)] text-[var(--accent-primary)] border border-[var(--accent-primary)]'
+                    ? 'border border-[var(--accent-primary)] bg-[var(--accent-muted)] text-[var(--accent-primary)]'
                     : 'bg-[var(--bg-panel-secondary)] text-[var(--text-secondary)]'
                 }`}
               >
@@ -422,30 +360,45 @@ export function CrystalCardViewer({
           </div>
         )}
 
-        {/* 加载状态 */}
         {loading ? (
           <div className="flex items-center justify-center py-12">
-            <div className="animate-spin w-8 h-8 border-2 border-[var(--accent-primary)] border-t-transparent rounded-full" />
+            <div className="h-8 w-8 animate-spin rounded-full border-2 border-[var(--accent-primary)] border-t-transparent" />
           </div>
         ) : filteredCards.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-12 text-[var(--text-secondary)]">
-            <div className="text-4xl mb-3">🔮</div>
+            <div className="mb-3 text-4xl">🔮</div>
             <p>暂无晶体卡片</p>
-            <p className="text-sm mt-1">点击"重新生成"开始创建</p>
+            <p className="mt-1 text-sm">点击“重新生成”开始创建</p>
           </div>
-        ) : (
-          <div
-            className={
-              viewMode === 'grid'
-                ? 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4'
-                : 'flex flex-col gap-3'
-            }
-          >
+        ) : viewMode === 'grid' ? (
+          <div className="mx-auto grid w-full max-w-[1100px] grid-cols-1 justify-items-center gap-x-5 gap-y-8 pb-8 pt-2 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
             {filteredCards.map((card, index) => (
-              <CrystalCardItem
+              <CrystalHoneycombCard
                 key={card.id}
                 card={card}
                 index={index}
+                isExpanded={expandedCard === card.id}
+                hasExpandedCard={Boolean(expandedCard)}
+                isNeighborShrunk={expandedIndex !== -1 && expandedCard !== card.id}
+                rotation={cardRotations[card.id] ?? 0}
+                onExpand={() => handleCardExpand(card.id)}
+                onRotateChange={(value) => updateRotation(card.id, value)}
+                onRotateLeft={() => nudgeRotation(card.id, -4)}
+                onRotateRight={() => nudgeRotation(card.id, 4)}
+                onTimeClick={() => handleTimeClick(card)}
+                getCardTypeLabel={getCardTypeLabel}
+                getCardTypeIcon={getCardTypeIcon}
+                getImportanceStars={getImportanceStars}
+                getSourceInfo={getSourceInfo}
+              />
+            ))}
+          </div>
+        ) : (
+          <div className="flex flex-col gap-3">
+            {filteredCards.map((card) => (
+              <CrystalListCard
+                key={card.id}
+                card={card}
                 isExpanded={expandedCard === card.id}
                 onExpand={() => handleCardExpand(card.id)}
                 onTimeClick={() => handleTimeClick(card)}
@@ -454,33 +407,31 @@ export function CrystalCardViewer({
                 getDifficultyColor={getDifficultyColor}
                 getImportanceStars={getImportanceStars}
                 getSourceInfo={getSourceInfo}
-                viewMode={viewMode}
               />
             ))}
           </div>
         )}
       </div>
 
-      {/* 右下角下载区 */}
-      <div className="mt-4 border-t border-[var(--border-subtle)] pt-3 flex items-center justify-end gap-2">
+      <div className="mt-4 flex items-center justify-end gap-2 border-t border-[var(--border-subtle)] pt-3">
         <button
           onClick={handleDownloadZip}
           disabled={!cards.length || isDownloadingZip}
-          className="px-3 py-1.5 rounded-lg text-sm border border-[var(--border-subtle)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-40"
+          className="rounded-lg border border-[var(--border-subtle)] px-3 py-1.5 text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-40"
         >
           {isDownloadingZip ? '打包中...' : '下载 ZIP'}
         </button>
         <button
           onClick={handleDownloadJson}
           disabled={!cards.length}
-          className="px-3 py-1.5 rounded-lg text-sm border border-[var(--border-subtle)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-40"
+          className="rounded-lg border border-[var(--border-subtle)] px-3 py-1.5 text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-40"
         >
           下载 JSON
         </button>
         <button
           onClick={handleDownloadMarkdown}
           disabled={!cards.length}
-          className="px-3 py-1.5 rounded-lg text-sm bg-[var(--accent-primary)] text-white hover:bg-[var(--accent-hover)] disabled:opacity-40"
+          className="rounded-lg bg-[var(--accent-primary)] px-3 py-1.5 text-sm text-white hover:bg-[var(--accent-hover)] disabled:opacity-40"
         >
           下载 Markdown
         </button>
@@ -489,65 +440,89 @@ export function CrystalCardViewer({
   );
 }
 
-interface CrystalCardItemProps {
+interface CrystalHoneycombCardProps {
   card: CrystalCard;
   index: number;
   isExpanded: boolean;
+  hasExpandedCard: boolean;
+  isNeighborShrunk: boolean;
+  rotation: number;
   onExpand: () => void;
+  onRotateChange: (value: number) => void;
+  onRotateLeft: () => void;
+  onRotateRight: () => void;
   onTimeClick: () => void;
   getCardTypeLabel: (type: CrystalCardType) => string;
   getCardTypeIcon: (type: CrystalCardType) => string;
-  getDifficultyColor: (difficulty: number) => string;
   getImportanceStars: (importance: number) => string;
   getSourceInfo: (card: CrystalCard) => { label: string; className: string };
-  viewMode: 'grid' | 'list';
 }
 
-function CrystalCardItem({
+function CrystalHoneycombCard({
   card,
   index,
   isExpanded,
+  hasExpandedCard,
+  isNeighborShrunk,
+  rotation,
   onExpand,
+  onRotateChange,
+  onRotateLeft,
+  onRotateRight,
   onTimeClick,
   getCardTypeLabel,
   getCardTypeIcon,
-  getDifficultyColor,
   getImportanceStars,
   getSourceInfo,
-  viewMode,
-}: CrystalCardItemProps) {
+}: CrystalHoneycombCardProps) {
   const sourceInfo = getSourceInfo(card);
+  const baseTranslateY = index % 2 === 1 ? 54 : 0;
+  const scale = isExpanded ? 1.16 : hasExpandedCard && isNeighborShrunk ? 0.82 : 1;
+  const opacity = hasExpandedCard && isNeighborShrunk ? 0.56 : 1;
 
-  if (viewMode === 'grid') {
-    return (
+  return (
+    <div
+      className="relative h-[328px] w-[238px] transition-[transform,opacity,filter] duration-300 sm:w-[252px]"
+      style={{
+        transform: `translateY(${baseTranslateY}px) rotate(${rotation}deg) scale(${scale})`,
+        opacity,
+        zIndex: isExpanded ? 20 : 1,
+        filter: hasExpandedCard && isNeighborShrunk ? 'saturate(0.72)' : 'none',
+      }}
+    >
       <button
         type="button"
         onClick={onExpand}
-        className={`group relative h-[248px] w-full text-left transition-transform duration-200 hover:-translate-y-1 ${
-          index % 2 === 1 ? 'md:translate-y-10' : ''
-        }`}
+        className="group relative h-full w-full text-left"
       >
         <div
-          className={`absolute inset-0 border transition-all duration-200 ${
+          className={`absolute inset-0 border transition-all duration-300 ${
             card.isFeatured
-              ? 'border-[var(--accent-primary)] shadow-[0_0_0_1px_rgba(255,255,255,0.04),0_12px_32px_rgba(0,0,0,0.28)]'
-              : 'border-[var(--border-subtle)] shadow-[0_8px_24px_rgba(0,0,0,0.22)]'
+              ? 'border-[var(--accent-primary)] shadow-[0_18px_40px_rgba(0,0,0,0.18)]'
+              : 'border-[var(--border-subtle)] shadow-[0_12px_30px_rgba(0,0,0,0.12)]'
           }`}
           style={{
             clipPath:
-              'polygon(25% 6.7%, 75% 6.7%, 100% 50%, 75% 93.3%, 25% 93.3%, 0% 50%)',
+              'polygon(25% 4.5%, 75% 4.5%, 100% 50%, 75% 95.5%, 25% 95.5%, 0% 50%)',
             background: card.imageUrl
-              ? `linear-gradient(180deg, rgba(8,10,18,0.20), rgba(8,10,18,0.88)), url(${card.imageUrl}) center/cover`
-              : 'linear-gradient(160deg, rgba(20,22,34,0.98), rgba(36,39,58,0.92))',
+              ? `linear-gradient(180deg, rgba(15,18,28,0.18), rgba(12,14,24,0.88)), url(${card.imageUrl}) center/cover`
+              : 'linear-gradient(165deg, rgba(24,26,42,0.98), rgba(44,37,68,0.94) 55%, rgba(26,47,67,0.92))',
           }}
         />
-        <div className="absolute inset-[10%] flex flex-col justify-between overflow-hidden px-2 py-4">
+
+        <div
+          className="absolute inset-[11%_9%] flex flex-col justify-between overflow-hidden px-3 py-5"
+          style={{
+            clipPath:
+              'polygon(23% 2.5%, 77% 2.5%, 100% 50%, 77% 97.5%, 23% 97.5%, 0% 50%)',
+          }}
+        >
           <div>
             <div className="flex flex-wrap items-center gap-1.5">
               <span className="text-lg" role="img" aria-label="card type">
                 {getCardTypeIcon(card.type)}
               </span>
-              <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] text-white/80">
+              <span className="rounded-full border border-white/10 bg-white/8 px-2 py-0.5 text-[10px] text-white/80">
                 {getCardTypeLabel(card.type)}
               </span>
               <span className={`rounded-full border px-2 py-0.5 text-[10px] ${sourceInfo.className}`}>
@@ -555,19 +530,19 @@ function CrystalCardItem({
               </span>
             </div>
 
-            <h4 className="mt-3 line-clamp-3 text-sm font-semibold leading-5 text-white">
+            <h4 className="mt-3 line-clamp-3 text-[15px] font-semibold leading-6 text-white">
               {card.title}
             </h4>
 
-            <p className={`mt-2 text-[12px] leading-5 text-white/72 ${isExpanded ? '' : 'line-clamp-4'}`}>
+            <p className={`mt-3 text-[12px] leading-5 text-white/76 ${isExpanded ? 'line-clamp-8' : 'line-clamp-5'}`}>
               {card.summary || card.content}
             </p>
           </div>
 
-          <div className="mt-3">
+          <div className="mt-4">
             {card.tags.length > 0 ? (
               <div className="flex flex-wrap gap-1.5">
-                {card.tags.slice(0, 3).map((tag, tagIndex) => (
+                {card.tags.slice(0, isExpanded ? 4 : 3).map((tag, tagIndex) => (
                   <span
                     key={tagIndex}
                     className="rounded-full border border-white/10 bg-black/20 px-2 py-0.5 text-[10px] text-white/70"
@@ -591,126 +566,248 @@ function CrystalCardItem({
                   {card.videoTime}
                 </span>
               ) : (
-                <span>展开</span>
+                <span>{isExpanded ? '选中中' : '点击放大'}</span>
               )}
             </div>
           </div>
         </div>
       </button>
-    );
-  }
+
+      {isExpanded ? (
+        <div
+          className="absolute -bottom-7 left-1/2 z-30 flex -translate-x-1/2 items-center gap-2 rounded-full border border-white/10 bg-[rgba(17,19,31,0.92)] px-3 py-2 text-white shadow-[0_14px_30px_rgba(0,0,0,0.2)]"
+          onClick={(event) => event.stopPropagation()}
+        >
+          <button
+            type="button"
+            onClick={onRotateLeft}
+            className="rounded-full border border-white/10 px-2 py-1 text-xs text-white/80 transition hover:text-white"
+          >
+            ↺
+          </button>
+          <input
+            type="range"
+            min={-18}
+            max={18}
+            value={rotation}
+            onChange={(event) => onRotateChange(Number(event.target.value))}
+            className="w-24 accent-[#E91E8C]"
+          />
+          <button
+            type="button"
+            onClick={onRotateRight}
+            className="rounded-full border border-white/10 px-2 py-1 text-xs text-white/80 transition hover:text-white"
+          >
+            ↻
+          </button>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+interface CrystalListCardProps {
+  card: CrystalCard;
+  isExpanded: boolean;
+  onExpand: () => void;
+  onTimeClick: () => void;
+  getCardTypeLabel: (type: CrystalCardType) => string;
+  getCardTypeIcon: (type: CrystalCardType) => string;
+  getDifficultyColor: (difficulty: number) => string;
+  getImportanceStars: (importance: number) => string;
+  getSourceInfo: (card: CrystalCard) => { label: string; className: string };
+}
+
+function CrystalListCard({
+  card,
+  isExpanded,
+  onExpand,
+  onTimeClick,
+  getCardTypeLabel,
+  getCardTypeIcon,
+  getDifficultyColor,
+  getImportanceStars,
+  getSourceInfo,
+}: CrystalListCardProps) {
+  const sourceInfo = getSourceInfo(card);
 
   return (
     <div
-      className={`crystal-card-item bg-[var(--bg-panel)] border border-[var(--border-subtle)] rounded-xl overflow-hidden transition-all hover:border-[var(--border-focus)] hover:shadow-lg ${
+      className={`overflow-hidden rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-panel)] transition-all hover:border-[var(--border-focus)] hover:shadow-lg ${
         card.isFeatured ? 'ring-2 ring-[var(--accent-primary)]' : ''
-      } ${viewMode === 'list' ? 'flex' : ''}`}
+      }`}
     >
-      {/* 卡片头部 */}
       <div className="p-4">
-        <div className="flex items-start justify-between mb-2">
+        <div className="mb-2 flex items-start justify-between">
           <div className="flex items-center gap-2">
             <span className="text-xl" role="img" aria-label="card type">
               {getCardTypeIcon(card.type)}
             </span>
-            <span className="text-xs text-[var(--text-secondary)] uppercase font-medium">
+            <span className="text-xs font-medium uppercase text-[var(--text-secondary)]">
               {getCardTypeLabel(card.type)}
             </span>
-            <span
-              className={`rounded-full border px-2 py-0.5 text-[10px] ${sourceInfo.className}`}
-            >
+            <span className={`rounded-full border px-2 py-0.5 text-[10px] ${sourceInfo.className}`}>
               {sourceInfo.label}
             </span>
           </div>
-          {card.isFeatured && (
-            <span className="text-xs px-2 py-0.5 bg-[var(--accent-primary)] text-white rounded-full">
+          {card.isFeatured ? (
+            <span className="rounded-full bg-[var(--accent-primary)] px-2 py-0.5 text-xs text-white">
               精选
             </span>
-          )}
+          ) : null}
         </div>
 
-        <h4 className="text-base font-semibold text-[var(--text-primary)] mb-2 line-clamp-2">
+        <h4 className="mb-2 line-clamp-2 text-base font-semibold text-[var(--text-primary)]">
           {card.title}
         </h4>
 
-        {card.summary && !isExpanded && (
-          <p className="text-sm text-[var(--text-secondary)] mb-3 line-clamp-2">
+        {card.summary && !isExpanded ? (
+          <p className="mb-3 line-clamp-2 text-sm text-[var(--text-secondary)]">
             {card.summary}
           </p>
-        )}
+        ) : null}
 
-        {/* 卡片元信息 */}
-        <div className="flex items-center gap-3 text-xs text-[var(--text-tertiary)] mb-3">
+        <div className="mb-3 flex items-center gap-3 text-xs text-[var(--text-tertiary)]">
           <span className={getDifficultyColor(card.difficulty)}>
             难度: {'█'.repeat(card.difficulty)}
           </span>
           <span>{getImportanceStars(card.importance)}</span>
-          {card.videoTime && (
+          {card.videoTime ? (
             <button
               onClick={onTimeClick}
-              className="hover:text-[var(--accent-primary)] transition-colors"
+              className="transition-colors hover:text-[var(--accent-primary)]"
               title="跳转到此时间点"
             >
               ⏱️ {card.videoTime}
             </button>
-          )}
+          ) : null}
         </div>
 
-        {/* 标签 */}
-        {card.tags.length > 0 && (
-          <div className="flex flex-wrap gap-1.5 mb-3">
+        {card.tags.length > 0 ? (
+          <div className="mb-3 flex flex-wrap gap-1.5">
             {card.tags.map((tag, index) => (
               <span
                 key={index}
-                className="text-xs px-2 py-0.5 bg-[var(--bg-panel-secondary)] text-[var(--text-secondary)] rounded"
+                className="rounded bg-[var(--bg-panel-secondary)] px-2 py-0.5 text-xs text-[var(--text-secondary)]"
               >
                 {tag}
               </span>
             ))}
           </div>
-        )}
+        ) : null}
       </div>
 
-      {/* 卡片内容（展开时显示） */}
-      {isExpanded && (
-        <div className="px-4 pb-4 border-t border-[var(--border-subtle)] pt-4">
-          {/* 图片 */}
-          {card.imageUrl && (
-            <div className="mb-3 rounded-lg overflow-hidden">
+      {isExpanded ? (
+        <div className="border-t border-[var(--border-subtle)] px-4 pb-4 pt-4">
+          {card.imageUrl ? (
+            <div className="mb-3 overflow-hidden rounded-lg">
               <img
                 src={card.imageUrl}
                 alt={card.title}
-                className="w-full h-40 object-cover"
+                className="h-40 w-full object-cover"
               />
             </div>
-          )}
+          ) : null}
 
-          {/* 完整内容 */}
-          <div className="text-sm text-[var(--text-secondary)] whitespace-pre-wrap">
+          <div className="whitespace-pre-wrap text-sm text-[var(--text-secondary)]">
             {card.content}
           </div>
 
-          {/* 分类 */}
-          {card.category && (
+          {card.category ? (
             <div className="mt-3 text-xs text-[var(--text-tertiary)]">
               分类: {card.category}
             </div>
-          )}
+          ) : null}
         </div>
-      )}
+      ) : null}
 
-      {/* 卡片底部 */}
-      <div className="px-4 py-3 bg-[var(--bg-panel-secondary)] flex items-center justify-between">
+      <div className="flex items-center justify-between bg-[var(--bg-panel-secondary)] px-4 py-3">
         <button
           onClick={onExpand}
-          className="text-sm text-[var(--accent-primary)] hover:text-[var(--accent-hover)] transition-colors"
+          className="text-sm text-[var(--accent-primary)] transition-colors hover:text-[var(--accent-hover)]"
         >
           {isExpanded ? '收起' : '展开'}
         </button>
-        {card.isVerified && (
+        {card.isVerified ? (
           <span className="text-xs text-[var(--color-success)]">✓ 已验证</span>
-        )}
+        ) : null}
       </div>
     </div>
   );
+}
+
+function getCardTypeLabel(type: CrystalCardType): string {
+  const labels: Record<CrystalCardType, string> = {
+    [CrystalCardType.CONCEPT]: '概念',
+    [CrystalCardType.TIMELINE]: '时间线',
+    [CrystalCardType.COMPARISON]: '对比',
+    [CrystalCardType.INSIGHT]: '洞察',
+    [CrystalCardType.QUOTE]: '引用',
+    [CrystalCardType.KEYFRAME]: '关键帧',
+    [CrystalCardType.QA]: '问答',
+    [CrystalCardType.SUMMARY]: '摘要',
+  };
+  return labels[type] || type;
+}
+
+function getCardTypeIcon(type: CrystalCardType): string {
+  const icons: Record<CrystalCardType, string> = {
+    [CrystalCardType.CONCEPT]: '💡',
+    [CrystalCardType.TIMELINE]: '📅',
+    [CrystalCardType.COMPARISON]: '⚖️',
+    [CrystalCardType.INSIGHT]: '🔍',
+    [CrystalCardType.QUOTE]: '💬',
+    [CrystalCardType.KEYFRAME]: '🖼️',
+    [CrystalCardType.QA]: '❓',
+    [CrystalCardType.SUMMARY]: '📝',
+  };
+  return icons[type] || '📄';
+}
+
+function getDifficultyColor(difficulty: number): string {
+  if (difficulty <= 2) return 'text-green-400';
+  if (difficulty <= 4) return 'text-yellow-400';
+  return 'text-red-400';
+}
+
+function getImportanceStars(importance: number): string {
+  return '⭐'.repeat(Math.min(importance, 5));
+}
+
+function getSourceInfo(card: CrystalCard) {
+  const source =
+    card.sourceType ||
+    (typeof card.metadata?.source === 'string' ? String(card.metadata.source) : '') ||
+    (card.type === CrystalCardType.QA
+      ? 'qa'
+      : card.type === CrystalCardType.KEYFRAME
+        ? 'keyframe'
+        : 'outline');
+
+  switch (source) {
+    case 'deepAnalysis':
+    case 'deep_analysis':
+      return {
+        label: '深度分析',
+        className: 'border-sky-500/30 bg-sky-500/10 text-sky-200',
+      };
+    case 'qa':
+    case 'chat':
+      return {
+        label: 'Q&A',
+        className: 'border-amber-500/30 bg-amber-500/10 text-amber-200',
+      };
+    case 'keyframe':
+      return {
+        label: '关键帧',
+        className: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-200',
+      };
+    case 'outline_service':
+    case 'outline':
+    default:
+      return {
+        label: '大纲',
+        className: 'border-violet-500/30 bg-violet-500/10 text-violet-200',
+      };
+  }
 }

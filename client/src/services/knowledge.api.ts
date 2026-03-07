@@ -91,6 +91,7 @@ export interface KnowledgeOutlineResponse {
 
 export interface FlashcardItem {
   id: string;
+  title?: string | null;
   front: string;
   back: string;
   chapter?: string | null;

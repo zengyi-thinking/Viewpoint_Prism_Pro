@@ -262,6 +262,7 @@ model Flashcard {
   id          String         @id @default(cuid())
   assetId     String
   asset       KnowledgeAsset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  title       String?
   front       String
   back        String
   chapter     String?

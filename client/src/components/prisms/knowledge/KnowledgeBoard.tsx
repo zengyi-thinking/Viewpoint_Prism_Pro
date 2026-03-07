@@ -229,29 +229,32 @@ export function KnowledgeBoard({ videoId, onTimeClick }: KnowledgeBoardProps) {
     <div className="flex flex-col h-full">
       <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)} className="flex flex-col h-full">
         <div className="border-b">
-          <div className="flex items-center justify-between gap-2 px-3">
-            <TabsList className="w-full justify-start rounded-none h-12 px-1">
-              <TabsTrigger value="realtime" className="data-[state=active]:bg-background">
+          <div className="px-3 pt-3">
+            <div className="overflow-x-auto pb-2" style={{ scrollbarWidth: 'none' }}>
+              <TabsList className="h-auto min-w-max justify-start rounded-xl border-border px-1 py-1">
+                <TabsTrigger value="realtime" className="min-h-9 px-3.5 text-[12px] data-[state=active]:bg-background">
                 实时看板
-              </TabsTrigger>
-              <TabsTrigger value="crystal-cards" className="data-[state=active]:bg-background">
-              晶体卡片
-              </TabsTrigger>
-              <TabsTrigger value="mindmap" className="data-[state=active]:bg-background">
-              思维导图
-              </TabsTrigger>
-              <TabsTrigger value="outline" className="data-[state=active]:bg-background">
-              知识大纲
-              </TabsTrigger>
-              <TabsTrigger value="flashcards" className="data-[state=active]:bg-background">
-              学习卡片
-              </TabsTrigger>
-            </TabsList>
-            <div className="flex shrink-0 items-center gap-1.5">
+                </TabsTrigger>
+                <TabsTrigger value="crystal-cards" className="min-h-9 px-3.5 text-[12px] data-[state=active]:bg-background">
+                  晶体卡片
+                </TabsTrigger>
+                <TabsTrigger value="mindmap" className="min-h-9 px-3.5 text-[12px] data-[state=active]:bg-background">
+                  思维导图
+                </TabsTrigger>
+                <TabsTrigger value="outline" className="min-h-9 px-3.5 text-[12px] data-[state=active]:bg-background">
+                  知识大纲
+                </TabsTrigger>
+                <TabsTrigger value="flashcards" className="min-h-9 px-3.5 text-[12px] data-[state=active]:bg-background">
+                  学习卡片
+                </TabsTrigger>
+              </TabsList>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-1.5 pb-3">
               <button
                 onClick={() => void handleSettle()}
                 disabled={isSettling || isSyncingTarget !== null || isAnalyzingCurrent}
-                className="rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-1 text-[10px] text-amber-300 transition hover:bg-amber-500/20 disabled:opacity-50"
+                className="rounded-md border border-amber-500/30 bg-amber-500/10 px-2.5 py-1.5 text-[11px] text-amber-300 transition hover:bg-amber-500/20 disabled:opacity-50"
                 title="一键结算（生成三大产物）"
               >
                 {isSettling ? '结算中...' : '一键结算'}
@@ -259,7 +262,7 @@ export function KnowledgeBoard({ videoId, onTimeClick }: KnowledgeBoardProps) {
               <button
                 onClick={() => void handleAnalyzeCurrent()}
                 disabled={isSettling || isSyncingTarget !== null || isAnalyzingCurrent}
-                className="rounded-md border border-border-subtle px-2 py-1 text-[10px] text-text-tertiary transition hover:text-text-secondary disabled:opacity-50"
+                className="rounded-md border border-border-subtle px-2.5 py-1.5 text-[11px] text-text-tertiary transition hover:text-text-secondary disabled:opacity-50"
                 title="分析当前视频"
               >
                 {isAnalyzingCurrent ? '分析中...' : '分析当前视频'}
@@ -272,7 +275,7 @@ export function KnowledgeBoard({ videoId, onTimeClick }: KnowledgeBoardProps) {
                   isAnalyzingCurrent ||
                   isDeepAnalyzing
                 }
-                className="rounded-md border border-sky-500/30 bg-sky-500/10 px-2 py-1 text-[10px] text-sky-300 transition hover:bg-sky-500/20 disabled:opacity-50"
+                className="rounded-md border border-sky-500/30 bg-sky-500/10 px-2.5 py-1.5 text-[11px] text-sky-300 transition hover:bg-sky-500/20 disabled:opacity-50"
                 title="生成二次理解层"
               >
                 {isDeepAnalyzing ? '深度分析中...' : '深度分析'}
@@ -280,7 +283,7 @@ export function KnowledgeBoard({ videoId, onTimeClick }: KnowledgeBoardProps) {
               <button
                 onClick={() => void handleSync('notion')}
                 disabled={isSyncingTarget !== null || isSettling}
-                className="rounded-md border border-border-subtle px-2 py-1 text-[10px] text-text-tertiary transition hover:text-text-secondary disabled:opacity-50"
+                className="rounded-md border border-border-subtle px-2.5 py-1.5 text-[11px] text-text-tertiary transition hover:text-text-secondary disabled:opacity-50"
                 title="Sync to Notion"
               >
                 {isSyncingTarget === 'notion' ? 'Syncing...' : 'Sync to Notion'}
@@ -288,7 +291,7 @@ export function KnowledgeBoard({ videoId, onTimeClick }: KnowledgeBoardProps) {
               <button
                 onClick={() => void handleSync('feishu')}
                 disabled={isSyncingTarget !== null || isSettling}
-                className="rounded-md border border-border-subtle px-2 py-1 text-[10px] text-text-tertiary transition hover:text-text-secondary disabled:opacity-50"
+                className="rounded-md border border-border-subtle px-2.5 py-1.5 text-[11px] text-text-tertiary transition hover:text-text-secondary disabled:opacity-50"
                 title="Sync to 飞书"
               >
                 {isSyncingTarget === 'feishu' ? 'Syncing...' : 'Sync to 飞书'}

@@ -7,11 +7,43 @@ import { Download, Loader2, RefreshCw, RotateCcw } from 'lucide-react';
 
 interface Flashcard {
   id: string;
+  title?: string | null;
   front: string;
   back: string;
   chapter?: string | null;
   difficulty: number;
   createdAt: string;
+}
+
+function sanitizeFileName(value: string) {
+  return value
+    .replace(/[\\/:*?"<>|]/g, '-')
+    .replace(/\s+/g, '_')
+    .replace(/_+/g, '_')
+    .slice(0, 80);
+}
+
+function buildFlashcardTitle(card: Flashcard, index?: number) {
+  if (card.title?.trim()) {
+    return index !== undefined
+      ? `${String(index + 1).padStart(2, '0')}_${card.title.trim()}`
+      : card.title.trim();
+  }
+
+  const chapter = (card.chapter || '学习卡片').trim();
+  const front = String(card.front || '')
+    .replace(/[？?！!。,.，:：]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  const core =
+    front
+      .replace(/^(什么是|为什么|如何|怎样|请解释|说明|介绍|概述)\s*/u, '')
+      .slice(0, 20) || '核心知识';
+
+  return index !== undefined
+    ? `${String(index + 1).padStart(2, '0')}_${chapter}_${core}`
+    : `${chapter}_${core}`;
 }
 
 interface FlashcardsPanelProps {
@@ -122,17 +154,23 @@ export function FlashcardsPanel({ videoId, onTimeClick }: FlashcardsPanelProps) 
     ctx.fillStyle = 'rgba(255,255,255,0.08)';
     roundRect(ctx, 52, 46, width - 104, height - 92, 28, true, false);
 
+    const cardTitle = buildFlashcardTitle(card);
+
     ctx.fillStyle = '#FF8A57';
     ctx.font = '600 28px "Segoe UI", "PingFang SC", sans-serif';
     ctx.fillText(card.chapter || '学习卡片', 88, 104);
 
     ctx.fillStyle = '#FFFFFF';
-    ctx.font = '700 46px "Segoe UI", "PingFang SC", sans-serif';
-    wrapText(ctx, card.front, 88, 170, width - 176, 56, 4);
+    ctx.font = '700 34px "Segoe UI", "PingFang SC", sans-serif';
+    wrapText(ctx, cardTitle, 88, 162, width - 176, 44, 2);
+
+    ctx.fillStyle = 'rgba(255,255,255,0.92)';
+    ctx.font = '700 42px "Segoe UI", "PingFang SC", sans-serif';
+    wrapText(ctx, card.front, 88, 246, width - 176, 52, 3);
 
     ctx.fillStyle = 'rgba(255,255,255,0.86)';
-    ctx.font = '500 30px "Segoe UI", "PingFang SC", sans-serif';
-    wrapText(ctx, card.back, 88, 392, width - 176, 42, 5);
+    ctx.font = '500 28px "Segoe UI", "PingFang SC", sans-serif';
+    wrapText(ctx, card.back, 88, 420, width - 176, 40, 4);
 
     ctx.fillStyle = 'rgba(255,255,255,0.55)';
     ctx.font = '500 22px "Segoe UI", "PingFang SC", sans-serif';
@@ -142,25 +180,79 @@ export function FlashcardsPanel({ videoId, onTimeClick }: FlashcardsPanelProps) 
     return canvas;
   };
 
-  const downloadCardAsPng = async (card: Flashcard) => {
+  const exportCardAsPngBlob = async (card: Flashcard) => {
     const canvas = await drawCardPng(card);
-    const url = canvas.toDataURL('image/png');
+    const blob = await new Promise<Blob>((resolve, reject) => {
+      canvas.toBlob((value) => {
+        if (value) resolve(value);
+        else reject(new Error('PNG 导出失败'));
+      }, 'image/png');
+    });
+    return blob;
+  };
+
+  const downloadCardAsPng = async (card: Flashcard) => {
+    const blob = await exportCardAsPngBlob(card);
+    const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `flashcard-${card.id}.png`;
+    a.download = `${sanitizeFileName(buildFlashcardTitle(card))}.png`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   };
 
-  const downloadAllCardsAsPng = async () => {
+  const downloadAllCardsAsZip = async () => {
     if (!cards.length || isDownloading) return;
     setIsDownloading(true);
     try {
-      for (const card of cards) {
-        await downloadCardAsPng(card);
-        await new Promise((resolve) => setTimeout(resolve, 120));
+      const JSZipModule = await import('jszip');
+      const JSZip = JSZipModule.default;
+      const zip = new JSZip();
+      const packageName = sanitizeFileName(`learning_cards_${videoId}`);
+
+      const manifestLines = [
+        'Viewpoint Prism Pro Learning Cards',
+        `Video ID: ${videoId}`,
+        `Card Count: ${cards.length}`,
+        '',
+        'Cards:',
+      ];
+
+      for (const [cardIndex, card] of cards.entries()) {
+        const cardTitle = buildFlashcardTitle(card, cardIndex);
+        const safeTitle = sanitizeFileName(cardTitle);
+        const pngBlob = await exportCardAsPngBlob(card);
+        zip.file(`${safeTitle}.png`, pngBlob);
+        zip.file(
+          `${safeTitle}.md`,
+          [
+            `# ${cardTitle}`,
+            '',
+            `- 章节: ${card.chapter || '学习卡片'}`,
+            `- 难度: ${Math.max(1, Math.min(5, card.difficulty || 1))}/5`,
+            '',
+            '## 正面',
+            card.front,
+            '',
+            '## 背面',
+            card.back,
+          ].join('\n'),
+        );
+        manifestLines.push(`${String(cardIndex + 1).padStart(2, '0')}. ${cardTitle}`);
       }
+
+      zip.file('README.txt', manifestLines.join('\n'));
+      const zipBlob = await zip.generateAsync({ type: 'blob' });
+      const url = URL.createObjectURL(zipBlob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${packageName}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
     } finally {
       setIsDownloading(false);
     }
@@ -171,7 +263,7 @@ export function FlashcardsPanel({ videoId, onTimeClick }: FlashcardsPanelProps) 
       <div className="flex items-center justify-between border-b border-border-subtle px-4 py-3">
         <div>
           <p className="text-sm font-semibold text-text-primary">学习卡片</p>
-          <p className="text-[11px] text-text-tertiary">AI 闪卡 · 可翻转 · 支持 PNG 下载</p>
+          <p className="text-[11px] text-text-tertiary">AI 闪卡 · 智能命名 · 支持 ZIP 打包下载</p>
         </div>
         <div className="flex items-center gap-2">
           <Button
@@ -187,12 +279,12 @@ export function FlashcardsPanel({ videoId, onTimeClick }: FlashcardsPanelProps) 
           <Button
             size="sm"
             variant="outline"
-            onClick={downloadAllCardsAsPng}
+            onClick={downloadAllCardsAsZip}
             disabled={!cards.length || isDownloading}
             className="h-8"
           >
             <Download className="mr-1 h-4 w-4" />
-            全部 PNG
+            {isDownloading ? '打包中...' : '全部 ZIP'}
           </Button>
         </div>
       </div>
@@ -215,6 +307,9 @@ export function FlashcardsPanel({ videoId, onTimeClick }: FlashcardsPanelProps) 
               <span className="text-xs text-text-tertiary">
                 {index + 1} / {cards.length}
               </span>
+              <span className="max-w-[42%] truncate text-right text-xs font-medium text-text-secondary">
+                {buildFlashcardTitle(currentCard, index)}
+              </span>
               <div className="flex items-center gap-2">
                 <Button size="sm" variant="ghost" onClick={shuffleCards} className="h-8 px-2">
                   <RotateCcw className="mr-1 h-4 w-4" />
@@ -232,12 +327,12 @@ export function FlashcardsPanel({ videoId, onTimeClick }: FlashcardsPanelProps) 
               </div>
             </div>
 
-            <div className="flex-1 flex items-center justify-center">
-              <div className="[perspective:1200px] w-full max-w-xl">
+            <div className="flex flex-1 items-center justify-center overflow-x-auto pb-2">
+              <div className="[perspective:1200px] w-full min-w-[22rem] max-w-[46rem]">
                 <button
                   type="button"
                   onClick={() => setIsFlipped((v) => !v)}
-                  className={`relative h-[340px] w-full rounded-2xl text-left transition-transform duration-500 [transform-style:preserve-3d] ${
+                  className={`relative min-h-[360px] w-full rounded-2xl text-left transition-transform duration-500 [transform-style:preserve-3d] ${
                     isFlipped ? '[transform:rotateY(180deg)]' : ''
                   }`}
                 >
@@ -248,6 +343,9 @@ export function FlashcardsPanel({ videoId, onTimeClick }: FlashcardsPanelProps) 
                       </span>
                       <span className="text-[11px] text-white/70">正面</span>
                     </div>
+                    <p className="mb-3 text-[12px] font-medium uppercase tracking-[0.18em] text-white/60">
+                      {buildFlashcardTitle(currentCard, index)}
+                    </p>
                     <p className="text-[22px] font-semibold leading-9 text-white">{currentCard.front}</p>
                     <p className="mt-4 text-xs text-white/65">点击翻转查看答案</p>
                   </div>
