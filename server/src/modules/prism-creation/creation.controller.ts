@@ -16,6 +16,7 @@ import {
   RenderQuality,
   RefineCopyDto,
   GenerateNextNodeDto,
+  GenerateIdeaPreviewDto,
   GenerateNodeCandidatesDto,
 } from './dto';
 
@@ -51,6 +52,16 @@ export class CreationController {
     @Body() dto: GenerateNextNodeDto,
   ) {
     return this.creationService.generateNextNode(userId, videoId, dto);
+  }
+
+  @Post('videos/:videoId/nodes/idea-preview')
+  @Post(':videoId/nodes/idea-preview')
+  generateIdeaPreview(
+    @CurrentUser() userId: string,
+    @Param('videoId') videoId: string,
+    @Body() dto: GenerateIdeaPreviewDto,
+  ) {
+    return this.creationService.generateIdeaPreview(userId, videoId, dto);
   }
 
   @Post('videos/:videoId/nodes/expand-candidates')

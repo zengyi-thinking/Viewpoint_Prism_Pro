@@ -62,8 +62,20 @@ export function StitchPanel({ videoId, isOpen, onClose }: StitchPanelProps) {
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-      <div className="relative w-full max-w-2xl rounded-2xl bg-[var(--creation-bg-surface)] border border-[var(--creation-border-strong)] shadow-2xl overflow-hidden">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm"
+      style={{
+        writingMode: 'horizontal-tb',
+        textOrientation: 'mixed',
+      }}
+    >
+      <div
+        className="relative w-[min(92vw,56rem)] min-w-[20rem] overflow-hidden rounded-2xl border border-[var(--creation-border-strong)] bg-[var(--creation-bg-surface)] shadow-2xl"
+        style={{
+          writingMode: 'horizontal-tb',
+          textOrientation: 'mixed',
+        }}
+      >
         {/* 头部 */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-[var(--creation-border-strong)]">
           <div className="flex items-center gap-3">

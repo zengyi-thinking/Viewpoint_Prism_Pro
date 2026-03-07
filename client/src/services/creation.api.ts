@@ -79,6 +79,27 @@ export interface GenerateNextNodePayload {
   lastFramePrompt?: string;
 }
 
+export interface GenerateIdeaPreviewPayload {
+  idea: string;
+  count?: number;
+  tone?: string;
+}
+
+export interface IdeaPreviewResult {
+  title: string;
+  openingScene: string;
+  progressionBeat: string;
+  styleNotes: string;
+  confirmationChecklist: string[];
+  promptBundle: {
+    scriptSegment: string;
+    videoPrompt: string;
+    sceneFramePrompt: string;
+    firstFramePrompt: string;
+    lastFramePrompt: string;
+  };
+}
+
 export interface GenerateNodeCandidatesPayload {
   currentNodeId: string;
   idea: string;
@@ -149,6 +170,21 @@ export const creationApi = {
 
   generateNextNode: (videoId: string, payload: GenerateNextNodePayload) =>
     apiFetch(`/api/prism/creation/videos/${videoId}/nodes/next`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+
+  generateIdeaPreview: (videoId: string, payload: GenerateIdeaPreviewPayload) =>
+    apiFetch<{
+      userId: string;
+      videoId: string;
+      projectId: string;
+      mode: 'idea_preview';
+      existingNodeCount: number;
+      tone: string;
+      count: number;
+      previews: IdeaPreviewResult[];
+    }>(`/api/prism/creation/videos/${videoId}/nodes/idea-preview`, {
       method: 'POST',
       body: JSON.stringify(payload),
     }),

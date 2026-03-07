@@ -82,7 +82,13 @@ export function ScriptInput({ videoId, isOpen, onClose }: ScriptInputProps) {
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{
+        writingMode: 'horizontal-tb',
+        textOrientation: 'mixed',
+      }}
+    >
       {/* Backdrop */}
       <div
         className="absolute inset-0 bg-black/60 backdrop-blur-sm"
@@ -90,7 +96,13 @@ export function ScriptInput({ videoId, isOpen, onClose }: ScriptInputProps) {
       />
 
       {/* Modal */}
-      <div className="relative z-10 flex h-[80vh] w-[90vw] max-w-4xl flex-col rounded-2xl bg-[var(--creation-bg-surface)] border border-[var(--creation-border-strong)] shadow-2xl">
+      <div
+        className="relative z-10 flex h-[min(80vh,820px)] w-[min(92vw,72rem)] min-w-[20rem] min-h-0 flex-col overflow-hidden rounded-2xl border border-[var(--creation-border-strong)] bg-[var(--creation-bg-surface)] shadow-2xl"
+        style={{
+          writingMode: 'horizontal-tb',
+          textOrientation: 'mixed',
+        }}
+      >
         {/* Header */}
         <div className="flex items-center justify-between border-b border-[var(--creation-border-strong)] px-6 py-4">
           <div className="flex items-center gap-3">
@@ -111,9 +123,9 @@ export function ScriptInput({ videoId, isOpen, onClose }: ScriptInputProps) {
         </div>
 
         {/* Content */}
-        <div className="flex flex-1 overflow-hidden">
+        <div className="flex min-h-0 flex-1 overflow-hidden max-md:flex-col">
           {/* Left: Script Input */}
-          <div className="flex w-1/2 flex-col border-r border-[var(--creation-border-strong)] p-6">
+          <div className="flex min-w-0 flex-1 flex-col border-r border-[var(--creation-border-strong)] p-6 max-md:border-r-0 max-md:border-b">
             <label className="mb-3 text-sm font-medium text-[var(--creation-text-primary)]">
               输入完整文案
             </label>
@@ -159,7 +171,7 @@ export function ScriptInput({ videoId, isOpen, onClose }: ScriptInputProps) {
           </div>
 
           {/* Right: Preview */}
-          <div className="flex w-1/2 flex-col p-6">
+          <div className="flex min-w-0 flex-1 flex-col p-6">
             <div className="mb-3 flex items-center justify-between">
               <label className="text-sm font-medium text-[var(--creation-text-primary)]">拆分预览</label>
               {splitSegments.length > 0 && (

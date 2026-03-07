@@ -17,6 +17,7 @@ import {
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { useCreationStore, FlowNode, FlowEdge } from '@/stores/creation.store';
+import { creationApi, IdeaPreviewResult } from '@/services/creation.api';
 import { FlowNodeCard } from './FlowNodeCard';
 import { ScriptInput } from './ScriptInput';
 import { StitchPanel } from './StitchPanel';
@@ -33,12 +34,24 @@ interface CreationCanvasProps {
 }
 
 export function CreationCanvas({ videoId, onTimeClick }: CreationCanvasProps) {
+  const previewToneOptions = [
+    { value: 'cinematic', label: '电影感' },
+    { value: 'suspense', label: '悬疑' },
+    { value: 'lyrical', label: '抒情' },
+    { value: 'commercial', label: '商业化' },
+    { value: 'fantasy', label: '奇幻' },
+  ] as const;
   const [showScriptInput, setShowScriptInput] = useState(false);
   const [showStitchPanel, setShowStitchPanel] = useState(false);
   const [creationMode, setCreationMode] = useState<'quick' | 'prismflow'>('quick');
   const [quickAction, setQuickAction] = useState<'split' | 'simple'>('split');
   const [simpleIdea, setSimpleIdea] = useState('');
   const [isGeneratingNext, setIsGeneratingNext] = useState(false);
+  const [ideaPreviews, setIdeaPreviews] = useState<IdeaPreviewResult[]>([]);
+  const [selectedPreviewIndex, setSelectedPreviewIndex] = useState(0);
+  const [isGeneratingPreview, setIsGeneratingPreview] = useState(false);
+  const [previewTone, setPreviewTone] =
+    useState<(typeof previewToneOptions)[number]['value']>('cinematic');
 
   const {
     nodes: storeNodes,
@@ -159,19 +172,9 @@ export function CreationCanvas({ videoId, onTimeClick }: CreationCanvasProps) {
 
     setIsGeneratingNext(true);
     try {
-      const isFirstNode = storeNodes.length === 0;
       await generateNextNode({
         currentNodeId: fallbackNodeId,
         idea,
-        ...(isFirstNode
-          ? {
-              scriptSegment: `故事开场：${idea}`,
-              videoPrompt: `${idea}，电影感镜头，16:9，主体清晰，光线明确`,
-              sceneFramePrompt: `${idea}，关键画面帧，构图稳定，16:9`,
-              firstFramePrompt: `${idea}，开场首帧，电影感构图，16:9`,
-              lastFramePrompt: `${idea}，结尾尾帧，情绪收束，16:9`,
-            }
-          : {}),
       });
       setSimpleIdea('');
     } catch (error) {
@@ -181,7 +184,52 @@ export function CreationCanvas({ videoId, onTimeClick }: CreationCanvasProps) {
     }
   }, [simpleIdea, selectedNodeId, storeNodes, generateNextNode]);
 
+  const handleGenerateIdeaPreview = useCallback(async () => {
+    const idea = simpleIdea.trim();
+    if (!idea) {
+      window.alert('请输入 idea 后再生成故事预览');
+      return;
+    }
+
+    setIsGeneratingPreview(true);
+    try {
+      const response = await creationApi.generateIdeaPreview(videoId, {
+        idea,
+        count: 3,
+        tone: previewTone,
+      });
+      setIdeaPreviews(response.previews || []);
+      setSelectedPreviewIndex(0);
+    } catch (error) {
+      console.error('Failed to generate idea preview:', error);
+    } finally {
+      setIsGeneratingPreview(false);
+    }
+  }, [previewTone, simpleIdea, videoId]);
+
+  const handleCreateFirstNodeFromPreview = useCallback(async () => {
+    const idea = simpleIdea.trim();
+    const selectedPreview = ideaPreviews[selectedPreviewIndex];
+    if (!idea || !selectedPreview) return;
+
+    setIsGeneratingNext(true);
+    try {
+      await generateNextNode({
+        idea,
+        ...selectedPreview.promptBundle,
+      });
+      setSimpleIdea('');
+      setIdeaPreviews([]);
+      setSelectedPreviewIndex(0);
+    } catch (error) {
+      console.error('Failed to create first node from preview:', error);
+    } finally {
+      setIsGeneratingNext(false);
+    }
+  }, [generateNextNode, ideaPreviews, selectedPreviewIndex, simpleIdea]);
+
   const hasNodes = storeNodes.length > 0;
+  const selectedPreview = ideaPreviews[selectedPreviewIndex] || null;
   const modeHint =
     creationMode === 'quick'
       ? quickAction === 'split'
@@ -353,27 +401,153 @@ export function CreationCanvas({ videoId, onTimeClick }: CreationCanvasProps) {
                 <div className="flex flex-wrap items-center gap-2 rounded-xl border border-[var(--creation-border-strong)] bg-[var(--creation-bg-elevated)] px-2 py-1.5">
                   <input
                     value={simpleIdea}
-                    onChange={(e) => setSimpleIdea(e.target.value)}
+                    onChange={(e) => {
+                      setSimpleIdea(e.target.value);
+                      if (!hasNodes && ideaPreviews.length > 0) {
+                        setIdeaPreviews([]);
+                        setSelectedPreviewIndex(0);
+                      }
+                    }}
                     placeholder={
                       hasNodes
                         ? selectedNodeId
                           ? '基于当前选中节点，输入续写 idea...'
                           : '输入 idea（将接在最后一个节点后）...'
-                        : '输入故事开场 idea（将生成第一张完整节点卡）...'
+                        : '输入故事开场 idea（先生成预览，确认后再创建首节点）...'
                     }
                     className="w-[340px] rounded-md border border-[var(--creation-border-strong)] bg-[var(--creation-bg-canvas)] px-2 py-1.5 text-xs text-white outline-none focus:border-[#E91E8C]"
                   />
                   <button
-                    onClick={handleGenerateNextNode}
-                    disabled={isGeneratingNext || !simpleIdea.trim()}
+                    onClick={hasNodes ? handleGenerateNextNode : handleGenerateIdeaPreview}
+                    disabled={(hasNodes ? isGeneratingNext : isGeneratingPreview) || !simpleIdea.trim()}
                     className="flex items-center gap-1 rounded-lg bg-[var(--creation-accent)] px-3 py-1.5 text-xs font-medium text-white transition hover:bg-[var(--creation-accent-hover)] disabled:opacity-50"
                   >
-                    {isGeneratingNext ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Wand2 className="h-3.5 w-3.5" />}
-                    {hasNodes ? 'AI 续写下一节点' : 'AI 生成首节点'}
+                    {(hasNodes ? isGeneratingNext : isGeneratingPreview) ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Wand2 className="h-3.5 w-3.5" />}
+                    {hasNodes ? 'AI 续写下一节点' : 'AI 生成故事预览'}
                   </button>
                 </div>
               )}
             </div>
+
+            {!hasNodes && quickAction === 'simple' ? (
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <span className="text-[11px] text-[var(--creation-text-muted)]">预览调性</span>
+                {previewToneOptions.map((option) => (
+                  <button
+                    key={option.value}
+                    onClick={() => setPreviewTone(option.value)}
+                    className={[
+                      'rounded-full px-3 py-1 text-xs transition',
+                      previewTone === option.value
+                        ? 'bg-[var(--creation-accent)] text-white'
+                        : 'border border-[var(--creation-border-strong)] text-[var(--creation-text-secondary)] hover:text-white',
+                    ].join(' ')}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+            ) : null}
+
+            {!hasNodes && ideaPreviews.length > 0 && selectedPreview ? (
+              <div className="mt-3 rounded-2xl border border-[var(--creation-border-strong)] bg-[var(--creation-bg-elevated)] p-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <div className="text-xs uppercase tracking-[0.16em] text-[var(--creation-text-muted)]">Story Preview</div>
+                    <h4 className="mt-1 text-base font-semibold text-white">{selectedPreview.title}</h4>
+                    <p className="mt-1 text-xs leading-5 text-[var(--creation-text-secondary)]">
+                      这里先给你看 3 个故事开场方向。先挑方向，再真正落第一节点。
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => {
+                        setIdeaPreviews([]);
+                        setSelectedPreviewIndex(0);
+                      }}
+                      className="rounded-lg border border-[var(--creation-border-strong)] px-3 py-1.5 text-xs text-[var(--creation-text-secondary)] transition hover:text-white"
+                    >
+                      重新想想
+                    </button>
+                    <button
+                      onClick={handleGenerateIdeaPreview}
+                      disabled={isGeneratingPreview}
+                      className="rounded-lg border border-[var(--creation-border-strong)] px-3 py-1.5 text-xs text-[var(--creation-text-secondary)] transition hover:text-white disabled:opacity-50"
+                    >
+                      {isGeneratingPreview ? '重想中...' : '再来 3 个方向'}
+                    </button>
+                    <button
+                      onClick={handleCreateFirstNodeFromPreview}
+                      disabled={isGeneratingNext}
+                      className="rounded-lg bg-[var(--creation-accent)] px-3 py-1.5 text-xs font-medium text-white transition hover:bg-[var(--creation-accent-hover)] disabled:opacity-50"
+                    >
+                      {isGeneratingNext ? '创建中...' : '确认并创建首节点'}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="mt-4 grid gap-3 lg:grid-cols-3">
+                  {ideaPreviews.map((preview, index) => {
+                    const isActive = index === selectedPreviewIndex;
+                    return (
+                      <button
+                        key={`${preview.title}-${index}`}
+                        onClick={() => setSelectedPreviewIndex(index)}
+                        className={[
+                          'rounded-xl border p-3 text-left transition',
+                          isActive
+                            ? 'border-[var(--creation-accent)] bg-[var(--creation-bg-canvas)] shadow-lg shadow-[var(--creation-accent)]/10'
+                            : 'border-[var(--creation-border-strong)] bg-[var(--creation-bg-canvas)]/80 hover:border-[var(--creation-border-hover)]',
+                        ].join(' ')}
+                      >
+                        <div className="text-[11px] uppercase tracking-[0.16em] text-[var(--creation-text-muted)]">
+                          方向 {index + 1}
+                        </div>
+                        <div className="mt-1 text-sm font-semibold text-white">{preview.title}</div>
+                        <p className="mt-2 line-clamp-4 text-xs leading-5 text-[var(--creation-text-secondary)]">
+                          {preview.openingScene}
+                        </p>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <div className="mt-4 grid gap-3 lg:grid-cols-[1.1fr_1fr]">
+                  <div className="space-y-3">
+                    <div className="rounded-xl border border-[var(--creation-border-strong)] bg-[var(--creation-bg-canvas)] p-3">
+                      <div className="text-xs font-medium text-[var(--creation-text-muted)]">故事开场场景</div>
+                      <p className="mt-1 text-sm leading-6 text-white">{selectedPreview.openingScene}</p>
+                    </div>
+                    <div className="rounded-xl border border-[var(--creation-border-strong)] bg-[var(--creation-bg-canvas)] p-3">
+                      <div className="text-xs font-medium text-[var(--creation-text-muted)]">推进节点价值</div>
+                      <p className="mt-1 text-sm leading-6 text-white">{selectedPreview.progressionBeat}</p>
+                    </div>
+                    <div className="rounded-xl border border-[var(--creation-border-strong)] bg-[var(--creation-bg-canvas)] p-3">
+                      <div className="text-xs font-medium text-[var(--creation-text-muted)]">导演提示</div>
+                      <p className="mt-1 text-sm leading-6 text-white">{selectedPreview.styleNotes}</p>
+                    </div>
+                  </div>
+
+                  <div className="space-y-3">
+                    <div className="rounded-xl border border-[var(--creation-border-strong)] bg-[var(--creation-bg-canvas)] p-3">
+                      <div className="text-xs font-medium text-[var(--creation-text-muted)]">首节点文案草稿</div>
+                      <p className="mt-1 text-sm leading-6 text-white">{selectedPreview.promptBundle.scriptSegment}</p>
+                    </div>
+                    <div className="rounded-xl border border-[var(--creation-border-strong)] bg-[var(--creation-bg-canvas)] p-3">
+                      <div className="text-xs font-medium text-[var(--creation-text-muted)]">确认清单</div>
+                      <ul className="mt-1 space-y-1.5 text-sm leading-6 text-white">
+                        {selectedPreview.confirmationChecklist.map((item, index) => (
+                          <li key={`${item}-${index}`} className="flex gap-2">
+                            <span className="text-[var(--creation-accent)]">•</span>
+                            <span>{item}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : null}
           </div>
         ) : (
           <div className="rounded-2xl border border-[var(--creation-border-strong)] bg-[var(--creation-bg-overlay)]/92 p-3 backdrop-blur-sm">

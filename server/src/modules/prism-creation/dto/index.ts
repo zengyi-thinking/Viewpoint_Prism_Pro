@@ -224,6 +224,21 @@ export class GenerateNextNodeDto {
   lastFramePrompt?: string;
 }
 
+export class GenerateIdeaPreviewDto {
+  @IsString()
+  idea: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(1)
+  count?: number;
+
+  @IsOptional()
+  @IsString()
+  tone?: string;
+}
+
 export class GenerateNodeCandidatesDto {
   @IsString()
   currentNodeId: string;

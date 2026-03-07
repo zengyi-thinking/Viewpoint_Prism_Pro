@@ -28,6 +28,7 @@ import {
   FrameType,
   RefineCopyDto,
   GenerateNextNodeDto,
+  GenerateIdeaPreviewDto,
   GenerateNodeCandidatesDto,
 } from './dto';
 
@@ -37,6 +38,15 @@ type PromptBundle = {
   sceneFramePrompt: string;
   firstFramePrompt: string;
   lastFramePrompt: string;
+};
+
+type FirstNodeIdeaPreview = {
+  title: string;
+  openingScene: string;
+  progressionBeat: string;
+  styleNotes: string;
+  confirmationChecklist: string[];
+  promptBundle: PromptBundle;
 };
 
 @Injectable()
@@ -453,6 +463,33 @@ ${adjustContext}
       sourceNodeId: currentNode?.id ?? null,
       node: this.toNodeDto(node),
       promptBundle: generated,
+    };
+  }
+
+  async generateIdeaPreview(userId: string, videoId: string, dto: GenerateIdeaPreviewDto) {
+    const project = await this.getOrCreateProject(userId, videoId);
+    const idea = dto.idea?.trim();
+    if (!idea) {
+      throw new BadRequestException('idea is required');
+    }
+    const count = Math.max(1, Math.min(4, Number(dto.count || 3)));
+    const tone = dto.tone?.trim() || 'cinematic';
+
+    const existingNodeCount = await this.prisma.flowNode.count({
+      where: { flowProjectId: project.id },
+    });
+
+    const previews = await this.generateFirstNodePreviewCandidatesWithLLM(userId, idea, count, tone);
+
+    return {
+      userId,
+      videoId,
+      projectId: project.id,
+      mode: 'idea_preview',
+      existingNodeCount,
+      tone,
+      count,
+      previews,
     };
   }
 
@@ -1593,6 +1630,131 @@ ${adjustContext}
         `Generate next node fallback: ${error?.message || 'unknown error'}`,
       );
       return fallback;
+    }
+  }
+
+  private async generateFirstNodePreviewCandidatesWithLLM(
+    userId: string,
+    idea: string,
+    count: number,
+    tone: string,
+  ): Promise<FirstNodeIdeaPreview[]> {
+    const fallbackPromptBundle = this.normalizePromptBundle({}, idea, null);
+    const buildFallback = (variantIndex: number): FirstNodeIdeaPreview => ({
+      title: `方向 ${variantIndex + 1}：${idea.slice(0, 20)}`,
+      openingScene: `以“${idea}”为核心概念，从${this.describePreviewTone(tone)}的角度建立世界观、人物气质与视觉母题，作为第一镜头的开场场景。`,
+      progressionBeat: `第一节点负责开场并埋下推进钩子，方向 ${variantIndex + 1} 会把后续故事引向不同节奏的冲突、探索或任务展开。`,
+      styleNotes: `调性偏向 ${tone}。不要复述用户原句，要把 idea 转译成可拍摄的故事开场。`,
+      confirmationChecklist: [
+        '这个开场气质是否符合你想要的作品调性？',
+        '第一节点是否既承担开场，又埋下后续推进钩子？',
+        '如果认可这个方向，再创建首节点。',
+      ],
+      promptBundle: {
+        ...fallbackPromptBundle,
+        scriptSegment: `方向${variantIndex + 1}：${fallbackPromptBundle.scriptSegment}`,
+      },
+    });
+    const fallbackList = Array.from({ length: count }, (_, index) => buildFallback(index));
+
+    try {
+      const response = await this.aiRouter.execute(
+        AITaskType.LLM_CHAT,
+        {
+          messages: [
+            {
+              role: 'system',
+              content: [
+                '你是视频故事开发导演，不要简单复述用户 idea。',
+                '你的任务是先把 idea 转译成多个“故事开场预览”，让用户先看方向，再决定是否创建第一个节点。',
+                '只返回 JSON 数组，不要 markdown，不要代码块。',
+                '数组长度必须等于用户要求的 count。',
+                '每个数组元素都必须包含字段：title, openingScene, progressionBeat, styleNotes, confirmationChecklist, scriptSegment, videoPrompt, sceneFramePrompt, firstFramePrompt, lastFramePrompt。',
+                '要求：',
+                '1. openingScene 必须是一个可视化的故事开场场景，不是复述用户原句。',
+                '2. progressionBeat 必须说明第一节点之后故事将如何推进，体现“进度节点/推进节点”价值。',
+                '3. scriptSegment 必须是第一节点的正式文案，承担“开场 + 埋钩子”的功能。',
+                '4. 所有提示词必须是高质量中文，可直接用于生成画面。',
+                '5. confirmationChecklist 必须是长度 3 的字符串数组，用于提示用户确认口味。',
+                '6. 不同数组元素必须体现明显不同的方向，而不是改几个词。',
+                `7. 当前调性偏好是：${tone}。`,
+              ].join('\n'),
+            },
+            {
+              role: 'user',
+              content: JSON.stringify(
+                {
+                  task: '为快速模式生成多个首节点故事预览',
+                  idea,
+                  count,
+                  tone,
+                  requirement: '先给预览，再让用户确认；不要直接创建节点；不要简单复制用户原话。',
+                },
+                null,
+                2,
+              ),
+            },
+          ],
+          temperature: 0.85,
+          maxTokens: 2200,
+        },
+        userId,
+      );
+
+      const content =
+        (response as any)?.choices?.[0]?.message?.content ??
+        (response as any)?.content ??
+        '';
+
+      const parsed = this.parseJsonLoose(content);
+      if (!Array.isArray(parsed) || parsed.length === 0) {
+        return fallbackList;
+      }
+
+      const normalized = parsed
+        .slice(0, count)
+        .map((item: any, index: number) => {
+          const promptBundle = this.normalizePromptBundle(item, idea, null);
+          const checklist = Array.isArray(item?.confirmationChecklist)
+            ? item.confirmationChecklist
+                .map((entry: unknown) => String(entry || '').trim())
+                .filter(Boolean)
+                .slice(0, 3)
+            : [];
+          const fallback = fallbackList[index] || buildFallback(index);
+
+          return {
+            title: String(item?.title || fallback.title).trim(),
+            openingScene: String(item?.openingScene || fallback.openingScene).trim(),
+            progressionBeat: String(item?.progressionBeat || fallback.progressionBeat).trim(),
+            styleNotes: String(item?.styleNotes || fallback.styleNotes).trim(),
+            confirmationChecklist: checklist.length ? checklist : fallback.confirmationChecklist,
+            promptBundle,
+          };
+        })
+        .filter((item) => Boolean(item.title && item.promptBundle.scriptSegment));
+
+      return normalized.length ? normalized : fallbackList;
+    } catch (error: any) {
+      this.logger.warn(
+        `Generate first node preview fallback: ${error?.message || 'unknown error'}`,
+      );
+      return fallbackList;
+    }
+  }
+
+  private describePreviewTone(tone: string) {
+    switch (tone) {
+      case 'suspense':
+        return '更偏悬疑、压迫和留白';
+      case 'lyrical':
+        return '更偏抒情、细腻和情绪流动';
+      case 'commercial':
+        return '更偏强钩子、信息密度高和传播感';
+      case 'fantasy':
+        return '更偏奇观、幻想和世界构建';
+      default:
+        return '更偏电影感和叙事镜头';
     }
   }
 
