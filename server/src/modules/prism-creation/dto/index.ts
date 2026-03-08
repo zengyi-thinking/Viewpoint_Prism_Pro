@@ -326,3 +326,5 @@ export class RenderNodeDto {
   @IsString()
   lastFramePrompt?: string;
 }
+
+export * from './knowledge-asset.dto';

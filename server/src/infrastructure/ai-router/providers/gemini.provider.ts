@@ -79,6 +79,7 @@ export class GeminiProvider extends BaseProvider {
         messages && messages.length > 0 ? messages : [{ role: 'user', content: prompt || 'Hello' }],
       temperature,
       max_tokens: maxTokens,
+      ...(payload?.response_format ? { response_format: payload.response_format } : {}),
     });
 
     const text = response.choices?.[0]?.message?.content || '';

@@ -120,6 +120,11 @@ export class SeedanceProvider extends BaseProvider {
     if (typeof payload?.top_p === 'number') {
       requestBody.top_p = payload.top_p;
     }
+    if (payload?.response_format) {
+      requestBody.response_format = payload.response_format;
+    } else if (payload?.responseFormat) {
+      requestBody.response_format = payload.responseFormat;
+    }
 
     this.logger.log(`Calling SiliconFlow chat API, model=${model}, messages=${messages.length}`);
 

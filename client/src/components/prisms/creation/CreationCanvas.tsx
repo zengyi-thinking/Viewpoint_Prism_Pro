@@ -21,12 +21,90 @@ import { creationApi, IdeaPreviewResult } from '@/services/creation.api';
 import { FlowNodeCard } from './FlowNodeCard';
 import { ScriptInput } from './ScriptInput';
 import { StitchPanel } from './StitchPanel';
-import { Plus, Loader2, AlertTriangle, Sparkles, Film, Clapperboard, Wand2 } from 'lucide-react';
+import {
+  Plus,
+  Loader2,
+  AlertTriangle,
+  Sparkles,
+  Film,
+  Clapperboard,
+  Wand2,
+  Camera,
+  ShieldAlert,
+  Palette,
+  CloudRain,
+  Zap,
+  Flame,
+  Crosshair,
+} from 'lucide-react';
 
 // 定义自定义节点类型
 const nodeTypes: any = {
   flowNodeCard: FlowNodeCard,
 };
+
+const settingPresets = [
+  '赛博朋克九龙城寨',
+  '荒废轨道站',
+  '暴雨海港',
+  '地下拳馆',
+  '极寒雪原基地',
+  '高空玻璃都市',
+] as const;
+
+const stylePresets = [
+  '极度压抑',
+  '霓虹高反差',
+  '废土机甲风',
+  '黑金史诗感',
+  '冷白实验室',
+  '高饱和漫画感',
+] as const;
+
+const spicePresets = [
+  { label: '增加爆炸', icon: Flame, value: '增加爆炸与碎片冲击' },
+  { label: '改变天气', icon: CloudRain, value: '加入极端天气变化' },
+  { label: '慢动作强化', icon: Zap, value: '强化慢动作和速度反差' },
+  { label: '压迫构图', icon: Crosshair, value: '提升压迫式构图和贴脸镜头' },
+] as const;
+
+function cn(...parts: Array<string | false | null | undefined>) {
+  return parts.filter(Boolean).join(' ');
+}
+
+function composeIdeaFromBoard(input: {
+  freeText: string;
+  conflict: string;
+  setting: string;
+  style: string;
+  cameraScale: number;
+  spice: string[];
+}) {
+  const blocks = [
+    input.freeText.trim(),
+    input.conflict.trim() ? `核心冲突：${input.conflict.trim()}` : '',
+    input.setting.trim() ? `场景设定：${input.setting.trim()}` : '',
+    input.style.trim() ? `视觉风格：${input.style.trim()}` : '',
+    `镜头尺度：${input.cameraScale <= 33 ? '宏大远景' : input.cameraScale <= 66 ? '中景推进' : '极近特写'}`,
+    input.spice.length ? `强化元素：${input.spice.join('、')}` : '',
+  ].filter(Boolean);
+  return blocks.join('\n');
+}
+
+function buildPreviewAlias(index: number, preview: IdeaPreviewResult) {
+  const prefixes = ['Take 1', 'Take 2', 'Take 3', 'Take 4'];
+  const title = String(preview.title || '').trim();
+  return `${prefixes[index] || `Take ${index + 1}`}: ${title || `方向 ${index + 1}`}`;
+}
+
+function extractPreviewChips(preview: IdeaPreviewResult) {
+  const chips = [
+    `🎥 ${preview.progressionBeat?.slice(0, 10) || '镜头推进'}`,
+    `💡 ${preview.styleNotes?.slice(0, 10) || '风格控制'}`,
+    `⏱️ ${preview.openingScene?.length > 20 ? '信息密度高' : '快速切入'}`,
+  ];
+  return chips.slice(0, 3);
+}
 
 interface CreationCanvasProps {
   videoId: string;
@@ -46,6 +124,11 @@ export function CreationCanvas({ videoId, onTimeClick }: CreationCanvasProps) {
   const [creationMode, setCreationMode] = useState<'quick' | 'prismflow'>('quick');
   const [quickAction, setQuickAction] = useState<'split' | 'simple'>('split');
   const [simpleIdea, setSimpleIdea] = useState('');
+  const [ideaConflict, setIdeaConflict] = useState('');
+  const [ideaSetting, setIdeaSetting] = useState('赛博朋克九龙城寨');
+  const [ideaStyle, setIdeaStyle] = useState('霓虹高反差');
+  const [ideaCameraScale, setIdeaCameraScale] = useState(58);
+  const [ideaSpices, setIdeaSpices] = useState<string[]>([]);
   const [isGeneratingNext, setIsGeneratingNext] = useState(false);
   const [ideaPreviews, setIdeaPreviews] = useState<IdeaPreviewResult[]>([]);
   const [selectedPreviewIndex, setSelectedPreviewIndex] = useState(0);
@@ -153,7 +236,14 @@ export function CreationCanvas({ videoId, onTimeClick }: CreationCanvasProps) {
   }, [createNode, storeNodes.length]);
 
   const handleGenerateNextNode = useCallback(async () => {
-    const idea = simpleIdea.trim();
+    const idea = composeIdeaFromBoard({
+      freeText: simpleIdea,
+      conflict: ideaConflict,
+      setting: ideaSetting,
+      style: ideaStyle,
+      cameraScale: ideaCameraScale,
+      spice: ideaSpices,
+    }).trim();
     if (!idea) {
       window.alert('请输入 idea 后再生成下一节点');
       return;
@@ -182,10 +272,27 @@ export function CreationCanvas({ videoId, onTimeClick }: CreationCanvasProps) {
     } finally {
       setIsGeneratingNext(false);
     }
-  }, [simpleIdea, selectedNodeId, storeNodes, generateNextNode]);
+  }, [
+    simpleIdea,
+    ideaConflict,
+    ideaSetting,
+    ideaStyle,
+    ideaCameraScale,
+    ideaSpices,
+    selectedNodeId,
+    storeNodes,
+    generateNextNode,
+  ]);
 
   const handleGenerateIdeaPreview = useCallback(async () => {
-    const idea = simpleIdea.trim();
+    const idea = composeIdeaFromBoard({
+      freeText: simpleIdea,
+      conflict: ideaConflict,
+      setting: ideaSetting,
+      style: ideaStyle,
+      cameraScale: ideaCameraScale,
+      spice: ideaSpices,
+    }).trim();
     if (!idea) {
       window.alert('请输入 idea 后再生成故事预览');
       return;
@@ -205,10 +312,17 @@ export function CreationCanvas({ videoId, onTimeClick }: CreationCanvasProps) {
     } finally {
       setIsGeneratingPreview(false);
     }
-  }, [previewTone, simpleIdea, videoId]);
+  }, [previewTone, simpleIdea, ideaConflict, ideaSetting, ideaStyle, ideaCameraScale, ideaSpices, videoId]);
 
   const handleCreateFirstNodeFromPreview = useCallback(async () => {
-    const idea = simpleIdea.trim();
+    const idea = composeIdeaFromBoard({
+      freeText: simpleIdea,
+      conflict: ideaConflict,
+      setting: ideaSetting,
+      style: ideaStyle,
+      cameraScale: ideaCameraScale,
+      spice: ideaSpices,
+    }).trim();
     const selectedPreview = ideaPreviews[selectedPreviewIndex];
     if (!idea || !selectedPreview) return;
 
@@ -219,14 +333,32 @@ export function CreationCanvas({ videoId, onTimeClick }: CreationCanvasProps) {
         ...selectedPreview.promptBundle,
       });
       setSimpleIdea('');
+      setIdeaConflict('');
       setIdeaPreviews([]);
       setSelectedPreviewIndex(0);
+      setCreationMode('prismflow');
     } catch (error) {
       console.error('Failed to create first node from preview:', error);
     } finally {
       setIsGeneratingNext(false);
     }
-  }, [generateNextNode, ideaPreviews, selectedPreviewIndex, simpleIdea]);
+  }, [
+    generateNextNode,
+    ideaPreviews,
+    selectedPreviewIndex,
+    simpleIdea,
+    ideaConflict,
+    ideaSetting,
+    ideaStyle,
+    ideaCameraScale,
+    ideaSpices,
+  ]);
+
+  const toggleSpice = useCallback((value: string) => {
+    setIdeaSpices((current) =>
+      current.includes(value) ? current.filter((item) => item !== value) : [...current, value],
+    );
+  }, []);
 
   const hasNodes = storeNodes.length > 0;
   const selectedPreview = ideaPreviews[selectedPreviewIndex] || null;
@@ -315,7 +447,7 @@ export function CreationCanvas({ videoId, onTimeClick }: CreationCanvasProps) {
         />
       </ReactFlow>
 
-      <div className="absolute top-4 left-4 z-10 flex max-w-[760px] flex-col gap-3">
+      <div className="absolute top-4 left-4 bottom-4 z-10 flex w-[min(760px,calc(100%-2rem))] max-w-[760px] flex-col gap-3 overflow-y-auto pr-2">
         <div className="rounded-2xl border border-[var(--creation-border-strong)] bg-[var(--creation-bg-overlay)]/92 p-3 backdrop-blur-sm">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
@@ -398,33 +530,156 @@ export function CreationCanvas({ videoId, onTimeClick }: CreationCanvasProps) {
                   AI 文案拆分
                 </button>
               ) : (
-                <div className="flex flex-wrap items-center gap-2 rounded-xl border border-[var(--creation-border-strong)] bg-[var(--creation-bg-elevated)] px-2 py-1.5">
-                  <input
-                    value={simpleIdea}
-                    onChange={(e) => {
-                      setSimpleIdea(e.target.value);
-                      if (!hasNodes && ideaPreviews.length > 0) {
-                        setIdeaPreviews([]);
-                        setSelectedPreviewIndex(0);
-                      }
-                    }}
-                    placeholder={
-                      hasNodes
-                        ? selectedNodeId
-                          ? '基于当前选中节点，输入续写 idea...'
-                          : '输入 idea（将接在最后一个节点后）...'
-                        : '输入故事开场 idea（先生成预览，确认后再创建首节点）...'
-                    }
-                    className="w-[340px] rounded-md border border-[var(--creation-border-strong)] bg-[var(--creation-bg-canvas)] px-2 py-1.5 text-xs text-white outline-none focus:border-[#E91E8C]"
-                  />
-                  <button
-                    onClick={hasNodes ? handleGenerateNextNode : handleGenerateIdeaPreview}
-                    disabled={(hasNodes ? isGeneratingNext : isGeneratingPreview) || !simpleIdea.trim()}
-                    className="flex items-center gap-1 rounded-lg bg-[var(--creation-accent)] px-3 py-1.5 text-xs font-medium text-white transition hover:bg-[var(--creation-accent-hover)] disabled:opacity-50"
-                  >
-                    {(hasNodes ? isGeneratingNext : isGeneratingPreview) ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Wand2 className="h-3.5 w-3.5" />}
-                    {hasNodes ? 'AI 续写下一节点' : 'AI 生成故事预览'}
-                  </button>
+                <div className="rounded-2xl border border-[var(--creation-border-strong)] bg-[linear-gradient(180deg,rgba(255,255,255,0.05),rgba(255,255,255,0.02))] p-3">
+                  <div className="flex items-center gap-2 border-b border-[var(--creation-border-strong)] pb-3">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[var(--creation-accent)]/15 text-[var(--creation-accent)]">
+                      <Clapperboard className="h-5 w-5" />
+                    </div>
+                    <div>
+                      <div className="text-xs uppercase tracking-[0.16em] text-[var(--creation-text-muted)]">Clapperboard Input</div>
+                      <div className="text-sm font-semibold text-white">场记打板式灵感输入</div>
+                    </div>
+                  </div>
+
+                  <div className="mt-3 grid gap-3 lg:grid-cols-[1.2fr_0.9fr]">
+                    <div className="space-y-3">
+                      <label className="block rounded-xl border border-[var(--creation-border-strong)] bg-[var(--creation-bg-canvas)] px-3 py-3">
+                        <div className="text-[11px] font-medium text-[var(--creation-text-muted)]">自由想法</div>
+                        <textarea
+                          value={simpleIdea}
+                          onChange={(e) => {
+                            setSimpleIdea(e.target.value);
+                            if (!hasNodes && ideaPreviews.length > 0) {
+                              setIdeaPreviews([]);
+                              setSelectedPreviewIndex(0);
+                            }
+                          }}
+                          rows={2}
+                          placeholder={
+                            hasNodes
+                              ? '例如：让这场冲突升级，并把镜头推进到致命一击前...'
+                              : '例如：我想拍一场中国功夫与西方剑术在赛博雨夜中的对决...'
+                          }
+                          className="mt-2 w-full resize-none bg-transparent text-sm leading-6 text-white outline-none placeholder:text-[var(--creation-text-muted)]"
+                        />
+                      </label>
+
+                      <div className="grid gap-3 md:grid-cols-3">
+                        <label className="rounded-xl border border-[var(--creation-border-strong)] bg-[var(--creation-bg-canvas)] px-3 py-3">
+                          <div className="text-[11px] font-medium text-[var(--creation-text-muted)]">核心冲突</div>
+                          <input
+                            value={ideaConflict}
+                            onChange={(e) => setIdeaConflict(e.target.value)}
+                            placeholder="功夫与剑术的对决"
+                            className="mt-2 w-full bg-transparent text-sm text-white outline-none placeholder:text-[var(--creation-text-muted)]"
+                          />
+                        </label>
+
+                        <label className="rounded-xl border border-[var(--creation-border-strong)] bg-[var(--creation-bg-canvas)] px-3 py-3">
+                          <div className="text-[11px] font-medium text-[var(--creation-text-muted)]">场景设定</div>
+                          <select
+                            value={ideaSetting}
+                            onChange={(e) => setIdeaSetting(e.target.value)}
+                            className="mt-2 w-full bg-transparent text-sm text-white outline-none"
+                          >
+                            {settingPresets.map((item) => (
+                              <option key={item} value={item} className="bg-[#111318] text-white">
+                                {item}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+
+                        <label className="rounded-xl border border-[var(--creation-border-strong)] bg-[var(--creation-bg-canvas)] px-3 py-3">
+                          <div className="text-[11px] font-medium text-[var(--creation-text-muted)]">视觉风格</div>
+                          <select
+                            value={ideaStyle}
+                            onChange={(e) => setIdeaStyle(e.target.value)}
+                            className="mt-2 w-full bg-transparent text-sm text-white outline-none"
+                          >
+                            {stylePresets.map((item) => (
+                              <option key={item} value={item} className="bg-[#111318] text-white">
+                                {item}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      </div>
+                    </div>
+
+                    <div className="rounded-xl border border-[var(--creation-border-strong)] bg-[var(--creation-bg-canvas)] px-3 py-3">
+                      <div className="flex items-center gap-2 text-[11px] font-medium text-[var(--creation-text-muted)]">
+                        <Camera className="h-3.5 w-3.5" />
+                        导演预设
+                      </div>
+                      <div className="mt-3">
+                        <div className="flex items-center justify-between text-xs text-[var(--creation-text-secondary)]">
+                          <span>镜头尺度</span>
+                          <span>{ideaCameraScale <= 33 ? '宏大远景' : ideaCameraScale <= 66 ? '中景推进' : '极近特写'}</span>
+                        </div>
+                        <input
+                          type="range"
+                          min={0}
+                          max={100}
+                          value={ideaCameraScale}
+                          onChange={(e) => setIdeaCameraScale(Number(e.target.value))}
+                          className="mt-2 w-full accent-[var(--creation-accent)]"
+                        />
+                      </div>
+                      <div className="mt-4">
+                        <div className="flex items-center gap-2 text-xs text-[var(--creation-text-secondary)]">
+                          <ShieldAlert className="h-3.5 w-3.5" />
+                          加点料
+                        </div>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {spicePresets.map((item) => {
+                            const active = ideaSpices.includes(item.value);
+                            const Icon = item.icon;
+                            return (
+                              <button
+                                key={item.value}
+                                onClick={() => toggleSpice(item.value)}
+                                className={cn(
+                                  'flex items-center gap-1 rounded-full border px-2.5 py-1.5 text-[11px] transition',
+                                  active
+                                    ? 'border-[var(--creation-accent)] bg-[var(--creation-accent)]/15 text-white'
+                                    : 'border-[var(--creation-border-strong)] text-[var(--creation-text-secondary)] hover:text-white',
+                                )}
+                              >
+                                <Icon className="h-3 w-3" />
+                                {item.label}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                    <button
+                      onClick={hasNodes ? handleGenerateNextNode : handleGenerateIdeaPreview}
+                      disabled={(hasNodes ? isGeneratingNext : isGeneratingPreview) || !composeIdeaFromBoard({
+                        freeText: simpleIdea,
+                        conflict: ideaConflict,
+                        setting: ideaSetting,
+                        style: ideaStyle,
+                        cameraScale: ideaCameraScale,
+                        spice: ideaSpices,
+                      }).trim()}
+                      className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-[var(--creation-accent)] to-[var(--creation-accent-hover)] px-4 py-2 text-sm font-medium text-white shadow-lg shadow-[var(--creation-accent)]/25 transition hover:opacity-90 disabled:opacity-50"
+                    >
+                      {(hasNodes ? isGeneratingNext : isGeneratingPreview) ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Wand2 className="h-4 w-4" />
+                      )}
+                      {hasNodes ? '推演下一镜' : '生成分镜墙'}
+                    </button>
+                    <div className="rounded-lg border border-[var(--creation-border-strong)] bg-[var(--creation-bg-canvas)] px-3 py-2 text-[11px] leading-5 text-[var(--creation-text-secondary)]">
+                      系统将自动组合冲突、场景、风格、镜头尺度与强化元素，再交给后端 StoryPlanner / ShotDesigner 生成预览。
+                    </div>
+                  </div>
                 </div>
               )}
             </div>
@@ -453,10 +708,10 @@ export function CreationCanvas({ videoId, onTimeClick }: CreationCanvasProps) {
               <div className="mt-3 rounded-2xl border border-[var(--creation-border-strong)] bg-[var(--creation-bg-elevated)] p-4">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
-                    <div className="text-xs uppercase tracking-[0.16em] text-[var(--creation-text-muted)]">Story Preview</div>
-                    <h4 className="mt-1 text-base font-semibold text-white">{selectedPreview.title}</h4>
+                    <div className="text-xs uppercase tracking-[0.16em] text-[var(--creation-text-muted)]">Storyboard View</div>
+                    <h4 className="mt-1 text-base font-semibold text-white">分镜墙</h4>
                     <p className="mt-1 text-xs leading-5 text-[var(--creation-text-secondary)]">
-                      这里先给你看 3 个故事开场方向。先挑方向，再真正落第一节点。
+                      先看不同开场方向，再确认第一镜。确认后会直接落到时间轴/画布里成为节点 1。
                     </p>
                   </div>
                   <div className="flex items-center gap-2">
@@ -489,53 +744,139 @@ export function CreationCanvas({ videoId, onTimeClick }: CreationCanvasProps) {
                 <div className="mt-4 grid gap-3 lg:grid-cols-3">
                   {ideaPreviews.map((preview, index) => {
                     const isActive = index === selectedPreviewIndex;
+                    const chips = extractPreviewChips(preview);
                     return (
                       <button
                         key={`${preview.title}-${index}`}
                         onClick={() => setSelectedPreviewIndex(index)}
                         className={[
-                          'rounded-xl border p-3 text-left transition',
+                          'rounded-2xl border p-4 text-left transition',
                           isActive
-                            ? 'border-[var(--creation-accent)] bg-[var(--creation-bg-canvas)] shadow-lg shadow-[var(--creation-accent)]/10'
+                            ? 'border-[var(--creation-accent)] bg-[linear-gradient(180deg,rgba(233,30,140,0.08),rgba(17,19,24,0.95))] shadow-lg shadow-[var(--creation-accent)]/10'
                             : 'border-[var(--creation-border-strong)] bg-[var(--creation-bg-canvas)]/80 hover:border-[var(--creation-border-hover)]',
                         ].join(' ')}
                       >
-                        <div className="text-[11px] uppercase tracking-[0.16em] text-[var(--creation-text-muted)]">
-                          方向 {index + 1}
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="text-[11px] uppercase tracking-[0.16em] text-[var(--creation-text-muted)]">
+                            {buildPreviewAlias(index, preview)}
+                          </div>
+                          <div className={cn('h-3 w-3 rounded-full', isActive ? 'bg-[var(--creation-accent)]' : 'bg-[var(--creation-border-strong)]')} />
                         </div>
-                        <div className="mt-1 text-sm font-semibold text-white">{preview.title}</div>
-                        <p className="mt-2 line-clamp-4 text-xs leading-5 text-[var(--creation-text-secondary)]">
+                        <blockquote className="mt-4 text-base font-semibold leading-7 text-white">
                           {preview.openingScene}
-                        </p>
+                        </blockquote>
+                        <div className="mt-4 flex flex-wrap gap-2">
+                          {chips.map((chip) => (
+                            <span
+                              key={`${preview.title}-${chip}`}
+                              className="rounded-full border border-[var(--creation-border-strong)] bg-[var(--creation-bg-canvas)] px-2.5 py-1 text-[11px] text-[var(--creation-text-secondary)]"
+                            >
+                              {chip}
+                            </span>
+                          ))}
+                        </div>
                       </button>
                     );
                   })}
                 </div>
 
-                <div className="mt-4 grid gap-3 lg:grid-cols-[1.1fr_1fr]">
+                <div className="mt-4 grid gap-3 xl:grid-cols-[1.1fr_0.9fr]">
                   <div className="space-y-3">
-                    <div className="rounded-xl border border-[var(--creation-border-strong)] bg-[var(--creation-bg-canvas)] p-3">
-                      <div className="text-xs font-medium text-[var(--creation-text-muted)]">故事开场场景</div>
-                      <p className="mt-1 text-sm leading-6 text-white">{selectedPreview.openingScene}</p>
+                    <div className="rounded-xl border border-[var(--creation-border-strong)] bg-[var(--creation-bg-canvas)] p-4">
+                      <div className="text-xs font-medium text-[var(--creation-text-muted)]">核心视觉区</div>
+                      <blockquote className="mt-2 text-lg font-semibold leading-8 text-white">
+                        “{selectedPreview.openingScene}”
+                      </blockquote>
                     </div>
-                    <div className="rounded-xl border border-[var(--creation-border-strong)] bg-[var(--creation-bg-canvas)] p-3">
-                      <div className="text-xs font-medium text-[var(--creation-text-muted)]">推进节点价值</div>
-                      <p className="mt-1 text-sm leading-6 text-white">{selectedPreview.progressionBeat}</p>
+                    <div className="rounded-xl border border-[var(--creation-border-strong)] bg-[var(--creation-bg-canvas)] p-4">
+                      <div className="text-xs font-medium text-[var(--creation-text-muted)]">导演笔记</div>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {extractPreviewChips(selectedPreview).map((chip) => (
+                          <span
+                            key={`selected-${chip}`}
+                            className="rounded-full border border-[var(--creation-border-strong)] bg-[var(--creation-bg-elevated)] px-3 py-1.5 text-xs text-white"
+                          >
+                            {chip}
+                          </span>
+                        ))}
+                      </div>
+                      <p className="mt-3 text-sm leading-6 text-[var(--creation-text-secondary)]">
+                        {selectedPreview.progressionBeat}
+                      </p>
                     </div>
-                    <div className="rounded-xl border border-[var(--creation-border-strong)] bg-[var(--creation-bg-canvas)] p-3">
-                      <div className="text-xs font-medium text-[var(--creation-text-muted)]">导演提示</div>
-                      <p className="mt-1 text-sm leading-6 text-white">{selectedPreview.styleNotes}</p>
+                    <div className="rounded-xl border border-[var(--creation-border-strong)] bg-[var(--creation-bg-canvas)] p-4">
+                      <div className="flex items-center gap-2 text-xs font-medium text-[var(--creation-text-muted)]">
+                        <Palette className="h-3.5 w-3.5" />
+                        导演控制台
+                      </div>
+                      <div className="mt-3 space-y-3">
+                        <div>
+                          <div className="text-[11px] text-[var(--creation-text-secondary)]">镜头推拉杆</div>
+                          <input
+                            type="range"
+                            min={0}
+                            max={100}
+                            value={ideaCameraScale}
+                            onChange={(e) => setIdeaCameraScale(Number(e.target.value))}
+                            className="mt-2 w-full accent-[var(--creation-accent)]"
+                          />
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          {stylePresets.slice(0, 4).map((item) => (
+                            <button
+                              key={`director-${item}`}
+                              onClick={() => setIdeaStyle(item)}
+                              className={cn(
+                                'rounded-full border px-3 py-1.5 text-xs transition',
+                                ideaStyle === item
+                                  ? 'border-[var(--creation-accent)] bg-[var(--creation-accent)]/15 text-white'
+                                  : 'border-[var(--creation-border-strong)] text-[var(--creation-text-secondary)] hover:text-white',
+                              )}
+                            >
+                              {item}
+                            </button>
+                          ))}
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          {spicePresets.map((item) => {
+                            const Icon = item.icon;
+                            return (
+                              <button
+                                key={`director-spice-${item.value}`}
+                                onClick={() => toggleSpice(item.value)}
+                                className={cn(
+                                  'flex items-center gap-1 rounded-full border px-3 py-1.5 text-xs transition',
+                                  ideaSpices.includes(item.value)
+                                    ? 'border-[var(--creation-accent)] bg-[var(--creation-accent)]/15 text-white'
+                                    : 'border-[var(--creation-border-strong)] text-[var(--creation-text-secondary)] hover:text-white',
+                                )}
+                              >
+                                <Icon className="h-3 w-3" />
+                                {item.label}
+                              </button>
+                            );
+                          })}
+                        </div>
+                        <button
+                          onClick={handleGenerateIdeaPreview}
+                          disabled={isGeneratingPreview}
+                          className="inline-flex items-center gap-2 rounded-lg border border-[var(--creation-border-strong)] px-3 py-2 text-xs text-[var(--creation-text-secondary)] transition hover:text-white disabled:opacity-50"
+                        >
+                          {isGeneratingPreview ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+                          依据当前导演控制台重写预览
+                        </button>
+                      </div>
                     </div>
                   </div>
 
                   <div className="space-y-3">
-                    <div className="rounded-xl border border-[var(--creation-border-strong)] bg-[var(--creation-bg-canvas)] p-3">
+                    <div className="rounded-xl border border-[var(--creation-border-strong)] bg-[var(--creation-bg-canvas)] p-4">
                       <div className="text-xs font-medium text-[var(--creation-text-muted)]">首节点文案草稿</div>
-                      <p className="mt-1 text-sm leading-6 text-white">{selectedPreview.promptBundle.scriptSegment}</p>
+                      <p className="mt-2 text-sm leading-6 text-white">{selectedPreview.promptBundle.scriptSegment}</p>
                     </div>
-                    <div className="rounded-xl border border-[var(--creation-border-strong)] bg-[var(--creation-bg-canvas)] p-3">
+                    <div className="rounded-xl border border-[var(--creation-border-strong)] bg-[var(--creation-bg-canvas)] p-4">
                       <div className="text-xs font-medium text-[var(--creation-text-muted)]">确认清单</div>
-                      <ul className="mt-1 space-y-1.5 text-sm leading-6 text-white">
+                      <ul className="mt-2 space-y-2 text-sm leading-6 text-white">
                         {selectedPreview.confirmationChecklist.map((item, index) => (
                           <li key={`${item}-${index}`} className="flex gap-2">
                             <span className="text-[var(--creation-accent)]">•</span>
@@ -543,6 +884,12 @@ export function CreationCanvas({ videoId, onTimeClick }: CreationCanvasProps) {
                           </li>
                         ))}
                       </ul>
+                    </div>
+                    <div className="rounded-xl border border-[var(--creation-border-strong)] bg-[var(--creation-bg-canvas)] p-4">
+                      <div className="text-xs font-medium text-[var(--creation-text-muted)]">时间轴串联</div>
+                      <p className="mt-2 text-sm leading-6 text-[var(--creation-text-secondary)]">
+                        确认后，这张卡会自动吸附到 00:00，成为节点 1。随后右侧将出现“推演下一镜”，继续沿着当前世界观和镜头基调往下生成。
+                      </p>
                     </div>
                   </div>
                 </div>

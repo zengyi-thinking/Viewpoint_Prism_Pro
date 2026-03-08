@@ -392,21 +392,43 @@ export class PromptEngineService {
   private extractSubject(...values: Array<string | undefined>) {
     const source = values.map((v) => String(v || '').trim()).filter(Boolean).join('，');
     if (!source) return '主体明确、辨识度高的人物或核心物体';
-    const compoundMatch = source.match(/(江湖少年[^，。；]{0,12}AI女子|少年[^，。；]{0,12}女子|一位[^，。；]{0,12}少年[^，。；]{0,12}女子|一位[^，。；]{2,20}|一个[^，。；]{2,20}|主角[^，。；]{2,20}|神秘AI女子|江湖少年|少年|女子|产品主体)/);
-    return compoundMatch?.[0] || '主体明确、辨识度高的人物或核心物体';
+    const explicit = source.match(
+      /(?:主体|角色|人物|主角|对象|核心元素|画面中心)[:：]?\s*([^\n，。；]{2,28})/i,
+    );
+    if (explicit?.[1]) return explicit[1].trim();
+
+    const firstSentence = source
+      .split(/[。；\n]/)
+      .map((item) => item.trim())
+      .find(Boolean);
+    if (!firstSentence) return '主体明确、辨识度高的人物或核心物体';
+    return firstSentence.slice(0, 24);
   }
 
   private extractSetting(...values: Array<string | undefined>) {
     const source = values.map((v) => String(v || '').trim()).filter(Boolean).join('，');
-    const match = source.match(/(街道|小镇|房间|茶馆|城市|校园|夜色|雨夜|山谷|森林|宫殿|办公室|实验室|车站|海边|古镇|庭院|屋顶|走廊|舞台)/);
-    if (match?.[0]) return `以${match[0]}为核心空间，前景、中景、背景关系清楚，环境细节可信`;
+    const explicit = source.match(
+      /(?:场景|环境|空间|地点|背景)[:：]?\s*([^\n，。；]{2,28})/i,
+    );
+    if (explicit?.[1]) {
+      return `以${explicit[1].trim()}为核心空间，前景、中景、背景关系清楚，环境细节可信`;
+    }
     return '空间层次分明，前景、中景、背景明确，环境元素服务叙事';
   }
 
   private extractAction(...values: Array<string | undefined>) {
     const source = values.map((v) => String(v || '').trim()).filter(Boolean).join('，');
-    const actionMatches = source.match(/(走近|转身|抬头|低头|回望|停顿|坐下|起身|推门|奔跑|伸手|对视|靠近|拿起|缓慢前行|凝视|回头)/g);
-    if (actionMatches?.length) return `主体${Array.from(new Set(actionMatches)).join('、')}，动作节奏清晰并带出镜头推进`;
+    const explicit = source.match(
+      /(?:动作|行为|变化|推进)[:：]?\s*([^\n。；]{2,36})/i,
+    );
+    if (explicit?.[1]) return explicit[1].trim();
+
+    const actionMatches = source.match(
+      /(进入|离开|转身|抬头|低头|回望|停顿|坐下|起身|推门|奔跑|伸手|对视|靠近|拿起|展开|收拢|切换|聚焦|拖拽|输入|点击|演示|讲解)/g,
+    );
+    if (actionMatches?.length) {
+      return `主体${Array.from(new Set(actionMatches)).join('、')}，动作节奏清晰并带出镜头推进`;
+    }
     return '主体动作自然连贯，先建立状态，再出现关键动作变化，最终落到稳定终态';
   }
 
@@ -480,34 +502,26 @@ export class PromptEngineService {
   private translateVisualText(source: string) {
     let text = this.compactForModel(source);
     const replacements: Array<[RegExp, string]> = [
-      [/少年迟疑后跟随女子/g, 'a hesitant young man following a young woman'],
-      [/奇幻写实并存、世界观鲜明、视觉奇观明确/g, 'fantasy grounded in realism, strong worldbuilding, visually striking spectacle'],
       [/电影感写实、镜头专业、节奏清晰/g, 'cinematic realism, professional shot design, clear pacing'],
+      [/奇幻写实并存、世界观鲜明、视觉奇观明确/g, 'fantasy grounded in realism, strong worldbuilding, visually striking spectacle'],
       [/主光与环境光协同，明暗层次自然，色彩统一，人物肤色与材质细节清晰/g, 'balanced key light and ambient light, natural contrast, unified color palette, clear skin tone and material detail'],
       [/使用霓虹塑造氛围，明暗层次清楚，肤色与材质表现自然/g, 'neon atmosphere, clear contrast layers, natural skin tone and believable material texture'],
-      [/以小镇为核心空间，前景、中景、背景关系清楚，环境细节可信/g, 'a small-town setting with clear foreground, midground and background depth, believable environmental detail'],
-      [/以夜色为核心空间，前景、中景、背景关系清楚，环境细节可信/g, 'a night setting with clear foreground, midground and background depth, believable environmental detail'],
+      [/以前景、中景、背景关系清楚，环境细节可信/g, 'with clear foreground, midground and background depth and believable environmental detail'],
       [/主体动作自然连贯，先建立状态，再出现关键动作变化，最终落到稳定终态/g, 'the subject moves naturally and continuously, starting from a readable state, moving through a key action change, and landing in a stable ending pose'],
       [/先以中景建立空间，再缓慢推进到近景，必要时轻微跟拍或小幅摇镜，保持主体始终稳定在视觉焦点/g, 'begin with a medium shot to establish space, then slowly push into a close-up, with subtle tracking or a gentle pan while keeping the subject stable at the visual focus'],
       [/保持主体身份、服装、场景、色温和镜头节奏一致/g, 'keep identity, costume, environment, color temperature and shot rhythm consistent'],
-      [/江湖少年/g, 'young wuxia wanderer'],
-      [/神秘AI女子/g, 'mysterious AI woman'],
-      [/AI女子/g, 'AI woman'],
-      [/少年/g, 'young man'],
-      [/女子/g, 'young woman'],
-      [/主角/g, 'main character'],
       [/主体/g, 'main subject'],
       [/角色/g, 'character'],
-      [/古镇/g, 'ancient town'],
-      [/小镇/g, 'small town'],
-      [/茶馆/g, 'teahouse'],
-      [/庭院/g, 'courtyard'],
-      [/夜色/g, 'night scene'],
-      [/月光/g, 'moonlight'],
-      [/霓虹/g, 'neon light'],
-      [/赛博霓虹/g, 'cyber neon'],
-      [/奇异光芒/g, 'ethereal glow'],
-      [/雾气/g, 'mist'],
+      [/场景/g, 'scene'],
+      [/环境/g, 'environment'],
+      [/空间/g, 'space'],
+      [/代码/g, 'code'],
+      [/图表/g, 'chart'],
+      [/看板/g, 'dashboard'],
+      [/公式/g, 'formula'],
+      [/架构图/g, 'architecture diagram'],
+      [/界面/g, 'interface'],
+      [/导图/g, 'mind map'],
       [/暖光/g, 'warm key light'],
       [/冷光/g, 'cool ambient light'],
       [/逆光/g, 'backlight'],

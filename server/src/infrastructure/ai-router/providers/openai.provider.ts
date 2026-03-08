@@ -69,6 +69,7 @@ export class OpenAIProvider extends BaseProvider {
       messages: messages || [{ role: 'user', content: payload.prompt || 'Hello' }],
       temperature,
       max_tokens: maxTokens,
+      ...(payload?.response_format ? { response_format: payload.response_format } : {}),
     });
 
     return {

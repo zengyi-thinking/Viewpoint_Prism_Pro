@@ -7,7 +7,7 @@ import { StorageService } from '../../../infrastructure/storage/storage.service'
 import { TaskStatus, RenderQuality, FrameType } from '../dto';
 import { randomUUID } from 'crypto';
 import { FrameGenService } from './frame-gen.service';
-import { PromptEngineService } from './prompt-engine.service';
+import { PromptBundleFactoryService } from './prompt-bundle-factory.service';
 
 @Injectable()
 export class VideoRenderService {
@@ -19,7 +19,7 @@ export class VideoRenderService {
     private readonly configService: ConfigService,
     private readonly storage: StorageService,
     private readonly frameGenService: FrameGenService,
-    private readonly promptEngine: PromptEngineService,
+    private readonly bundleFactory: PromptBundleFactoryService,
   ) {}
 
   /**
@@ -263,17 +263,17 @@ export class VideoRenderService {
       select: { id: true },
     });
     const isFirstMainNode = firstMainNode?.id === node.id;
-    const currentBundle = this.promptEngine.normalizeBundle({
-      idea: String(node.scriptSegment || node.prompt || promptBundle?.videoPrompt || '当前镜头').trim(),
-      payload: {
+    const currentBundle = this.bundleFactory.create(
+      {
         scriptSegment: node.scriptSegment,
         videoPrompt: promptBundle?.videoPrompt || promptBundle?.prompt || node.prompt,
         sceneFramePrompt: promptBundle?.sceneFramePrompt,
         firstFramePrompt: promptBundle?.firstFramePrompt,
         lastFramePrompt: promptBundle?.lastFramePrompt,
       },
-      current: null,
-    });
+      String(node.scriptSegment || node.prompt || promptBundle?.videoPrompt || '当前镜头').trim(),
+      null,
+    );
     if (isFirstMainNode) {
       let firstFrameUrl = node.firstFrameUrl || null;
       let lastFrameUrl = node.lastFrameUrl || null;
@@ -302,7 +302,7 @@ export class VideoRenderService {
         previousNodeId: null,
         firstFrameUrl,
         lastFrameUrl,
-        videoPrompt: this.promptEngine.toVideoModelPrompt(currentBundle.videoPrompt, targetVideoModel),
+        videoPrompt: this.bundleFactory.toVideoModelPrompt(currentBundle.videoPrompt, targetVideoModel),
         negativePrompt: '避免主体漂移，避免人物换脸，避免背景跳变，避免动作畸形，避免低清晰度',
       };
     }
@@ -325,14 +325,14 @@ export class VideoRenderService {
     }
 
     const previousBundle = previousNode
-      ? this.promptEngine.normalizeBundle({
-          idea: String(previousNode.scriptSegment || previousNode.prompt || '上一镜头').trim(),
-          payload: {
+      ? this.bundleFactory.create(
+          {
             scriptSegment: previousNode.scriptSegment,
             videoPrompt: previousNode.prompt,
           },
-          current: null,
-        })
+          String(previousNode.scriptSegment || previousNode.prompt || '上一镜头').trim(),
+          null,
+        )
       : null;
 
     // 约定：视频生成使用“上一节点画面 -> 当前节点画面”
@@ -383,7 +383,7 @@ export class VideoRenderService {
       previousNodeId: previousNode?.id || null,
       firstFrameUrl,
       lastFrameUrl,
-      videoPrompt: this.promptEngine.toVideoModelPrompt(currentBundle.videoPrompt, targetVideoModel),
+        videoPrompt: this.bundleFactory.toVideoModelPrompt(currentBundle.videoPrompt, targetVideoModel),
       negativePrompt: '避免主体漂移，避免人物换脸，避免背景跳变，避免动作畸形，避免低清晰度',
     };
   }
