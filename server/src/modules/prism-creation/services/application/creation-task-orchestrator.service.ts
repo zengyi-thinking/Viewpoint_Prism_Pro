@@ -1,5 +1,5 @@
 import { ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { PrismaService } from '../../../prisma/prisma.service';
+import { PrismaService } from '../../../../prisma/prisma.service';
 import {
   ExportProjectDto,
   GenerateFrameDto,
@@ -9,12 +9,12 @@ import {
   RenderQuality,
   StitchFlowDto,
   TaskStatus,
-} from '../dto';
+} from '../../dto';
 import { CreationFlowService } from './creation-flow.service';
-import { ExportService } from './export.service';
-import { FrameGenService } from './frame-gen.service';
-import { StitchService } from './stitch.service';
-import { VideoRenderService } from './video-render.service';
+import { ExportService } from '../media/export.service';
+import { FrameGenService } from '../media/frame-gen.service';
+import { StitchService } from '../media/stitch.service';
+import { VideoRenderService } from '../media/video-render.service';
 
 type UnifiedTaskStatus = {
   taskId: string;

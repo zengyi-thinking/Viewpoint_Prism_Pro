@@ -4,14 +4,14 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { PrismaService } from '../../../prisma/prisma.service';
+import { PrismaService } from '../../../../prisma/prisma.service';
 import {
   CreateBranchDto,
   CreateFlowNodeDto,
   TaskStatus,
   UpdateFlowNodeDto,
-} from '../dto';
-import { PromptBundleFactoryService } from './prompt-bundle-factory.service';
+} from '../../dto';
+import { PromptBundleFactoryService } from '../foundation/prompt-bundle-factory.service';
 
 @Injectable()
 export class CreationFlowService {

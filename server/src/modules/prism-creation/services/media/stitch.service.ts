@@ -1,7 +1,7 @@
 import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
-import { PrismaService } from '../../../prisma/prisma.service';
-import { StorageService } from '../../../infrastructure/storage/storage.service';
-import { TaskStatus, StitchFlowDto } from '../dto';
+import { PrismaService } from '../../../../prisma/prisma.service';
+import { StorageService } from '../../../../infrastructure/storage/storage.service';
+import { TaskStatus, StitchFlowDto } from '../../dto';
 import { randomUUID } from 'crypto';
 import { mkdir, writeFile, rm } from 'fs/promises';
 import { join } from 'path';

@@ -4,33 +4,27 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { PrismaService } from '../../../prisma/prisma.service';
-import { AITaskType } from '../../../infrastructure/ai-router/ai-router.interface';
-import { AiRouterService } from '../../../infrastructure/ai-router/ai-router.service';
+import { PrismaService } from '../../../../prisma/prisma.service';
+import { AITaskType } from '../../../../infrastructure/ai-router/ai-router.interface';
+import { AiRouterService } from '../../../../infrastructure/ai-router/ai-router.service';
 import {
-  GenerateIdeaPreviewDto,
   GenerateNextNodeDto,
   GenerateNodeCandidatesDto,
-  KnowledgeAssetDto,
   RefineCopyDto,
-  ScriptSplitDto,
   TaskStatus,
-} from '../dto';
+} from '../../dto';
 import { CreationFlowService } from './creation-flow.service';
-import { CurrentNodeContext, PromptBundle } from './creation-ai.types';
-import { CreationAgentModeService } from './creation-agent-mode.service';
-import { CreationPreviewService } from './creation-preview.service';
-import { CreationScriptService } from './creation-script.service';
-import { KnowledgeExtractService } from './knowledge-extract.service';
-import { KnowledgeStructurerAgentService } from './knowledge-structurer-agent.service';
-import { PromptBundleFactoryService } from './prompt-bundle-factory.service';
-import { PromptEngineService } from './prompt-engine.service';
-import { PromptParserService } from './prompt-parser.service';
-import { ShotDesignerAgentService } from './shot-designer-agent.service';
+import { CurrentNodeContext, PromptBundle } from '../foundation/creation-ai.types';
+import { CreationAgentModeService } from '../foundation/creation-agent-mode.service';
+import { CreationKnowledgeAssetService } from './creation-knowledge-asset.service';
+import { PromptBundleFactoryService } from '../foundation/prompt-bundle-factory.service';
+import { PromptEngineService } from '../foundation/prompt-engine.service';
+import { PromptParserService } from '../foundation/prompt-parser.service';
+import { ShotDesignerAgentService } from '../agents/shot-designer-agent.service';
 
 @Injectable()
-export class CreationAiService {
-  private readonly logger = new Logger(CreationAiService.name);
+export class CreationNodeAuthoringService {
+  private readonly logger = new Logger(CreationNodeAuthoringService.name);
 
   constructor(
     private readonly prisma: PrismaService,
@@ -40,111 +34,9 @@ export class CreationAiService {
     private readonly bundleFactory: PromptBundleFactoryService,
     private readonly promptEngine: PromptEngineService,
     private readonly parser: PromptParserService,
-    private readonly scriptService: CreationScriptService,
-    private readonly previewService: CreationPreviewService,
-    private readonly knowledgeExtractService: KnowledgeExtractService,
-    private readonly knowledgeStructurerAgent: KnowledgeStructurerAgentService,
+    private readonly knowledgeAssetService: CreationKnowledgeAssetService,
     private readonly shotDesignerAgent: ShotDesignerAgentService,
   ) {}
-
-  async scriptSplit(userId: string, videoId: string, dto: ScriptSplitDto) {
-    const project = await this.flowService.getOrCreateProject(userId, videoId);
-    const shouldPersist = dto.persist === true;
-
-    let segments: Array<{ segment: string; prompt: string; estimatedDuration?: number }> = [];
-    if (dto.segments?.length) {
-      segments = dto.segments.map((seg) => ({
-        segment: seg.segment,
-        prompt: seg.prompt || seg.segment,
-        estimatedDuration: seg.estimatedDuration,
-      }));
-    } else if (dto.scriptText?.trim()) {
-      segments = await this.scriptService.splitScriptWithLLM(
-        userId,
-        dto.scriptText,
-        dto.stylePreset,
-        dto.adjustInstruction,
-      );
-    } else {
-      throw new BadRequestException('scriptText 或 segments 至少需要提供一个');
-    }
-
-    if (!shouldPersist) {
-      return {
-        userId,
-        videoId,
-        projectId: project.id,
-        persisted: false,
-        segments,
-        knowledgeAssets: await Promise.all(
-          segments.map((item, index) =>
-            this.buildKnowledgeAssets(
-              {
-                scriptSegment: item.segment,
-                videoPrompt: item.prompt,
-                sceneFramePrompt: '',
-                firstFramePrompt: '',
-                lastFramePrompt: '',
-              },
-              `split-${index + 1}`,
-              userId,
-            ),
-          ),
-        ),
-      };
-    }
-
-    const maxOrderIndex = await this.prisma.flowNode.aggregate({
-      where: { flowProjectId: project.id },
-      _max: { orderIndex: true },
-    });
-    let currentOrderIndex = (maxOrderIndex._max.orderIndex ?? -1) + 1;
-
-    const createdNodes: any[] = [];
-    for (const segment of segments) {
-      const node = await this.prisma.flowNode.create({
-        data: {
-          flowProjectId: project.id,
-          orderIndex: currentOrderIndex,
-          prompt: segment.prompt,
-          scriptSegment: segment.segment,
-          positionX: 100 + (currentOrderIndex % 4) * 250,
-          positionY: 100 + Math.floor(currentOrderIndex / 4) * 200,
-          renderStatus: TaskStatus.PENDING,
-        },
-      });
-      createdNodes.push(this.flowService.toNodeDto(node));
-      currentOrderIndex++;
-    }
-
-    await this.prisma.prismFlowProject.update({
-      where: { id: project.id },
-      data: { status: TaskStatus.PROCESSING },
-    });
-
-    return {
-      userId,
-      videoId,
-      projectId: project.id,
-      persisted: true,
-      segments: createdNodes,
-      knowledgeAssets: await Promise.all(
-        segments.map((item, index) =>
-          this.buildKnowledgeAssets(
-            {
-              scriptSegment: item.segment,
-              videoPrompt: item.prompt,
-              sceneFramePrompt: '',
-              firstFramePrompt: '',
-              lastFramePrompt: '',
-            },
-            `split-${index + 1}`,
-            userId,
-          ),
-        ),
-      ),
-    };
-  }
 
   async generateNextNode(userId: string, videoId: string, dto: GenerateNextNodeDto) {
     const project = await this.flowService.getOrCreateProject(userId, videoId);
@@ -216,43 +108,10 @@ export class CreationAiService {
       sourceNodeId: currentNode?.id ?? null,
       node: this.flowService.toNodeDto(node),
       promptBundle: generated,
-      knowledgeAsset: await this.buildKnowledgeAssets(generated, node.id, userId),
-    };
-  }
-
-  async generateIdeaPreview(userId: string, videoId: string, dto: GenerateIdeaPreviewDto) {
-    const project = await this.flowService.getOrCreateProject(userId, videoId);
-    const idea = dto.idea?.trim();
-    if (!idea) {
-      throw new BadRequestException('idea is required');
-    }
-    const count = Math.max(1, Math.min(4, Number(dto.count || 3)));
-    const tone = dto.tone?.trim() || 'cinematic';
-
-    const existingNodeCount = await this.prisma.flowNode.count({
-      where: { flowProjectId: project.id },
-    });
-
-    const previews = await this.previewService.generateFirstNodePreviewCandidatesWithLLM(
-      userId,
-      idea,
-      count,
-      tone,
-    );
-
-    return {
-      userId,
-      videoId,
-      projectId: project.id,
-      mode: 'idea_preview',
-      existingNodeCount,
-      tone,
-      count,
-      previews,
-      knowledgeAssets: await Promise.all(
-        previews.map((item, index) =>
-          this.buildKnowledgeAssets(item.promptBundle, `preview-${index + 1}`, userId),
-        ),
+      knowledgeAsset: await this.knowledgeAssetService.buildFromBundle(
+        generated,
+        node.id,
+        userId,
       ),
     };
   }
@@ -276,7 +135,7 @@ export class CreationAiService {
 
     const count = Math.max(1, Math.min(5, Number(dto.count || 3)));
     const sourceContext = this.toCurrentNodeContext(currentNode);
-    const candidates = await this.previewService.generateNodeCandidatesWithLLM(
+    const candidates = await this.generateNodeCandidatesWithLLM(
       userId,
       idea,
       sourceContext!,
@@ -293,7 +152,7 @@ export class CreationAiService {
         candidates.map(async (candidate, index) => ({
           index,
           ...candidate,
-          knowledgeAsset: await this.buildKnowledgeAssets(
+          knowledgeAsset: await this.knowledgeAssetService.buildFromBundle(
             candidate,
             `candidate-${index + 1}`,
             userId,
@@ -433,7 +292,11 @@ export class CreationAiService {
       requirement,
       node: this.flowService.toNodeDto(updated),
       promptBundle: parsed,
-      knowledgeAsset: await this.buildKnowledgeAssets(parsed, nodeId, userId),
+      knowledgeAsset: await this.knowledgeAssetService.buildFromBundle(
+        parsed,
+        nodeId,
+        userId,
+      ),
     };
   }
 
@@ -497,6 +360,97 @@ export class CreationAiService {
     }
   }
 
+  private async generateNodeCandidatesWithLLM(
+    userId: string,
+    idea: string,
+    current: CurrentNodeContext,
+    count: number,
+  ): Promise<PromptBundle[]> {
+    if (this.agentMode.shouldUseAgents()) {
+      try {
+        const candidates = await this.shotDesignerAgent.generateNodeCandidates(
+          userId,
+          idea,
+          current,
+          count,
+        );
+        if (candidates.length) return candidates;
+      } catch (error) {
+        if (!this.agentMode.shouldFallbackAfterAgentError()) {
+          throw error;
+        }
+      }
+    }
+
+    const response = await this.aiRouter.execute(
+      AITaskType.LLM_CHAT,
+      {
+        messages: [
+          {
+            role: 'system',
+            content: [
+              this.promptEngine.buildMultishotSystemPrompt('candidates'),
+              '你负责生成多个真正不同的下一镜头候选。',
+              '禁止同义改写式伪差异，禁止模板化复述。',
+              '每个候选都要有完整 promptBundle，并保持和当前镜头连续。',
+            ].join('\n'),
+          },
+          {
+            role: 'user',
+            content: JSON.stringify(
+              {
+                task: '节点拓展候选',
+                count,
+                idea,
+                currentNode: current,
+                outputSchema: {
+                  candidates: [
+                    {
+                      scriptSegment: '中文分镜文案',
+                      videoPrompt: '中文视频提示词',
+                      sceneFramePrompt: '中文场景提示词',
+                      firstFramePrompt: '首帧提示词',
+                      lastFramePrompt: '尾帧提示词',
+                      subject: '主体锚点',
+                      setting: '空间锚点',
+                      action: '动作锚点',
+                      camera: '镜头锚点',
+                      lighting: '光线锚点',
+                      style: '风格锚点',
+                    },
+                  ],
+                },
+              },
+              null,
+              2,
+            ),
+          },
+        ],
+        temperature: 0.88,
+        response_format: { type: 'json_object' },
+      },
+      userId,
+    );
+
+    const parsed = this.parser.extractJsonPayload(response);
+    const candidateList = Array.isArray((parsed as any)?.candidates)
+      ? (parsed as any).candidates
+      : Array.isArray(parsed)
+        ? parsed
+        : [];
+
+    const normalized = candidateList
+      .slice(0, count)
+      .map((item: any) => this.normalizePromptBundle(item || {}, idea, current))
+      .filter((item: PromptBundle) => Boolean(item.scriptSegment || item.videoPrompt));
+
+    if (!normalized.length) {
+      throw new Error('Node candidate model returned no valid candidates');
+    }
+
+    return normalized;
+  }
+
   private parseRefineCopyResult(
     content: string,
     fallbackSegment: string,
@@ -556,30 +510,6 @@ export class CreationAiService {
       scriptSegment: node.scriptSegment || '',
       prompt: node.prompt || '',
       orderIndex: node.orderIndex,
-    };
-  }
-
-  private async buildKnowledgeAssets(
-    bundle: PromptBundle,
-    sourceId: string,
-    userId: string,
-  ): Promise<KnowledgeAssetDto & { sourceId: string }> {
-    if (this.agentMode.shouldUseAgents()) {
-      try {
-        return {
-          sourceId,
-          ...(await this.knowledgeStructurerAgent.extract(userId, bundle)),
-        };
-      } catch (error) {
-        if (!this.agentMode.shouldFallbackAfterAgentError()) {
-          throw error;
-        }
-      }
-    }
-
-    return {
-      sourceId,
-      ...this.knowledgeExtractService.extractFromPromptBundle(bundle),
     };
   }
 }

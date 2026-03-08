@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
-import { CurrentNodeContext, PromptBundle } from './creation-ai.types';
-import { TextSimilarityService } from './text-similarity.service';
+import { CurrentNodeContext, PromptBundle } from '../foundation/creation-ai.types';
+import { TextSimilarityService } from '../foundation/text-similarity.service';
 
 @Injectable()
 export class ContinuityGuardAgentService {

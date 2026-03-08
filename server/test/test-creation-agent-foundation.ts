@@ -1,7 +1,7 @@
 import 'reflect-metadata';
-import { PromptBundleFactoryService } from '../src/modules/prism-creation/services/prompt-bundle-factory.service';
-import { PromptEngineService } from '../src/modules/prism-creation/services/prompt-engine.service';
-import { TextSimilarityService } from '../src/modules/prism-creation/services/text-similarity.service';
+import { PromptBundleFactoryService } from '../src/modules/prism-creation/services/foundation/prompt-bundle-factory.service';
+import { PromptEngineService } from '../src/modules/prism-creation/services/foundation/prompt-engine.service';
+import { TextSimilarityService } from '../src/modules/prism-creation/services/foundation/text-similarity.service';
 
 function assert(condition: boolean, message: string) {
   if (!condition) {

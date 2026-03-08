@@ -1,11 +1,11 @@
 import { Injectable } from '@nestjs/common';
-import { AITaskType } from '../../../infrastructure/ai-router/ai-router.interface';
-import { AiRouterService } from '../../../infrastructure/ai-router/ai-router.service';
-import { CreationAgentTraceService } from './creation-agent-trace.service';
-import { CurrentNodeContext, PromptBundle } from './creation-ai.types';
-import { PromptBundleFactoryService } from './prompt-bundle-factory.service';
-import { PromptEngineService } from './prompt-engine.service';
-import { PromptParserService } from './prompt-parser.service';
+import { AITaskType } from '../../../../infrastructure/ai-router/ai-router.interface';
+import { AiRouterService } from '../../../../infrastructure/ai-router/ai-router.service';
+import { CreationAgentTraceService } from '../foundation/creation-agent-trace.service';
+import { CurrentNodeContext, PromptBundle } from '../foundation/creation-ai.types';
+import { PromptBundleFactoryService } from '../foundation/prompt-bundle-factory.service';
+import { PromptEngineService } from '../foundation/prompt-engine.service';
+import { PromptParserService } from '../foundation/prompt-parser.service';
 
 @Injectable()
 export class ShotDesignerAgentService {

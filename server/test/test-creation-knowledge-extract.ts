@@ -1,5 +1,5 @@
 import 'reflect-metadata';
-import { KnowledgeExtractService } from '../src/modules/prism-creation/services/knowledge-extract.service';
+import { KnowledgeExtractService } from '../src/modules/prism-creation/services/fallback/knowledge-extract.service';
 
 function assert(condition: boolean, message: string) {
   if (!condition) {

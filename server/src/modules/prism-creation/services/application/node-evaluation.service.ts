@@ -1,13 +1,13 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { PrismaService } from '../../../prisma/prisma.service';
+import { PrismaService } from '../../../../prisma/prisma.service';
 import { CreationFlowService } from './creation-flow.service';
 import {
   EVALUATION_RULES_VERSION,
   EVALUATION_WEIGHTS,
-} from './evaluation-rules';
-import { CreationAgentModeService } from './creation-agent-mode.service';
-import { QualityJudgeAgentService } from './quality-judge-agent.service';
-import { TextSimilarityService } from './text-similarity.service';
+} from '../fallback/evaluation-rules';
+import { CreationAgentModeService } from '../foundation/creation-agent-mode.service';
+import { QualityJudgeAgentService } from '../agents/quality-judge-agent.service';
+import { TextSimilarityService } from '../foundation/text-similarity.service';
 
 @Injectable()
 export class NodeEvaluationService {

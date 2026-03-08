@@ -1,10 +1,10 @@
 import { Injectable } from '@nestjs/common';
-import { AITaskType } from '../../../infrastructure/ai-router/ai-router.interface';
-import { AiRouterService } from '../../../infrastructure/ai-router/ai-router.service';
-import { KnowledgeAssetBlock, KnowledgeAssetDto } from '../dto';
-import { CreationAgentTraceService } from './creation-agent-trace.service';
-import { PromptBundle } from './creation-ai.types';
-import { PromptParserService } from './prompt-parser.service';
+import { AITaskType } from '../../../../infrastructure/ai-router/ai-router.interface';
+import { AiRouterService } from '../../../../infrastructure/ai-router/ai-router.service';
+import { KnowledgeAssetBlock, KnowledgeAssetDto } from '../../dto';
+import { CreationAgentTraceService } from '../foundation/creation-agent-trace.service';
+import { PromptBundle } from '../foundation/creation-ai.types';
+import { PromptParserService } from '../foundation/prompt-parser.service';
 
 @Injectable()
 export class KnowledgeStructurerAgentService {

@@ -3,7 +3,7 @@ import * as dotenv from 'dotenv';
 import { ConfigService } from '@nestjs/config';
 import { SeedanceProvider } from '../src/infrastructure/ai-router/providers/seedance.provider';
 import { AITaskType } from '../src/infrastructure/ai-router/ai-router.interface';
-import { PromptEngineService } from '../src/modules/prism-creation/services/prompt-engine.service';
+import { PromptEngineService } from '../src/modules/prism-creation/services/foundation/prompt-engine.service';
 
 dotenv.config({ path: '.env' });
 dotenv.config({ path: 'server/.env' });

@@ -16,16 +16,18 @@ import {
   StitchFlowDto,
   UpdateFlowNodeDto,
 } from './dto';
-import { CreationAiService } from './services/creation-ai.service';
-import { CreationFlowService } from './services/creation-flow.service';
-import { CreationTaskOrchestratorService } from './services/creation-task-orchestrator.service';
-import { NodeEvaluationService } from './services/node-evaluation.service';
+import { CreationFlowService } from './services/application/creation-flow.service';
+import { CreationIdeationService } from './services/application/creation-ideation.service';
+import { CreationNodeAuthoringService } from './services/application/creation-node-authoring.service';
+import { CreationTaskOrchestratorService } from './services/application/creation-task-orchestrator.service';
+import { NodeEvaluationService } from './services/application/node-evaluation.service';
 
 @Injectable()
 export class CreationService {
   constructor(
     private readonly flowService: CreationFlowService,
-    private readonly aiService: CreationAiService,
+    private readonly ideationService: CreationIdeationService,
+    private readonly nodeAuthoringService: CreationNodeAuthoringService,
     private readonly evalService: NodeEvaluationService,
     private readonly taskOrchestrator: CreationTaskOrchestratorService,
   ) {}
@@ -61,23 +63,23 @@ export class CreationService {
 
   // AI
   scriptSplit(userId: string, videoId: string, dto: ScriptSplitDto) {
-    return this.aiService.scriptSplit(userId, videoId, dto);
+    return this.ideationService.scriptSplit(userId, videoId, dto);
   }
 
   generateNextNode(userId: string, videoId: string, dto: GenerateNextNodeDto) {
-    return this.aiService.generateNextNode(userId, videoId, dto);
+    return this.nodeAuthoringService.generateNextNode(userId, videoId, dto);
   }
 
   generateIdeaPreview(userId: string, videoId: string, dto: GenerateIdeaPreviewDto) {
-    return this.aiService.generateIdeaPreview(userId, videoId, dto);
+    return this.ideationService.generateIdeaPreview(userId, videoId, dto);
   }
 
   generateNodeCandidates(userId: string, videoId: string, dto: GenerateNodeCandidatesDto) {
-    return this.aiService.generateNodeCandidates(userId, videoId, dto);
+    return this.nodeAuthoringService.generateNodeCandidates(userId, videoId, dto);
   }
 
   refineNodeCopy(userId: string, nodeId: string, dto: RefineCopyDto) {
-    return this.aiService.refineNodeCopy(userId, nodeId, dto);
+    return this.nodeAuthoringService.refineNodeCopy(userId, nodeId, dto);
   }
 
   // Evaluation
@@ -130,4 +132,3 @@ export class CreationService {
     return this.taskOrchestrator.renderNode(userId, nodeId, quality, dto);
   }
 }
-

@@ -1,12 +1,12 @@
 import { Injectable } from '@nestjs/common';
-import { AITaskType } from '../../../infrastructure/ai-router/ai-router.interface';
-import { AiRouterService } from '../../../infrastructure/ai-router/ai-router.service';
-import { ScriptSplitDto } from '../dto';
-import { PromptEngineService } from './prompt-engine.service';
-import { PromptParserService } from './prompt-parser.service';
+import { AITaskType } from '../../../../infrastructure/ai-router/ai-router.interface';
+import { AiRouterService } from '../../../../infrastructure/ai-router/ai-router.service';
+import { ScriptSplitDto } from '../../dto';
+import { PromptEngineService } from '../foundation/prompt-engine.service';
+import { PromptParserService } from '../foundation/prompt-parser.service';
 
 @Injectable()
-export class CreationScriptService {
+export class ScriptBreakdownAgentService {
   constructor(
     private readonly aiRouter: AiRouterService,
     private readonly promptEngine: PromptEngineService,

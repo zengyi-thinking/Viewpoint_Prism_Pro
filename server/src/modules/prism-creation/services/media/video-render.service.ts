@@ -1,13 +1,13 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { PrismaService } from '../../../prisma/prisma.service';
-import { AITaskType } from '../../../infrastructure/ai-router/ai-router.interface';
-import { AiRouterService } from '../../../infrastructure/ai-router/ai-router.service';
-import { StorageService } from '../../../infrastructure/storage/storage.service';
-import { TaskStatus, RenderQuality, FrameType } from '../dto';
+import { PrismaService } from '../../../../prisma/prisma.service';
+import { AITaskType } from '../../../../infrastructure/ai-router/ai-router.interface';
+import { AiRouterService } from '../../../../infrastructure/ai-router/ai-router.service';
+import { StorageService } from '../../../../infrastructure/storage/storage.service';
+import { TaskStatus, RenderQuality, FrameType } from '../../dto';
 import { randomUUID } from 'crypto';
 import { FrameGenService } from './frame-gen.service';
-import { PromptBundleFactoryService } from './prompt-bundle-factory.service';
+import { PromptBundleFactoryService } from '../foundation/prompt-bundle-factory.service';
 
 @Injectable()
 export class VideoRenderService {

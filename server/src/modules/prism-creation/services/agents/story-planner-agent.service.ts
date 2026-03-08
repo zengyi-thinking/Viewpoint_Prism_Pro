@@ -1,11 +1,11 @@
 import { Injectable } from '@nestjs/common';
-import { AITaskType } from '../../../infrastructure/ai-router/ai-router.interface';
-import { AiRouterService } from '../../../infrastructure/ai-router/ai-router.service';
-import { CurrentNodeContext, FirstNodeIdeaPreview } from './creation-ai.types';
-import { CreationAgentTraceService } from './creation-agent-trace.service';
-import { PromptBundleFactoryService } from './prompt-bundle-factory.service';
-import { PromptEngineService } from './prompt-engine.service';
-import { PromptParserService } from './prompt-parser.service';
+import { AITaskType } from '../../../../infrastructure/ai-router/ai-router.interface';
+import { AiRouterService } from '../../../../infrastructure/ai-router/ai-router.service';
+import { FirstNodeIdeaPreview } from '../foundation/creation-ai.types';
+import { CreationAgentTraceService } from '../foundation/creation-agent-trace.service';
+import { PromptBundleFactoryService } from '../foundation/prompt-bundle-factory.service';
+import { PromptEngineService } from '../foundation/prompt-engine.service';
+import { PromptParserService } from '../foundation/prompt-parser.service';
 
 @Injectable()
 export class StoryPlannerAgentService {
@@ -22,18 +22,8 @@ export class StoryPlannerAgentService {
     idea: string;
     count: number;
     tone: string;
-    strategies: Array<{
-      label: string;
-      openingMethod: string;
-      openingInstruction: string;
-      primaryValue: string;
-      progressionMode: string;
-      styleCue: string;
-      scriptOpening: string;
-      titleSeed: string;
-    }>;
   }): Promise<FirstNodeIdeaPreview[]> {
-    const { userId, idea, count, tone, strategies } = params;
+    const { userId, idea, count, tone } = params;
     const response = await this.aiRouter.execute(
       AITaskType.LLM_CHAT,
       {
@@ -51,6 +41,11 @@ export class StoryPlannerAgentService {
               'progressionBeat 控制在 40 个字以内。',
               'styleNotes 控制在 24 个字以内。',
               '每个方向都要显著不同，至少在开场主体、冲突触发方式、镜头视角三项中体现差异。',
+              '不要套用固定的“概念直入/全景推进/痛点反差”模板。',
+              '不要用本地策略名称、模板名称或预制标题当结果。',
+              '标题必须像真实分镜代号或片段名，禁止输出“世界观建立型、人物钩子型、事件闯入型、方向1、方案A”这类抽象分类名。',
+              'openingScene 必须是具体镜头画面，不要用“大战一触即发、悬念渐增、气氛拉满”这种空泛总结句代替。',
+              'progressionBeat 必须写清楚下一拍如何推进，不要写抽象写作术语。',
               '除 promptBundle 外，还要给出首节点的确认清单。',
             ].join('\n'),
           },
@@ -62,7 +57,6 @@ export class StoryPlannerAgentService {
                 idea,
                 count,
                 tone,
-                strategies,
                 outputSchema: {
                   previews: [
                     {

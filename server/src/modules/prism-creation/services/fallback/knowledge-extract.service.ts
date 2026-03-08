@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
-import { KnowledgeAssetBlock, KnowledgeAssetDto } from '../dto';
-import { PromptBundle } from './creation-ai.types';
+import { KnowledgeAssetBlock, KnowledgeAssetDto } from '../../dto';
+import { PromptBundle } from '../foundation/creation-ai.types';
 
 @Injectable()
 export class KnowledgeExtractService {

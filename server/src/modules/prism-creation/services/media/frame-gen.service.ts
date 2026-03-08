@@ -1,12 +1,12 @@
 import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { PrismaService } from '../../../prisma/prisma.service';
-import { AITaskType } from '../../../infrastructure/ai-router/ai-router.interface';
-import { AiRouterService } from '../../../infrastructure/ai-router/ai-router.service';
-import { StorageService } from '../../../infrastructure/storage/storage.service';
-import { FrameType } from '../dto';
+import { PrismaService } from '../../../../prisma/prisma.service';
+import { AITaskType } from '../../../../infrastructure/ai-router/ai-router.interface';
+import { AiRouterService } from '../../../../infrastructure/ai-router/ai-router.service';
+import { StorageService } from '../../../../infrastructure/storage/storage.service';
+import { FrameType } from '../../dto';
 import { randomUUID } from 'crypto';
-import { PromptEngineService } from './prompt-engine.service';
+import { PromptEngineService } from '../foundation/prompt-engine.service';
 
 @Injectable()
 export class FrameGenService {
