@@ -8,6 +8,7 @@ import { FrameGenService } from './services/frame-gen.service';
 import { VideoRenderService } from './services/video-render.service';
 import { StitchService } from './services/stitch.service';
 import { ExportService } from './services/export.service';
+import { PromptEngineService } from './services/prompt-engine.service';
 import { PrismaModule } from '../../prisma/prisma.module';
 import { AiRouterModule } from '../../infrastructure/ai-router/ai-router.module';
 import { StorageModule } from '../../infrastructure/storage/storage.module';
@@ -24,7 +25,8 @@ import { StorageModule } from '../../infrastructure/storage/storage.module';
     VideoRenderService,
     StitchService,
     ExportService,
+    PromptEngineService,
   ],
-  exports: [CreationService, FrameGenService, VideoRenderService, StitchService, ExportService],
+  exports: [CreationService, FrameGenService, VideoRenderService, StitchService, ExportService, PromptEngineService],
 })
 export class CreationModule {}

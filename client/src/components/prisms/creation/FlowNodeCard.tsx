@@ -326,8 +326,8 @@ function FlowNodeCardComponent({ id, data, selected }: FlowNodeCardProps) {
           <textarea
             value={String(data.scriptSegment || '')}
             onChange={(e) => updateNodeLocalData(id, { scriptSegment: e.target.value })}
-            rows={2}
-            className="mt-1 w-full resize-y rounded-md border border-[var(--creation-border-strong)] bg-[var(--creation-bg-input)] px-2 py-1 text-xs text-[var(--creation-text-primary)] outline-none focus:border-[var(--creation-accent)]"
+            rows={4}
+            className="mt-1 w-full resize-y whitespace-pre-wrap break-words rounded-md border border-[var(--creation-border-strong)] bg-[var(--creation-bg-input)] px-2 py-1.5 text-xs leading-5 text-[var(--creation-text-primary)] outline-none focus:border-[var(--creation-accent)]"
           />
         </div>
         <div>
@@ -341,8 +341,8 @@ function FlowNodeCardComponent({ id, data, selected }: FlowNodeCardProps) {
                 sceneFramePrompt: value,
               });
             }}
-            rows={2}
-            className="mt-1 w-full resize-y rounded-md border border-[var(--creation-border-strong)] bg-[var(--creation-bg-input)] px-2 py-1 text-xs text-[var(--creation-text-primary)] outline-none focus:border-[var(--creation-accent)]"
+            rows={6}
+            className="mt-1 w-full resize-y whitespace-pre-wrap break-words rounded-md border border-[var(--creation-border-strong)] bg-[var(--creation-bg-input)] px-2 py-1.5 text-xs leading-5 text-[var(--creation-text-primary)] outline-none focus:border-[var(--creation-accent)]"
           />
         </div>
         <div className="flex items-center gap-2">
@@ -356,7 +356,7 @@ function FlowNodeCardComponent({ id, data, selected }: FlowNodeCardProps) {
             onClick={() => setIsEditingCopy((v) => !v)}
             className="rounded-md border border-[var(--creation-border-strong)] px-2 py-1 text-[10px] text-[var(--creation-text-secondary)] transition hover:bg-[var(--creation-bg-elevated)] hover:text-[var(--creation-text-primary)]"
           >
-            AI 调整
+            AI 优化文案+提示词
           </button>
         </div>
         {isEditingCopy && (
@@ -418,12 +418,12 @@ function FlowNodeCardComponent({ id, data, selected }: FlowNodeCardProps) {
                   className="rounded-md border border-[var(--creation-border-strong)] bg-[#0F1016] p-2"
                 >
                   <div className="mb-1 text-[10px] font-medium text-[#D8B4FE]">候选 {index + 1}</div>
-                  <div className="space-y-1 text-[10px] text-[var(--creation-text-primary)]">
-                    <div><span className="text-[var(--creation-text-secondary)]">内容：</span>{candidate.scriptSegment}</div>
-                    <div><span className="text-[var(--creation-text-secondary)]">视频提示词：</span>{candidate.videoPrompt}</div>
-                    <div><span className="text-[var(--creation-text-secondary)]">画面提示词：</span>{candidate.sceneFramePrompt}</div>
-                    <div><span className="text-[var(--creation-text-secondary)]">首帧提示词：</span>{candidate.firstFramePrompt}</div>
-                    <div><span className="text-[var(--creation-text-secondary)]">尾帧提示词：</span>{candidate.lastFramePrompt}</div>
+                  <div className="space-y-2 text-[10px] text-[var(--creation-text-primary)]">
+                    <div className="whitespace-pre-wrap break-words leading-5"><span className="text-[var(--creation-text-secondary)]">内容：</span>{candidate.scriptSegment}</div>
+                    <div className="whitespace-pre-wrap break-words leading-5"><span className="text-[var(--creation-text-secondary)]">视频提示词：</span>{candidate.videoPrompt}</div>
+                    <div className="whitespace-pre-wrap break-words leading-5"><span className="text-[var(--creation-text-secondary)]">画面提示词：</span>{candidate.sceneFramePrompt}</div>
+                    <div className="whitespace-pre-wrap break-words leading-5"><span className="text-[var(--creation-text-secondary)]">首帧提示词：</span>{candidate.firstFramePrompt}</div>
+                    <div className="whitespace-pre-wrap break-words leading-5"><span className="text-[var(--creation-text-secondary)]">尾帧提示词：</span>{candidate.lastFramePrompt}</div>
                   </div>
                   <button
                     onClick={() => handleAdoptCandidate(candidate, index)}
@@ -452,28 +452,31 @@ function FlowNodeCardComponent({ id, data, selected }: FlowNodeCardProps) {
           <>
             <div>
               <label className="text-[10px] text-[var(--creation-text-muted)]">首帧提示词</label>
-              <input
+              <textarea
                 value={String(data.firstFramePrompt || '')}
                 onChange={(e) => updateNodeLocalData(id, { firstFramePrompt: e.target.value })}
-                className="mt-1 w-full rounded-md border border-[var(--creation-border-strong)] bg-[var(--creation-bg-input)] px-2 py-1 text-xs text-[var(--creation-text-primary)] outline-none focus:border-[var(--creation-accent)]"
+                rows={5}
+                className="mt-1 w-full resize-y whitespace-pre-wrap break-words rounded-md border border-[var(--creation-border-strong)] bg-[var(--creation-bg-input)] px-2 py-1.5 text-xs leading-5 text-[var(--creation-text-primary)] outline-none focus:border-[var(--creation-accent)]"
               />
             </div>
             <div>
               <label className="text-[10px] text-[var(--creation-text-muted)]">尾帧提示词</label>
-              <input
+              <textarea
                 value={String(data.lastFramePrompt || '')}
                 onChange={(e) => updateNodeLocalData(id, { lastFramePrompt: e.target.value })}
-                className="mt-1 w-full rounded-md border border-[var(--creation-border-strong)] bg-[var(--creation-bg-input)] px-2 py-1 text-xs text-[var(--creation-text-primary)] outline-none focus:border-[var(--creation-accent)]"
+                rows={5}
+                className="mt-1 w-full resize-y whitespace-pre-wrap break-words rounded-md border border-[var(--creation-border-strong)] bg-[var(--creation-bg-input)] px-2 py-1.5 text-xs leading-5 text-[var(--creation-text-primary)] outline-none focus:border-[var(--creation-accent)]"
               />
             </div>
           </>
         ) : (
           <div>
             <label className="text-[10px] text-[var(--creation-text-muted)]">画面帧提示词（承接上一节点尾帧）</label>
-            <input
+            <textarea
               value={String(data.sceneFramePrompt || '')}
               onChange={(e) => updateNodeLocalData(id, { sceneFramePrompt: e.target.value })}
-              className="mt-1 w-full rounded-md border border-[var(--creation-border-strong)] bg-[var(--creation-bg-input)] px-2 py-1 text-xs text-[var(--creation-text-primary)] outline-none focus:border-[var(--creation-accent)]"
+              rows={6}
+              className="mt-1 w-full resize-y whitespace-pre-wrap break-words rounded-md border border-[var(--creation-border-strong)] bg-[var(--creation-bg-input)] px-2 py-1.5 text-xs leading-5 text-[var(--creation-text-primary)] outline-none focus:border-[var(--creation-accent)]"
             />
           </div>
         )}
@@ -594,12 +597,6 @@ function FlowNodeCardComponent({ id, data, selected }: FlowNodeCardProps) {
         {qualityBreakdown ? (
           <div className="rounded-lg border border-[var(--creation-border-strong)] bg-[var(--creation-bg-input)] px-2 py-1.5 text-[10px] text-[#AEB4BF]">
             提示词完整度 {Math.round(qualityBreakdown.promptCompleteness)} · 连续性 {Math.round(qualityBreakdown.continuity)} · 渲染稳定性 {Math.round(qualityBreakdown.renderStability)}
-          </div>
-        ) : null}
-
-        {precheckIssues && precheckIssues.length > 0 ? (
-          <div className="rounded-lg border border-[#3D2A2A] bg-[#2B1E1E]/50 p-2 text-[10px] text-[#FCA5A5]">
-            {precheckIssues[0].message}
           </div>
         ) : null}
 

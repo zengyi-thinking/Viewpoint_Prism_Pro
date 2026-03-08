@@ -99,17 +99,17 @@ function extractSingleNode(response: any): any | null {
 
 function buildFirstFramePrompt(basePrompt?: string, scriptSegment?: string) {
   const source = (basePrompt || scriptSegment || '视频场景').trim();
-  return `${source}，开场镜头，画面干净，主体明确，电影感构图，16:9`;
+  return `【镜头职责】\n作为故事或当前镜头的起始锚点，先稳定建立主体与空间。\n\n【主体与角色】\n${source}\n\n【镜头与构图】\n中景起势，主体完整入镜，画面稳定，构图清楚。\n\n【光线与质感】\n电影级布光，细节清晰，16:9，高质量。`;
 }
 
 function buildLastFramePrompt(basePrompt?: string, scriptSegment?: string) {
   const source = (basePrompt || scriptSegment || '视频场景').trim();
-  return `${source}，收尾镜头，结尾定格，氛围完整，电影感构图，16:9`;
+  return `【镜头职责】\n作为当前镜头的结束锚点，形成可承接下一镜头的稳定终态。\n\n【主体与角色】\n${source}\n\n【结束状态】\n动作与视线落点明确，氛围完整，方便下一个镜头延续。\n\n【画面要求】\n电影感构图，16:9，高质量。`;
 }
 
 function buildSceneFramePrompt(basePrompt?: string, scriptSegment?: string) {
   const source = (basePrompt || scriptSegment || '视频场景').trim();
-  return `${source}，关键画面帧，信息清晰，细节完整，电影感构图，16:9`;
+  return `【镜头职责】\n承接上一镜头尾帧，作为当前镜头的核心画面锚点。\n\n【主体与场景】\n${source}\n\n【镜头与信息】\n主体清晰，环境完整，构图稳定，细节可信。\n\n【画面要求】\n电影感构图，16:9，高质量。`;
 }
 
 function resolvePromptBundle(node: any, fallbackPrompt?: string, fallbackSegment?: string) {
@@ -689,17 +689,8 @@ export const useCreationStore = create<CreationStore>((set, get) => ({
   renderNode: async (nodeId: string, quality?: string) => {
     const { currentVideoId } = get();
     if (!currentVideoId) return;
-
-    const precheck = await get().precheckNode(nodeId);
-    if (precheck?.level === 'high_risk') {
-      const highestIssue = precheck.issues.find((item) => item.severity === 'high') || precheck.issues[0];
-      set({
-        error: highestIssue
-          ? `预检未通过：${highestIssue.message}`
-          : '预检未通过：当前节点风险过高，请先补全提示词或帧锚点',
-      });
-      return;
-    }
+    const currentNode = get().nodes.find((node) => node.id === nodeId);
+    void get().precheckNode(nodeId);
 
     // Set loading state
     set((state) => ({
@@ -709,7 +700,14 @@ export const useCreationStore = create<CreationStore>((set, get) => ({
     }));
 
     try {
-      const response = await creationApi.renderNode(nodeId, quality) as any;
+      const response = await creationApi.renderNode(nodeId, {
+        quality: quality as 'draft' | 'high' | undefined,
+        prompt: String(currentNode?.data.prompt || '').trim(),
+        videoPrompt: String(currentNode?.data.videoPrompt || currentNode?.data.prompt || '').trim(),
+        sceneFramePrompt: String(currentNode?.data.sceneFramePrompt || '').trim(),
+        firstFramePrompt: String(currentNode?.data.firstFramePrompt || '').trim(),
+        lastFramePrompt: String(currentNode?.data.lastFramePrompt || '').trim(),
+      }) as any;
       set((state) => ({
         nodes: state.nodes.map((node) =>
           node.id === nodeId
@@ -806,6 +804,7 @@ export const useCreationStore = create<CreationStore>((set, get) => ({
       const response = await creationApi.refineNodeCopy(nodeId, { requirement: req }) as any;
       const node = response?.node;
       if (!node?.id) return;
+      const promptBundle = response?.promptBundle;
       set((state) => ({
         nodes: state.nodes.map((n) =>
           n.id === node.id
@@ -815,7 +814,11 @@ export const useCreationStore = create<CreationStore>((set, get) => ({
                   ...n.data,
                   prompt: node.prompt,
                   scriptSegment: node.scriptSegment,
-                  ...resolvePromptBundle(node, node.prompt, node.scriptSegment),
+                  ...resolvePromptBundle(
+                    promptBundle || node,
+                    promptBundle?.videoPrompt || node.prompt,
+                    node.scriptSegment,
+                  ),
                 },
               }
             : n

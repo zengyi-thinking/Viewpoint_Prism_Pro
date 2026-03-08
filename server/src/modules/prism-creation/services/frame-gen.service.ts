@@ -6,6 +6,7 @@ import { AiRouterService } from '../../../infrastructure/ai-router/ai-router.ser
 import { StorageService } from '../../../infrastructure/storage/storage.service';
 import { FrameType } from '../dto';
 import { randomUUID } from 'crypto';
+import { PromptEngineService } from './prompt-engine.service';
 
 @Injectable()
 export class FrameGenService {
@@ -16,6 +17,7 @@ export class FrameGenService {
     private readonly aiRouter: AiRouterService,
     private readonly storage: StorageService,
     private readonly configService: ConfigService,
+    private readonly promptEngine: PromptEngineService,
   ) {}
 
   /**
@@ -193,14 +195,18 @@ export class FrameGenService {
    * Enhance prompt based on frame type
    */
   private enhancePrompt(prompt: string, frameType: FrameType, isFirstMainNode: boolean): string {
+    const targetModel =
+      this.configService.get<string>('SILICONFLOW_MODEL_IMAGE') ||
+      this.configService.get<string>('GEMINI_MODEL_IMAGE') ||
+      '';
+    const compact = this.promptEngine.toImageModelPrompt(prompt, targetModel);
     if (!isFirstMainNode) {
-      return `${prompt}, scene key frame, cinematic still, composition-focused, 16:9, high quality`;
+      return `${compact}，这是承接上一镜头尾帧的当前镜头画面锚点，单帧构图稳定，主体清晰，环境信息完整，细节真实，16:9，高质量，无额外人物干扰。`;
     }
     if (frameType === FrameType.FIRST) {
-      return `${prompt}, opening shot, beginning scene, first frame, high quality, detailed`;
-    } else {
-      return `${prompt}, ending shot, final scene, last frame, conclusion, high quality, detailed`;
+      return `${compact}，作为故事第一镜头的开场首帧，人物、环境、光线、构图必须一眼可读，画面稳定，电影级质感，16:9，高质量。`;
     }
+    return `${compact}，作为当前镜头的结束尾帧，动作落点明确，情绪停顿清晰，方便下个镜头衔接，画面稳定，电影级质感，16:9，高质量。`;
   }
 
   /**

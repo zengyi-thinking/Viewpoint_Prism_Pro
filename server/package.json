@@ -21,6 +21,8 @@
     "test:e2e": "jest --config ./test/jest-e2e.json",
     "test:creation:service": "ts-node -r tsconfig-paths/register test/test-creation-service.ts",
     "test:creation:optimization": "ts-node -r tsconfig-paths/register test/test-creation-optimization-services.ts",
+    "test:creation:prompt-quality": "ts-node -r tsconfig-paths/register test/test-creation-prompt-quality.ts",
+    "test:creation:preview-diversity": "ts-node -r tsconfig-paths/register test/test-creation-preview-diversity.ts",
     "prisma:generate": "prisma generate",
     "prisma:push": "prisma db push",
     "prisma:studio": "prisma studio",

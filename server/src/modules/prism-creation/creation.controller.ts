@@ -18,6 +18,7 @@ import {
   GenerateNextNodeDto,
   GenerateIdeaPreviewDto,
   GenerateNodeCandidatesDto,
+  RenderNodeDto,
 } from './dto';
 
 @UseGuards(JwtAuthGuard)
@@ -204,8 +205,9 @@ export class CreationController {
     @CurrentUser() userId: string,
     @Param('nodeId') nodeId: string,
     @Query('quality') quality?: RenderQuality,
+    @Body() dto?: RenderNodeDto,
   ) {
-    return this.creationService.renderNode(userId, nodeId, quality);
+    return this.creationService.renderNode(userId, nodeId, quality || dto?.quality, dto);
   }
 
   @Post('nodes/:nodeId/refine-copy')

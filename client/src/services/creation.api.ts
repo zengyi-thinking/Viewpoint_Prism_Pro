@@ -21,6 +21,15 @@ export interface RenderFlowPayload {
   stylePresetId?: string;
 }
 
+export interface RenderNodePayload {
+  quality?: 'draft' | 'high';
+  prompt?: string;
+  videoPrompt?: string;
+  sceneFramePrompt?: string;
+  firstFramePrompt?: string;
+  lastFramePrompt?: string;
+}
+
 export interface StitchFlowPayload {
   includeNarration?: boolean;
   includeBgm?: boolean;
@@ -250,10 +259,11 @@ export const creationApi = {
     }),
 
   // Render single node
-  renderNode: (nodeId: string, quality?: string) => {
-    const query = quality ? `?quality=${quality}` : '';
+  renderNode: (nodeId: string, payload?: RenderNodePayload) => {
+    const query = payload?.quality ? `?quality=${payload.quality}` : '';
     return apiFetch(`/api/prism/creation/nodes/${nodeId}/render${query}`, {
       method: 'POST',
+      body: JSON.stringify(payload || {}),
     });
   },
 

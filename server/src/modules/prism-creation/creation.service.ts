@@ -12,6 +12,7 @@ import { FrameGenService } from './services/frame-gen.service';
 import { VideoRenderService } from './services/video-render.service';
 import { StitchService } from './services/stitch.service';
 import { ExportService } from './services/export.service';
+import { PromptEngineService } from './services/prompt-engine.service';
 import {
   CreateBranchDto,
   CreateFlowNodeDto,
@@ -30,6 +31,7 @@ import {
   GenerateNextNodeDto,
   GenerateIdeaPreviewDto,
   GenerateNodeCandidatesDto,
+  RenderNodeDto,
 } from './dto';
 
 type PromptBundle = {
@@ -60,6 +62,7 @@ export class CreationService {
     private readonly videoRenderService: VideoRenderService,
     private readonly stitchService: StitchService,
     private readonly exportService: ExportService,
+    private readonly promptEngine: PromptEngineService,
   ) {}
 
   // ============================================================
@@ -210,28 +213,28 @@ export class CreationService {
       ? `\n额外调整要求：${adjustInstruction.trim()}`
       : '';
 
-    const prompt = `请将以下文案按镜头逻辑拆分为多个片段。每个片段应该是一个独立的场景或动作。
-
-文案内容：
-${scriptText}
-${styleContext}
-${adjustContext}
-
-输出格式（JSON数组）：
-[
-  { "segment": "片段1文案", "prompt": "可用于生成视频的描述", "estimatedDuration": 3 },
-  { "segment": "片段2文案", "prompt": "可用于生成视频的描述", "estimatedDuration": 5 },
-  ...
-]
-
-请只返回JSON数组，不要包含其他文字。`;
-
     try {
       const response = await this.aiRouter.execute(AITaskType.LLM_CHAT, {
         messages: [
           {
+            role: 'system',
+            content: this.promptEngine.buildMultishotSystemPrompt('script_split'),
+          },
+          {
             role: 'user',
-            content: prompt,
+            content: JSON.stringify(
+              {
+                task: '将长文案拆分成多个镜头节点',
+                scriptText,
+                stylePreset: stylePreset || null,
+                adjustInstruction: adjustInstruction || null,
+                outputSchema: [
+                  { segment: '片段文案', prompt: '专业画面提示词', estimatedDuration: 3 },
+                ],
+              },
+              null,
+              2,
+            ),
           },
         ],
         temperature: 0.7,
@@ -1010,7 +1013,7 @@ ${adjustContext}
   /**
    * Render a single node (generate video from frames)
    */
-  async renderNode(userId: string, nodeId: string, quality?: RenderQuality) {
+  async renderNode(userId: string, nodeId: string, quality?: RenderQuality, dto?: RenderNodeDto) {
     // Verify node exists and include flowProject with video and project for access check
     const node = await this.prisma.flowNode.findUnique({
       where: { id: nodeId },
@@ -1037,6 +1040,13 @@ ${adjustContext}
       userId,
       nodeId,
       quality || RenderQuality.DRAFT,
+      {
+        prompt: dto?.prompt,
+        videoPrompt: dto?.videoPrompt,
+        sceneFramePrompt: dto?.sceneFramePrompt,
+        firstFramePrompt: dto?.firstFramePrompt,
+        lastFramePrompt: dto?.lastFramePrompt,
+      },
     );
 
     this.logger.log(`Enqueued render for node ${nodeId}`);
@@ -1081,7 +1091,7 @@ ${adjustContext}
     const currentSegment = node.scriptSegment || '';
     const currentPrompt = node.prompt || '';
 
-    let parsed: { scriptSegment: string; prompt: string };
+    let parsed: PromptBundle;
     try {
       const aiResponse = await this.aiRouter.execute(
         AITaskType.LLM_CHAT,
@@ -1089,8 +1099,7 @@ ${adjustContext}
           messages: [
             {
               role: 'system',
-              content:
-                '你是视频分镜文案优化助手。请仅返回 JSON 对象，字段为 scriptSegment 和 prompt，不要输出 markdown 代码块。',
+              content: this.promptEngine.buildMultishotSystemPrompt('refine'),
             },
             {
               role: 'user',
@@ -1100,6 +1109,14 @@ ${adjustContext}
                   current: {
                     scriptSegment: currentSegment,
                     prompt: currentPrompt,
+                    bundle: this.normalizePromptBundle(
+                      {
+                        scriptSegment: currentSegment,
+                        videoPrompt: currentPrompt,
+                      },
+                      requirement,
+                      null,
+                    ),
                   },
                 },
                 null,
@@ -1119,21 +1136,21 @@ ${adjustContext}
       parsed = this.parseRefineCopyResult(content, currentSegment, currentPrompt);
     } catch (error: any) {
       this.logger.warn(`Refine copy fallback for node ${nodeId}: ${error?.message || 'unknown error'}`);
-      const fallbackSegment =
-        (currentSegment || `按要求调整：${requirement}`).trim();
-      const fallbackPrompt =
-        `${currentPrompt || fallbackSegment}。额外要求：${requirement}`.trim();
-      parsed = {
-        scriptSegment: fallbackSegment,
-        prompt: fallbackPrompt,
-      };
+      parsed = this.normalizePromptBundle(
+        {
+          scriptSegment: currentSegment || `按要求调整：${requirement}`,
+          videoPrompt: `${currentPrompt || currentSegment || requirement}。额外要求：${requirement}`,
+        },
+        requirement,
+        null,
+      );
     }
 
     const updated = await this.prisma.flowNode.update({
       where: { id: nodeId },
       data: {
         scriptSegment: parsed.scriptSegment,
-        prompt: parsed.prompt,
+        prompt: parsed.videoPrompt,
       },
       include: {
         parentNode: true,
@@ -1146,6 +1163,7 @@ ${adjustContext}
       nodeId,
       requirement,
       node: this.toNodeDto(updated),
+      promptBundle: parsed,
     };
   }
 
@@ -1362,18 +1380,18 @@ ${adjustContext}
     if (!hasLastFrame) {
       issues.push({
         code: 'missing_last_frame_anchor',
-        severity: 'high',
-        message: '当前节点缺少尾帧锚点，渲染稳定性会显著下降。',
-        suggestion: '先生成并锁定尾帧，再执行视频渲染。',
+        severity: 'low',
+        message: '当前节点尚未生成目标锚点帧，系统会在渲染前自动补全。',
+        suggestion: '若想手动控制质量，可先生成并锁定锚点帧。',
       });
     }
 
     if (parentNode && !parentHasFrame) {
       issues.push({
         code: 'continuity_parent_anchor_missing',
-        severity: 'medium',
-        message: '上一节点缺少帧锚点，当前节点连续性风险较高。',
-        suggestion: '补全上一节点尾帧，或为当前节点补充首帧锚点。',
+        severity: 'low',
+        message: '上一节点尚未生成可承接帧，系统会在渲染前自动补全承接锚点。',
+        suggestion: '若需要更精细控制，可提前锁定上一节点尾帧。',
       });
     }
 
@@ -1483,7 +1501,20 @@ ${adjustContext}
   private toNodeDto(node: any, renderTask?: any) {
     const taskPayload = (renderTask?.payload as any) || {};
     const taskResult = (renderTask?.result as any) || {};
-    const basePrompt = String(node.prompt || node.scriptSegment || '').trim();
+    const bundle = this.promptEngine.normalizeBundle({
+      idea: String(node.scriptSegment || node.prompt || '当前镜头').trim(),
+      payload: {
+        scriptSegment: node.scriptSegment,
+        videoPrompt: node.prompt,
+      },
+      current: node.parentNode
+        ? {
+            scriptSegment: node.parentNode.scriptSegment,
+            prompt: node.parentNode.prompt,
+            orderIndex: node.parentNode.orderIndex,
+          }
+        : null,
+    });
     return {
       id: node.id,
       flowProjectId: node.flowProjectId,
@@ -1503,10 +1534,10 @@ ${adjustContext}
       isMerged: node.isMerged,
       narrationUrl: node.narrationUrl,
       bgmUrl: node.bgmUrl,
-      videoPrompt: basePrompt || null,
-      sceneFramePrompt: basePrompt ? `${basePrompt}，关键画面帧，主体清晰，16:9` : null,
-      firstFramePrompt: basePrompt ? `${basePrompt}，开场首帧，电影感构图，16:9` : null,
-      lastFramePrompt: basePrompt ? `${basePrompt}，收束尾帧，结尾定格，16:9` : null,
+      videoPrompt: bundle.videoPrompt || null,
+      sceneFramePrompt: bundle.sceneFramePrompt || null,
+      firstFramePrompt: bundle.firstFramePrompt || null,
+      lastFramePrompt: bundle.lastFramePrompt || null,
       activeRenderTaskId:
         taskPayload?.nodeId === node.id &&
         (renderTask?.status === TaskStatus.PROCESSING || renderTask?.status === TaskStatus.PENDING)
@@ -1540,7 +1571,7 @@ ${adjustContext}
     };
   }
 
-  private parseRefineCopyResult(content: string, fallbackSegment: string, fallbackPrompt: string) {
+  private parseRefineCopyResult(content: string, fallbackSegment: string, fallbackPrompt: string): PromptBundle {
     const raw = String(content || '').trim();
     const candidates = [
       raw,
@@ -1552,9 +1583,15 @@ ${adjustContext}
       if (!candidate) continue;
       try {
         const parsed = JSON.parse(candidate);
-        const scriptSegment = String(parsed?.scriptSegment || fallbackSegment).trim();
-        const prompt = String(parsed?.prompt || fallbackPrompt || scriptSegment).trim();
-        return { scriptSegment, prompt };
+        return this.normalizePromptBundle(
+          {
+            ...parsed,
+            videoPrompt: parsed?.videoPrompt || parsed?.prompt || fallbackPrompt,
+            scriptSegment: parsed?.scriptSegment || fallbackSegment,
+          },
+          fallbackSegment || fallbackPrompt,
+          null,
+        );
       } catch {
         // noop
       }
@@ -1564,19 +1601,28 @@ ${adjustContext}
     if (objectMatch) {
       try {
         const parsed = JSON.parse(objectMatch[0]);
-        return {
-          scriptSegment: String(parsed?.scriptSegment || fallbackSegment).trim(),
-          prompt: String(parsed?.prompt || fallbackPrompt || fallbackSegment).trim(),
-        };
+        return this.normalizePromptBundle(
+          {
+            ...parsed,
+            videoPrompt: parsed?.videoPrompt || parsed?.prompt || fallbackPrompt,
+            scriptSegment: parsed?.scriptSegment || fallbackSegment,
+          },
+          fallbackSegment || fallbackPrompt,
+          null,
+        );
       } catch {
         // noop
       }
     }
 
-    return {
-      scriptSegment: fallbackSegment,
-      prompt: fallbackPrompt || fallbackSegment,
-    };
+    return this.normalizePromptBundle(
+      {
+        scriptSegment: fallbackSegment,
+        videoPrompt: fallbackPrompt || fallbackSegment,
+      },
+      fallbackSegment || fallbackPrompt,
+      null,
+    );
   }
 
   private async generateNextNodeWithLLM(
@@ -1605,8 +1651,7 @@ ${adjustContext}
           messages: [
             {
               role: 'system',
-              content:
-                '你是短视频分镜导演助手。请只返回 JSON 对象，不要 markdown 代码块。必须包含字段：scriptSegment, videoPrompt, sceneFramePrompt, firstFramePrompt, lastFramePrompt。所有字段都要是中文高质量提示词/文案。',
+              content: this.promptEngine.buildMultishotSystemPrompt('next_node'),
             },
             {
               role: 'user',
@@ -1639,22 +1684,29 @@ ${adjustContext}
     count: number,
     tone: string,
   ): Promise<FirstNodeIdeaPreview[]> {
+    const strategies = this.getPreviewStrategies(tone, count);
     const fallbackPromptBundle = this.normalizePromptBundle({}, idea, null);
-    const buildFallback = (variantIndex: number): FirstNodeIdeaPreview => ({
-      title: `方向 ${variantIndex + 1}：${idea.slice(0, 20)}`,
-      openingScene: `以“${idea}”为核心概念，从${this.describePreviewTone(tone)}的角度建立世界观、人物气质与视觉母题，作为第一镜头的开场场景。`,
-      progressionBeat: `第一节点负责开场并埋下推进钩子，方向 ${variantIndex + 1} 会把后续故事引向不同节奏的冲突、探索或任务展开。`,
-      styleNotes: `调性偏向 ${tone}。不要复述用户原句，要把 idea 转译成可拍摄的故事开场。`,
-      confirmationChecklist: [
-        '这个开场气质是否符合你想要的作品调性？',
-        '第一节点是否既承担开场，又埋下后续推进钩子？',
-        '如果认可这个方向，再创建首节点。',
-      ],
-      promptBundle: {
-        ...fallbackPromptBundle,
-        scriptSegment: `方向${variantIndex + 1}：${fallbackPromptBundle.scriptSegment}`,
-      },
-    });
+    const buildFallback = (variantIndex: number): FirstNodeIdeaPreview => {
+      const strategy = strategies[variantIndex] || strategies[0];
+      return {
+        title: `${strategy.label}：${this.compactIdeaTitle(idea)}`,
+        openingScene: `围绕“${idea}”，采用${strategy.openingMethod}来开场：${strategy.openingInstruction}。第一镜头要先让用户感受到${strategy.primaryValue}，而不是直接复述题面。`,
+        progressionBeat: `第一节点负责开场并埋下推进钩子，这个方向会把后续故事引向${strategy.progressionMode}，让第二节点自然接上更明确的任务、冲突或探索。`,
+        styleNotes: `调性偏向 ${this.describePreviewTone(tone)}。导演策略：${strategy.styleCue}。避免与其他方向重复同一种镜头组织方式。`,
+        confirmationChecklist: [
+          '这个开场气质是否符合你想要的作品调性？',
+          '第一节点是否既承担开场，又埋下后续推进钩子？',
+          '如果认可这个方向，再创建首节点。',
+        ],
+        promptBundle: this.applyPreviewStrategyToBundle(
+          {
+            ...fallbackPromptBundle,
+            scriptSegment: `${strategy.label}：${strategy.scriptOpening}。${fallbackPromptBundle.scriptSegment}`,
+          },
+          strategy,
+        ),
+      };
+    };
     const fallbackList = Array.from({ length: count }, (_, index) => buildFallback(index));
 
     try {
@@ -1664,21 +1716,7 @@ ${adjustContext}
           messages: [
             {
               role: 'system',
-              content: [
-                '你是视频故事开发导演，不要简单复述用户 idea。',
-                '你的任务是先把 idea 转译成多个“故事开场预览”，让用户先看方向，再决定是否创建第一个节点。',
-                '只返回 JSON 数组，不要 markdown，不要代码块。',
-                '数组长度必须等于用户要求的 count。',
-                '每个数组元素都必须包含字段：title, openingScene, progressionBeat, styleNotes, confirmationChecklist, scriptSegment, videoPrompt, sceneFramePrompt, firstFramePrompt, lastFramePrompt。',
-                '要求：',
-                '1. openingScene 必须是一个可视化的故事开场场景，不是复述用户原句。',
-                '2. progressionBeat 必须说明第一节点之后故事将如何推进，体现“进度节点/推进节点”价值。',
-                '3. scriptSegment 必须是第一节点的正式文案，承担“开场 + 埋钩子”的功能。',
-                '4. 所有提示词必须是高质量中文，可直接用于生成画面。',
-                '5. confirmationChecklist 必须是长度 3 的字符串数组，用于提示用户确认口味。',
-                '6. 不同数组元素必须体现明显不同的方向，而不是改几个词。',
-                `7. 当前调性偏好是：${tone}。`,
-              ].join('\n'),
+              content: this.promptEngine.buildMultishotSystemPrompt('preview', tone),
             },
             {
               role: 'user',
@@ -1688,7 +1726,17 @@ ${adjustContext}
                   idea,
                   count,
                   tone,
-                  requirement: '先给预览，再让用户确认；不要直接创建节点；不要简单复制用户原话。',
+                  strategies: strategies.map((strategy, index) => ({
+                    index,
+                    label: strategy.label,
+                    openingMethod: strategy.openingMethod,
+                    openingInstruction: strategy.openingInstruction,
+                    primaryValue: strategy.primaryValue,
+                    progressionMode: strategy.progressionMode,
+                    styleCue: strategy.styleCue,
+                    scriptOpening: strategy.scriptOpening,
+                  })),
+                  requirement: '先给预览，再让用户确认；不要直接创建节点；不要简单复制用户原话；三个方向必须一眼能看出不同开场法。',
                 },
                 null,
                 2,
@@ -1714,7 +1762,11 @@ ${adjustContext}
       const normalized = parsed
         .slice(0, count)
         .map((item: any, index: number) => {
-          const promptBundle = this.normalizePromptBundle(item, idea, null);
+          const strategy = strategies[index] || strategies[0];
+          const promptBundle = this.applyPreviewStrategyToBundle(
+            this.normalizePromptBundle(item, idea, null),
+            strategy,
+          );
           const checklist = Array.isArray(item?.confirmationChecklist)
             ? item.confirmationChecklist
                 .map((entry: unknown) => String(entry || '').trim())
@@ -1724,17 +1776,45 @@ ${adjustContext}
           const fallback = fallbackList[index] || buildFallback(index);
 
           return {
-            title: String(item?.title || fallback.title).trim(),
-            openingScene: String(item?.openingScene || fallback.openingScene).trim(),
-            progressionBeat: String(item?.progressionBeat || fallback.progressionBeat).trim(),
-            styleNotes: String(item?.styleNotes || fallback.styleNotes).trim(),
+            title: this.ensurePreviewFieldDiversity(
+              String(item?.title || fallback.title).trim(),
+              fallback.title,
+              strategy.label,
+            ),
+            openingScene: this.ensurePreviewFieldDiversity(
+              String(item?.openingScene || fallback.openingScene).trim(),
+              fallback.openingScene,
+              strategy.openingMethod,
+            ),
+            progressionBeat: this.ensurePreviewFieldDiversity(
+              String(item?.progressionBeat || fallback.progressionBeat).trim(),
+              fallback.progressionBeat,
+              strategy.progressionMode,
+            ),
+            styleNotes: this.ensurePreviewFieldDiversity(
+              String(item?.styleNotes || fallback.styleNotes).trim(),
+              fallback.styleNotes,
+              strategy.styleCue,
+            ),
             confirmationChecklist: checklist.length ? checklist : fallback.confirmationChecklist,
-            promptBundle,
+            promptBundle: {
+              ...promptBundle,
+              scriptSegment: this.ensurePreviewFieldDiversity(
+                promptBundle.scriptSegment,
+                fallback.promptBundle.scriptSegment,
+                strategy.scriptOpening,
+              ),
+            },
           };
         })
         .filter((item) => Boolean(item.title && item.promptBundle.scriptSegment));
 
-      return normalized.length ? normalized : fallbackList;
+      const diversified = this.ensurePreviewListDiversity(
+        normalized.length ? normalized : fallbackList,
+        fallbackList,
+        strategies,
+      );
+      return diversified.length ? diversified : fallbackList;
     } catch (error: any) {
       this.logger.warn(
         `Generate first node preview fallback: ${error?.message || 'unknown error'}`,
@@ -1756,6 +1836,195 @@ ${adjustContext}
       default:
         return '更偏电影感和叙事镜头';
     }
+  }
+
+  private getPreviewStrategies(tone: string, count: number) {
+    const base = [
+      {
+        label: '世界观建立型',
+        openingMethod: '先建立世界观与规则，再让主角进入镜头',
+        openingInstruction: '先让观众看到这个世界最独特的空间秩序、视觉规则或危险征兆，再把主角带入画面',
+        primaryValue: '世界观质感与作品规模',
+        progressionMode: '更完整的任务线或冒险线',
+        styleCue: '远中近景递进，先空间后人物，画面信息量更大',
+        scriptOpening: '先用一个建立世界观的开场镜头交代空间秩序和异常线索',
+      },
+      {
+        label: '人物钩子型',
+        openingMethod: '先抓住主角气质和困境，再反推出世界',
+        openingInstruction: '第一镜头先让观众记住主角的状态、选择或困境，再用环境细节暗示背后的世界',
+        primaryValue: '人物魅力与情绪代入',
+        progressionMode: '人物关系、选择压力和身份反转',
+        styleCue: '更贴近人物的主观镜头与近景组织，开场更有代入感',
+        scriptOpening: '把第一镜头落在主角最有辨识度的状态上，让观众先记住人物',
+      },
+      {
+        label: '事件闯入型',
+        openingMethod: '先让异常事件闯入，再逼出故事主线',
+        openingInstruction: '开场就让现场秩序被打破，让角色必须立刻做出反应，从而自然带出故事主线',
+        primaryValue: '冲突触发与节奏钩子',
+        progressionMode: '更快进入追逐、对抗或任务执行',
+        styleCue: '动作调度更强，镜头节奏更快，开场更像预告片钩子',
+        scriptOpening: '一开始就让突发事件改变现场秩序，迫使主角立刻做出反应',
+      },
+      {
+        label: '悬念冷开型',
+        openingMethod: '先抛出危险或谜团，再延迟解释',
+        openingInstruction: '先展示一个无法立刻解释的画面、物件或危险信号，先勾住观众，再慢慢揭示原因',
+        primaryValue: '悬念和信息缺口',
+        progressionMode: '调查、解谜和层层揭示',
+        styleCue: '留白更多，局部细节先出场，信息逐步释放',
+        scriptOpening: '不要先讲清楚世界，而是先用不完整信息制造危险感和谜团',
+      },
+      {
+        label: '情绪浸入型',
+        openingMethod: '先让观众沉入氛围与关系，再缓慢点燃主线',
+        openingInstruction: '先让氛围、关系和情绪纹理成立，再在镜头尾部轻轻放入推动剧情的变化',
+        primaryValue: '氛围和情绪记忆点',
+        progressionMode: '情绪堆叠后进入转折或命运召唤',
+        styleCue: '节奏更慢，强调光线、空间和人物关系的呼吸感',
+        scriptOpening: '先让画面和情绪建立信任，再把关键变化轻轻推入镜头',
+      },
+    ];
+
+    if (tone === 'commercial') {
+      base[0].styleCue = '更强调品牌感、设定卖点和清晰视觉钩子';
+      base[2].styleCue = '节奏更快，开场 3 秒内必须出现强冲突或卖点事件';
+    }
+
+    if (tone === 'suspense') {
+      base[3].styleCue = '阴影、留白和信息延迟更强，镜头更克制';
+    }
+
+    if (tone === 'lyrical') {
+      base[4].styleCue = '情绪流动更细腻，人物关系和环境呼吸更重要';
+    }
+
+    if (tone === 'fantasy') {
+      base[0].styleCue = '突出奇观设定、异质元素和超现实规则';
+      base[1].styleCue = '人物魅力与奇幻身份线并置';
+    }
+
+    return base.slice(0, count);
+  }
+
+  private compactIdeaTitle(idea: string) {
+    return String(idea || '').replace(/\s+/g, ' ').trim().slice(0, 18) || '故事开场';
+  }
+
+  private ensurePreviewFieldDiversity(value: string, fallback: string, keyword: string) {
+    const normalized = String(value || '').trim();
+    if (!normalized) return fallback;
+    const tooCloseToFallback = this.previewSimilarity(normalized, fallback) >= 0.82;
+    const missingKeyword = keyword && !normalized.includes(keyword);
+    if (tooCloseToFallback || missingKeyword) {
+      return `${normalized}${missingKeyword ? `；核心开场法：${keyword}` : ''}`;
+    }
+    return normalized;
+  }
+
+  private ensurePreviewListDiversity(
+    previews: FirstNodeIdeaPreview[],
+    fallbackList: FirstNodeIdeaPreview[],
+    strategies: Array<{
+      label: string;
+      openingMethod: string;
+      openingInstruction: string;
+      primaryValue: string;
+      progressionMode: string;
+      styleCue: string;
+      scriptOpening: string;
+    }>,
+  ) {
+    return previews.map((preview, index) => {
+      const strategy = strategies[index] || strategies[0];
+      const fallback = fallbackList[index] || fallbackList[0];
+      const previousItems = previews.slice(0, index);
+      const openingTooSimilar = previousItems.some(
+        (item) => this.previewSimilarity(item.openingScene, preview.openingScene) >= 0.72,
+      );
+      const titleTooSimilar = previousItems.some(
+        (item) => this.previewSimilarity(item.title, preview.title) >= 0.8,
+      );
+
+      if (!openingTooSimilar && !titleTooSimilar) {
+        return preview;
+      }
+
+      return {
+        ...preview,
+        title: fallback.title,
+        openingScene: fallback.openingScene,
+        progressionBeat: fallback.progressionBeat,
+        styleNotes: `${fallback.styleNotes}。当前方向强制与其它方向区分：${strategy.openingMethod}`,
+        confirmationChecklist: fallback.confirmationChecklist,
+        promptBundle: {
+          ...this.applyPreviewStrategyToBundle(preview.promptBundle, strategy),
+          ...fallback.promptBundle,
+        },
+      };
+    });
+  }
+
+  private applyPreviewStrategyToBundle(
+    bundle: PromptBundle,
+    strategy: {
+      label: string;
+      openingMethod: string;
+      openingInstruction: string;
+      primaryValue: string;
+      progressionMode: string;
+      styleCue: string;
+      scriptOpening: string;
+    },
+  ) {
+    return {
+      ...bundle,
+      scriptSegment: this.prefixIfMissing(bundle.scriptSegment, `${strategy.label}：${strategy.scriptOpening}`),
+      videoPrompt: this.prefixIfMissing(
+        bundle.videoPrompt,
+        `开场法：${strategy.openingMethod}。导演重点：${strategy.styleCue}。优先传达${strategy.primaryValue}，后续将推进到${strategy.progressionMode}。`,
+      ),
+      sceneFramePrompt: this.prefixIfMissing(
+        bundle.sceneFramePrompt,
+        `【开场法】\n${strategy.openingMethod}\n\n【导演重点】\n${strategy.styleCue}\n\n【首镜头价值】\n${strategy.primaryValue}`,
+      ),
+      firstFramePrompt: this.prefixIfMissing(
+        bundle.firstFramePrompt,
+        `【开场法】\n${strategy.openingMethod}\n\n【进入方式】\n${strategy.openingInstruction}`,
+      ),
+      lastFramePrompt: this.prefixIfMissing(
+        bundle.lastFramePrompt,
+        `【推进目标】\n${strategy.progressionMode}\n\n【尾部钩子】\n为第二节点留下明确推进入口`,
+      ),
+    };
+  }
+
+  private prefixIfMissing(text: string, prefix: string) {
+    const value = String(text || '').trim();
+    if (!value) return String(prefix || '').trim();
+    if (value.includes(prefix)) return value;
+    return `${prefix}\n\n${value}`;
+  }
+
+  private previewSimilarity(a: string, b: string) {
+    const tokensA = new Set(this.tokenizePreviewText(a));
+    const tokensB = new Set(this.tokenizePreviewText(b));
+    if (!tokensA.size || !tokensB.size) return 0;
+    const intersection = Array.from(tokensA).filter((token) => tokensB.has(token)).length;
+    const union = new Set([...tokensA, ...tokensB]).size;
+    return union ? intersection / union : 0;
+  }
+
+  private tokenizePreviewText(text: string) {
+    return Array.from(
+      new Set(
+        String(text || '')
+          .split(/[^a-zA-Z0-9\u4e00-\u9fa5]+/)
+          .map((item) => item.trim())
+          .filter((item) => item.length >= 2),
+      ),
+    );
   }
 
   private async generateNodeCandidatesWithLLM(
@@ -1782,8 +2051,7 @@ ${adjustContext}
           messages: [
             {
               role: 'system',
-              content:
-                '你是分镜拓展助手。请基于当前节点生成多个“下一个节点”候选。只返回 JSON 数组，不要 markdown。每个数组元素必须包含字段：scriptSegment, videoPrompt, sceneFramePrompt, firstFramePrompt, lastFramePrompt。',
+              content: this.promptEngine.buildMultishotSystemPrompt('candidates'),
             },
             {
               role: 'user',
@@ -1832,34 +2100,17 @@ ${adjustContext}
     idea: string,
     current: { scriptSegment: string; prompt: string; orderIndex: number } | null,
   ): PromptBundle {
-    const fallbackSegment = current
-      ? `延续上一节点并推进剧情：${idea}`
-      : `故事开场：${idea}`;
-    const fallbackVideoPrompt = current
-      ? `${current.prompt || current.scriptSegment || '连续镜头'}，推进到新场景：${idea}，电影感，16:9`
-      : `${idea}，电影感镜头，16:9`;
-    const scriptSegment = String(payload?.scriptSegment || fallbackSegment).trim();
-    const videoPrompt = String(
-      payload?.videoPrompt || payload?.prompt || payload?.sceneFramePrompt || fallbackVideoPrompt,
-    ).trim();
-
-    const sceneFramePrompt = String(
-      payload?.sceneFramePrompt || `${videoPrompt}，关键画面帧，主体清晰，16:9`,
-    ).trim();
-    const firstFramePrompt = String(
-      payload?.firstFramePrompt || `${videoPrompt}，开场首帧，电影感构图，16:9`,
-    ).trim();
-    const lastFramePrompt = String(
-      payload?.lastFramePrompt || `${videoPrompt}，收束尾帧，结尾定格，16:9`,
-    ).trim();
-
-    return {
-      scriptSegment,
-      videoPrompt,
-      sceneFramePrompt,
-      firstFramePrompt,
-      lastFramePrompt,
-    };
+    return this.promptEngine.normalizeBundle({
+      payload,
+      idea,
+      current: current
+        ? {
+            scriptSegment: current.scriptSegment,
+            prompt: current.prompt,
+            orderIndex: current.orderIndex,
+          }
+        : null,
+    });
   }
 
   private parseJsonLoose(content: string): any {

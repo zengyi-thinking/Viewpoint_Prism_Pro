@@ -4,8 +4,10 @@ import { PrismaService } from '../../../prisma/prisma.service';
 import { AITaskType } from '../../../infrastructure/ai-router/ai-router.interface';
 import { AiRouterService } from '../../../infrastructure/ai-router/ai-router.service';
 import { StorageService } from '../../../infrastructure/storage/storage.service';
-import { TaskStatus, RenderQuality } from '../dto';
+import { TaskStatus, RenderQuality, FrameType } from '../dto';
 import { randomUUID } from 'crypto';
+import { FrameGenService } from './frame-gen.service';
+import { PromptEngineService } from './prompt-engine.service';
 
 @Injectable()
 export class VideoRenderService {
@@ -16,6 +18,8 @@ export class VideoRenderService {
     private readonly aiRouter: AiRouterService,
     private readonly configService: ConfigService,
     private readonly storage: StorageService,
+    private readonly frameGenService: FrameGenService,
+    private readonly promptEngine: PromptEngineService,
   ) {}
 
   /**
@@ -30,6 +34,13 @@ export class VideoRenderService {
     userId: string,
     nodeId: string,
     quality: RenderQuality = RenderQuality.DRAFT,
+    promptBundle?: {
+      prompt?: string;
+      videoPrompt?: string;
+      sceneFramePrompt?: string;
+      firstFramePrompt?: string;
+      lastFramePrompt?: string;
+    },
     stylePresetId?: string,
   ): Promise<{ taskId: string; nodeId: string; status: string }> {
     // Get the node
@@ -42,16 +53,12 @@ export class VideoRenderService {
       throw new NotFoundException('Node not found');
     }
 
-    const frameContext = await this.resolveRenderFrameContext(node);
+    const frameContext = await this.resolveRenderFrameContext(userId, node, promptBundle);
     if (!frameContext.lastFrameUrl) {
-      throw new BadRequestException(
-        frameContext.isFirstMainNode
-          ? '首个节点需要先生成落幅帧后再渲染'
-          : '当前节点需要先生成画面帧后再渲染',
-      );
+      throw new BadRequestException('系统未能自动生成当前镜头的目标锚点帧，请检查模型服务状态后重试。');
     }
     if (!frameContext.isFirstMainNode && !frameContext.firstFrameUrl) {
-      throw new BadRequestException('请先为上一个节点生成画面帧（用于当前节点起始帧）');
+      throw new BadRequestException('系统未能自动生成上一镜头承接帧，请检查模型服务状态后重试。');
     }
 
     // Update node status to processing
@@ -72,7 +79,8 @@ export class VideoRenderService {
           stylePresetId,
           firstFrameUrl: frameContext.firstFrameUrl,
           lastFrameUrl: frameContext.lastFrameUrl,
-          prompt: node.prompt,
+          prompt: frameContext.videoPrompt,
+          negativePrompt: frameContext.negativePrompt,
           isFirstMainNode: frameContext.isFirstMainNode,
           previousNodeId: frameContext.previousNodeId,
         } as any,
@@ -89,7 +97,8 @@ export class VideoRenderService {
       flowProjectId: node.flowProjectId,
       firstFrameUrl: frameContext.firstFrameUrl,
       lastFrameUrl: frameContext.lastFrameUrl,
-      prompt: node.prompt,
+      prompt: frameContext.videoPrompt,
+      negativePrompt: frameContext.negativePrompt,
     }).catch((error) => {
       this.logger.error(`Render failed for node ${nodeId}: ${error.message}`);
     });
@@ -110,13 +119,14 @@ export class VideoRenderService {
     taskId: string,
     nodeId: string,
     userId: string,
-    options: {
+      options: {
       quality: RenderQuality;
       stylePresetId?: string;
       flowProjectId: string;
       firstFrameUrl?: string | null;
       lastFrameUrl?: string | null;
       prompt?: string | null;
+      negativePrompt?: string | null;
     },
   ): Promise<void> {
     try {
@@ -135,6 +145,7 @@ export class VideoRenderService {
         firstFrameUrl: options.firstFrameUrl,
         lastFrameUrl: options.lastFrameUrl,
         prompt: options.prompt,
+        negative_prompt: options.negativePrompt,
         quality: options.quality,
         stylePresetId: options.stylePresetId,
       }, userId);
@@ -232,7 +243,17 @@ export class VideoRenderService {
     }
   }
 
-  private async resolveRenderFrameContext(node: any) {
+  private async resolveRenderFrameContext(
+    userId: string,
+    node: any,
+    promptBundle?: {
+      prompt?: string;
+      videoPrompt?: string;
+      sceneFramePrompt?: string;
+      firstFramePrompt?: string;
+      lastFramePrompt?: string;
+    },
+  ) {
     const firstMainNode = await this.prisma.flowNode.findFirst({
       where: {
         flowProjectId: node.flowProjectId,
@@ -242,12 +263,47 @@ export class VideoRenderService {
       select: { id: true },
     });
     const isFirstMainNode = firstMainNode?.id === node.id;
+    const currentBundle = this.promptEngine.normalizeBundle({
+      idea: String(node.scriptSegment || node.prompt || promptBundle?.videoPrompt || '当前镜头').trim(),
+      payload: {
+        scriptSegment: node.scriptSegment,
+        videoPrompt: promptBundle?.videoPrompt || promptBundle?.prompt || node.prompt,
+        sceneFramePrompt: promptBundle?.sceneFramePrompt,
+        firstFramePrompt: promptBundle?.firstFramePrompt,
+        lastFramePrompt: promptBundle?.lastFramePrompt,
+      },
+      current: null,
+    });
     if (isFirstMainNode) {
+      let firstFrameUrl = node.firstFrameUrl || null;
+      let lastFrameUrl = node.lastFrameUrl || null;
+      if (!firstFrameUrl) {
+        firstFrameUrl = (await this.frameGenService.generateFrame(
+          userId,
+          node.id,
+          FrameType.FIRST,
+          currentBundle.firstFramePrompt,
+        )).frameUrl;
+      }
+      if (!lastFrameUrl) {
+        lastFrameUrl = (await this.frameGenService.generateFrame(
+          userId,
+          node.id,
+          FrameType.LAST,
+          currentBundle.lastFramePrompt,
+        )).frameUrl;
+      }
+      const targetVideoModel =
+        this.configService.get<string>('SILICONFLOW_MODEL_VIDEO') ||
+        this.configService.get<string>('GEMINI_MODEL_VIDEO') ||
+        '';
       return {
         isFirstMainNode: true,
         previousNodeId: null,
-        firstFrameUrl: node.firstFrameUrl || null,
-        lastFrameUrl: node.lastFrameUrl || null,
+        firstFrameUrl,
+        lastFrameUrl,
+        videoPrompt: this.promptEngine.toVideoModelPrompt(currentBundle.videoPrompt, targetVideoModel),
+        negativePrompt: '避免主体漂移，避免人物换脸，避免背景跳变，避免动作畸形，避免低清晰度',
       };
     }
 
@@ -268,18 +324,67 @@ export class VideoRenderService {
       });
     }
 
+    const previousBundle = previousNode
+      ? this.promptEngine.normalizeBundle({
+          idea: String(previousNode.scriptSegment || previousNode.prompt || '上一镜头').trim(),
+          payload: {
+            scriptSegment: previousNode.scriptSegment,
+            videoPrompt: previousNode.prompt,
+          },
+          current: null,
+        })
+      : null;
+
     // 约定：视频生成使用“上一节点画面 -> 当前节点画面”
-    const firstFrameUrl =
+    let firstFrameUrl =
       previousNode?.lastFrameUrl ||
       previousNode?.firstFrameUrl ||
       null;
-    const lastFrameUrl = node.firstFrameUrl || node.lastFrameUrl || null;
+    if (!firstFrameUrl && previousNode) {
+      if (firstMainNode?.id === previousNode.id) {
+        firstFrameUrl = (
+          await this.frameGenService.generateFrame(
+            userId,
+            previousNode.id,
+            FrameType.LAST,
+            previousBundle?.lastFramePrompt || previousBundle?.sceneFramePrompt || previousNode.prompt,
+          )
+        ).frameUrl;
+      } else {
+        firstFrameUrl = (
+          await this.frameGenService.generateFrame(
+            userId,
+            previousNode.id,
+            FrameType.FIRST,
+            previousBundle?.sceneFramePrompt || previousNode.prompt,
+          )
+        ).frameUrl;
+      }
+    }
 
+    let lastFrameUrl = node.firstFrameUrl || node.lastFrameUrl || null;
+    if (!lastFrameUrl) {
+      lastFrameUrl = (
+        await this.frameGenService.generateFrame(
+          userId,
+          node.id,
+          FrameType.FIRST,
+          currentBundle.sceneFramePrompt,
+        )
+      ).frameUrl;
+    }
+
+    const targetVideoModel =
+      this.configService.get<string>('SILICONFLOW_MODEL_VIDEO') ||
+      this.configService.get<string>('GEMINI_MODEL_VIDEO') ||
+      '';
     return {
       isFirstMainNode: false,
       previousNodeId: previousNode?.id || null,
       firstFrameUrl,
       lastFrameUrl,
+      videoPrompt: this.promptEngine.toVideoModelPrompt(currentBundle.videoPrompt, targetVideoModel),
+      negativePrompt: '避免主体漂移，避免人物换脸，避免背景跳变，避免动作畸形，避免低清晰度',
     };
   }
 

@@ -300,3 +300,29 @@ export class ExportProjectDto {
   @IsString()
   format?: string; // 'mp4', 'webm', 'json'
 }
+
+export class RenderNodeDto {
+  @IsOptional()
+  @IsEnum(RenderQuality)
+  quality?: RenderQuality = RenderQuality.DRAFT;
+
+  @IsOptional()
+  @IsString()
+  prompt?: string;
+
+  @IsOptional()
+  @IsString()
+  videoPrompt?: string;
+
+  @IsOptional()
+  @IsString()
+  sceneFramePrompt?: string;
+
+  @IsOptional()
+  @IsString()
+  firstFramePrompt?: string;
+
+  @IsOptional()
+  @IsString()
+  lastFramePrompt?: string;
+}
