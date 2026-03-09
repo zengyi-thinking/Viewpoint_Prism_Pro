@@ -31,10 +31,8 @@ export function WorkbenchShell({ projectName, projectId }: { projectName?: strin
   const [titleDraft, setTitleDraft] = useState(projectName || '工作台');
   const [isSavingTitle, setIsSavingTitle] = useState(false);
 
-  // 创作棱镜模式：空间折叠
-  const isCreationMode = activePrism === 'creation';
   const isKnowledgeMode = activePrism === 'knowledge';
-  const effectiveLeftCollapsed = leftCollapsed || isCreationMode || isKnowledgeMode;
+  const effectiveLeftCollapsed = leftCollapsed || isKnowledgeMode;
   const rightPanelWidth =
     !rightCollapsed && isKnowledgeMode ? 'clamp(520px, 42vw, 760px)' : `${rightWidth}px`;
 
@@ -275,28 +273,26 @@ export function WorkbenchShell({ projectName, projectId }: { projectName?: strin
             onMouseDown={() => setDragging('left')}
             className={`panel-separator relative w-1.5 cursor-col-resize transition-all duration-[var(--transition-slow)] ${
               dragging === 'left' ? 'dragging' : ''
-            } ${isCreationMode ? 'opacity-0 pointer-events-none' : ''}`}
+            }`}
           >
             <div className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-border-subtle" />
           </div>
 
-          {!isCreationMode ? (
-            <div
-              data-testid="center-panel"
-              className="relative min-w-0 flex flex-1 flex-col overflow-hidden transition-all duration-[var(--transition-slower)]"
-            >
-              <div className="grid min-w-0 min-h-0 flex-1 grid-rows-[minmax(220px,42svh)_1px_minmax(0,1fr)] overflow-hidden">
-                <PlayerCenter videoRef={videoPlayerRef} />
+          <div
+            data-testid="center-panel"
+            className="relative min-w-0 flex flex-1 flex-col overflow-hidden transition-all duration-[var(--transition-slower)]"
+          >
+            <div className="grid min-w-0 min-h-0 flex-1 grid-rows-[minmax(220px,42svh)_1px_minmax(0,1fr)] overflow-hidden">
+              <PlayerCenter videoRef={videoPlayerRef} />
 
-                {/* Separator between Player and Chat */}
-                <div className="shrink-0 h-px bg-border-subtle" />
+              {/* Separator between Player and Chat */}
+              <div className="shrink-0 h-px bg-border-subtle" />
 
-                <div className="min-h-0">
-                  <ChatDock projectId={projectId} videoPlayerRef={videoPlayerRef} />
-                </div>
+              <div className="min-h-0">
+                <ChatDock projectId={projectId} videoPlayerRef={videoPlayerRef} />
               </div>
             </div>
-          ) : null}
+          </div>
 
           <div
             role="separator"
@@ -305,7 +301,7 @@ export function WorkbenchShell({ projectName, projectId }: { projectName?: strin
             onMouseDown={() => setDragging('right')}
             className={`panel-separator relative w-1.5 cursor-col-resize transition-all duration-[var(--transition-slow)] ${
               dragging === 'right' ? 'dragging' : ''
-            } ${isCreationMode ? 'opacity-0 pointer-events-none w-0' : ''}`}
+            }`}
           >
             <div className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-border-subtle" />
           </div>
@@ -315,8 +311,8 @@ export function WorkbenchShell({ projectName, projectId }: { projectName?: strin
             data-testid="right-panel"
             className={`flex h-full min-w-0 overflow-hidden rounded-[16px] border border-border bg-bg-panel transition-all duration-[var(--transition-slower)] ${
               rightCollapsed ? 'panel-collapsed' : ''
-            } ${isCreationMode ? 'flex-1 shrink min-w-0' : 'shrink-0'}`}
-            style={isCreationMode ? {} : { width: rightCollapsed ? `${COLLAPSED_WIDTH}px` : rightPanelWidth }}
+            } shrink-0`}
+            style={{ width: rightCollapsed ? `${COLLAPSED_WIDTH}px` : rightPanelWidth }}
           >
             <PrismSwitcher
               collapsed={rightCollapsed}

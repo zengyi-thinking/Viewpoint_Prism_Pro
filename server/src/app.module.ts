@@ -14,7 +14,6 @@ import { VideoModule } from './modules/video/video.module';
 import { VideoBehaviorModule } from './modules/video-behavior/video-behavior.module';
 import { ChatModule } from './modules/chat/chat.module';
 import { KnowledgeModule } from './modules/prism-knowledge/knowledge.module';
-import { CreationModule } from './modules/prism-creation/creation.module';
 import { TranslationModule } from './modules/prism-translation/translation.module';
 import { DiffractionModule } from './modules/prism-diffraction/diffraction.module';
 import { SettingsModule } from './modules/settings/settings.module';
@@ -40,7 +39,6 @@ import { SettingsModule } from './modules/settings/settings.module';
     SettingsModule,
     // Prism modules
     KnowledgeModule,
-    CreationModule,
     TranslationModule,
     DiffractionModule,
   ],
