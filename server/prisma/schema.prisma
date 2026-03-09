@@ -73,6 +73,7 @@ model Project {
 
   videos       VideoSource[]
   chatSessions ChatSession[]
+  prismFlowProjects PrismFlowProject[]
 
   @@index([userId])
   @@map("projects")
@@ -375,8 +376,10 @@ model CrystalCard {
 
 model PrismFlowProject {
   id          String      @id @default(cuid())
-  videoId     String
-  video       VideoSource @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  projectId   String?
+  project     Project?    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  videoId     String?
+  video       VideoSource? @relation(fields: [videoId], references: [id], onDelete: SetNull)
   name        String
   stylePreset Json?
   scriptText  String?     @db.Text
@@ -388,6 +391,7 @@ model PrismFlowProject {
   nodes FlowNode[]
 
   @@index([videoId])
+  @@index([projectId])
   @@map("prismflow_projects")
 }
 

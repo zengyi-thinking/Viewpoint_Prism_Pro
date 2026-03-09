@@ -129,11 +129,49 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
   const [isConnected, setIsConnected] = useState(false);
   const socketRef = useRef<Socket | null>(null);
   const currentProjectRef = useRef<string | undefined>(initialProjectId);
+  const callbacksRef = useRef({
+    onTaskProgress,
+    onTaskError,
+    onTaskComplete,
+    onPrismAction,
+    onChatMessage,
+    onKnowledgeState,
+    onKnowledgeTimeline,
+    onConnected,
+    onDisconnected,
+    onError,
+  });
 
   // Get WebSocket URL from environment
   const wsUrl = process.env.NEXT_PUBLIC_API_URL
     ? `${process.env.NEXT_PUBLIC_API_URL.replace('http', 'ws')}/ws`
     : 'ws://localhost:3001/ws';
+
+  useEffect(() => {
+    callbacksRef.current = {
+      onTaskProgress,
+      onTaskError,
+      onTaskComplete,
+      onPrismAction,
+      onChatMessage,
+      onKnowledgeState,
+      onKnowledgeTimeline,
+      onConnected,
+      onDisconnected,
+      onError,
+    };
+  }, [
+    onTaskProgress,
+    onTaskError,
+    onTaskComplete,
+    onPrismAction,
+    onChatMessage,
+    onKnowledgeState,
+    onKnowledgeTimeline,
+    onConnected,
+    onDisconnected,
+    onError,
+  ]);
 
   // Initialize socket connection
   useEffect(() => {
@@ -159,7 +197,7 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
     socket.on('connect', () => {
       console.log('WebSocket connected:', socket.id);
       setIsConnected(true);
-      onConnected?.();
+      callbacksRef.current.onConnected?.();
 
       // Auto-join project if provided
       if (currentProjectRef.current) {
@@ -170,12 +208,12 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
     socket.on('disconnect', () => {
       console.log('WebSocket disconnected');
       setIsConnected(false);
-      onDisconnected?.();
+      callbacksRef.current.onDisconnected?.();
     });
 
     socket.on('error', (error) => {
       console.error('WebSocket error:', error);
-      onError?.(error as Error);
+      callbacksRef.current.onError?.(error as Error);
     });
 
     socket.on('connected', (data) => {
@@ -184,33 +222,33 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
 
     // Task events
     socket.on('task:progress', (event: TaskProgressEvent) => {
-      onTaskProgress?.(event);
+      callbacksRef.current.onTaskProgress?.(event);
     });
 
     socket.on('task:error', (event: TaskErrorEvent) => {
-      onTaskError?.(event);
+      callbacksRef.current.onTaskError?.(event);
     });
 
     socket.on('task:complete', (event: TaskCompleteEvent) => {
-      onTaskComplete?.(event);
+      callbacksRef.current.onTaskComplete?.(event);
     });
 
     // Prism events
     socket.on('prism:action', (event: PrismActionEvent) => {
-      onPrismAction?.(event);
+      callbacksRef.current.onPrismAction?.(event);
     });
 
     // Chat events
     socket.on('chat:message', (event: ChatMessageEvent) => {
-      onChatMessage?.(event);
+      callbacksRef.current.onChatMessage?.(event);
     });
 
     socket.on('knowledge:state', (event: KnowledgeStateEvent) => {
-      onKnowledgeState?.(event);
+      callbacksRef.current.onKnowledgeState?.(event);
     });
 
     socket.on('knowledge:timeline', (event: KnowledgeTimelineEvent) => {
-      onKnowledgeTimeline?.(event);
+      callbacksRef.current.onKnowledgeTimeline?.(event);
     });
 
     // Join/Leave confirmation
@@ -227,7 +265,23 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
       socket.disconnect();
       socketRef.current = null;
     };
-  }, [wsUrl, onConnected, onDisconnected, onError, onTaskProgress, onTaskError, onTaskComplete, onPrismAction, onChatMessage, onKnowledgeState, onKnowledgeTimeline]);
+  }, [wsUrl]);
+
+  useEffect(() => {
+    const socket = socketRef.current;
+    if (!socket || !isConnected) return;
+
+    const previousProjectId = currentProjectRef.current;
+    if (previousProjectId && previousProjectId !== initialProjectId) {
+      socket.emit('leave:project', { projectId: previousProjectId });
+    }
+
+    if (initialProjectId && previousProjectId !== initialProjectId) {
+      socket.emit('join:project', { projectId: initialProjectId });
+    }
+
+    currentProjectRef.current = initialProjectId;
+  }, [initialProjectId, isConnected]);
 
   // Join a project room
   const joinProject = useCallback((projectId: string) => {

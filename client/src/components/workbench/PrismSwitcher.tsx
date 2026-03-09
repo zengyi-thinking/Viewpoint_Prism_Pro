@@ -2,6 +2,7 @@
 
 import { useWorkbenchStore, PrismType } from '@/stores/workbench.store';
 import { KnowledgeBoard } from '@/components/prisms/knowledge';
+import { CreationCanvas } from '@/components/prisms/creation';
 import { TranslationPanel } from '@/components/prisms/translation/TranslationPanel';
 import { DiffractionPanel } from '@/components/prisms/diffraction/DiffractionPanel';
 
@@ -60,10 +61,10 @@ interface PrismSwitcherProps {
   collapsed?: boolean;
   onToggle?: () => void;
   onTimeClick?: (timestamp: number) => void;
-  videoId?: string; // 添加 videoId prop
+  projectId?: string;
 }
 
-export function PrismSwitcher({ collapsed = false, onToggle, onTimeClick }: PrismSwitcherProps) {
+export function PrismSwitcher({ collapsed = false, onToggle, onTimeClick, projectId }: PrismSwitcherProps) {
   const { activePrism, setActivePrism } = useWorkbenchStore();
   const hasActivePrism = Boolean(activePrism);
 
@@ -189,7 +190,7 @@ export function PrismSwitcher({ collapsed = false, onToggle, onTimeClick }: Pris
         ) : null}
         {hasActivePrism ? (
           <div className="h-full animate-[kb-card-fly-in_260ms_ease-out]">
-            <PrismActivePanel onTimeClick={onTimeClick} />
+            <PrismActivePanel projectId={projectId} onTimeClick={onTimeClick} />
           </div>
         ) : (
           <div className="flex h-full items-center justify-center px-4">
@@ -201,12 +202,12 @@ export function PrismSwitcher({ collapsed = false, onToggle, onTimeClick }: Pris
   );
 }
 
-function PrismActivePanel({ videoId, onTimeClick }: { videoId?: string; onTimeClick?: (timestamp: number) => void }) {
+function PrismActivePanel({ projectId, onTimeClick }: { projectId?: string; onTimeClick?: (timestamp: number) => void }) {
   const { activePrism, currentVideo } = useWorkbenchStore();
 
   const config: Record<string, { title: string; color: string; desc: string }> = {
     knowledge: { title: '知识棱镜', color: '#F59E0B', desc: '实时捕获关键帧，生成结构化大纲与学习笔记' },
-    creation: { title: '创作棱镜 · PrismFlow', color: '#E91E8C', desc: '重构准备中，当前仅保留入口' },
+    creation: { title: '创作棱镜 · Creation V2', color: '#E91E8C', desc: 'Idea 模式与编剧模式并行，节点画布驱动创作' },
     translation: { title: '译制棱镜', color: '#06B6D4', desc: '多语种字幕翻译、画面文字擦除、音色克隆配音' },
     diffraction: { title: '衍射棱镜', color: '#4F46E5', desc: '视频内容裂变为多平台图文资产' },
   };
@@ -244,28 +245,11 @@ function PrismActivePanel({ videoId, onTimeClick }: { videoId?: string; onTimeCl
     );
   }
 
-  // 创作棱镜 - 仅保留入口
+  // 创作棱镜 V2
   if (activePrism === 'creation') {
     return (
-      <div className="panel m-2 flex h-[calc(100%-1rem)] flex-col overflow-hidden rounded-[14px] border border-border-subtle bg-bg-panel-secondary">
-        <div className="px-4 py-3">
-          <div className="flex items-center gap-2">
-            <span className="status-dot" style={{ background: c.color }} />
-            <span className="wb-section-title">{c.title}</span>
-          </div>
-          <p className="wb-meta mt-1">{c.desc}</p>
-        </div>
-        <div className="flex flex-1 items-center justify-center px-4">
-          <div className="w-full max-w-xl rounded-xl border border-border-subtle bg-bg-panel-secondary p-5">
-            <p className="text-center text-sm font-medium text-text-primary">创作棱镜已移除</p>
-            <p className="wb-meta mt-2 text-center">
-              当前只保留可点击入口。前后端实现已下线，后续将按新的理念整体重构。
-            </p>
-            <p className="wb-meta mt-2 text-center">
-              {currentVideo ? `已选视频：${currentVideo.title}` : '当前未选择视频。'}
-            </p>
-          </div>
-        </div>
+      <div className="flex h-full w-full min-h-0 flex-col overflow-hidden bg-bg-panel-secondary">
+        <CreationCanvas projectId={projectId} />
       </div>
     );
   }

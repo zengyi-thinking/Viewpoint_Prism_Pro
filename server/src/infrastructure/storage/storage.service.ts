@@ -230,6 +230,30 @@ export class StorageService implements OnModuleInit {
   }
 
   /**
+   * Resolve an object key from either a raw storage path or a public MinIO URL.
+   */
+  resolveStorageKey(input: string): string {
+    if (!input) {
+      throw new Error('Storage key is empty');
+    }
+
+    const trimmed = input.trim();
+    if (!/^https?:\/\//i.test(trimmed)) {
+      return trimmed.replace(/^\/+/, '');
+    }
+
+    const parsed = new URL(trimmed);
+    const pathname = decodeURIComponent(parsed.pathname || '').replace(/^\/+/, '');
+    const bucketPrefix = `${this.bucketName}/`;
+
+    if (pathname.startsWith(bucketPrefix)) {
+      return pathname.slice(bucketPrefix.length);
+    }
+
+    return pathname;
+  }
+
+  /**
    * Delete a file from MinIO
    * @param key - Storage key
    */

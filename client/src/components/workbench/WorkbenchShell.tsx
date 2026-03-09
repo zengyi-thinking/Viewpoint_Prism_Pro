@@ -32,9 +32,14 @@ export function WorkbenchShell({ projectName, projectId }: { projectName?: strin
   const [isSavingTitle, setIsSavingTitle] = useState(false);
 
   const isKnowledgeMode = activePrism === 'knowledge';
-  const effectiveLeftCollapsed = leftCollapsed || isKnowledgeMode;
+  const isCreationMode = activePrism === 'creation';
+  const effectiveLeftCollapsed = leftCollapsed || isKnowledgeMode || isCreationMode;
   const rightPanelWidth =
-    !rightCollapsed && isKnowledgeMode ? 'clamp(520px, 42vw, 760px)' : `${rightWidth}px`;
+    !rightCollapsed && isKnowledgeMode
+      ? 'clamp(520px, 42vw, 760px)'
+      : !rightCollapsed && isCreationMode
+      ? 'clamp(760px, 60vw, 1240px)'
+      : `${rightWidth}px`;
 
   useEffect(() => {
     const applyResponsiveCollapse = () => {
@@ -255,71 +260,88 @@ export function WorkbenchShell({ projectName, projectId }: { projectName?: strin
       {/* Main content area */}
       <div className="wb-main-gap flex min-h-0 flex-1">
         <div ref={containerRef} className="flex min-h-0 flex-1 overflow-hidden gap-0">
-          {/* Left: Video Source Panel */}
-          <div
-            data-testid="left-panel"
-            className={`flex h-full shrink-0 transition-all duration-[var(--transition-base)] ${
-              effectiveLeftCollapsed ? 'panel-collapsed' : ''
-            }`}
-            style={{ width: effectiveLeftCollapsed ? `${COLLAPSED_WIDTH}px` : `${leftWidth}px` }}
-          >
-            <VideoSourcePanel projectId={projectId} collapsed={effectiveLeftCollapsed} onToggle={() => setLeftCollapsed((prev) => !prev)} />
-          </div>
-
-          <div
-            role="separator"
-            aria-orientation="vertical"
-            data-testid="resize-handle-left"
-            onMouseDown={() => setDragging('left')}
-            className={`panel-separator relative w-1.5 cursor-col-resize transition-all duration-[var(--transition-slow)] ${
-              dragging === 'left' ? 'dragging' : ''
-            }`}
-          >
-            <div className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-border-subtle" />
-          </div>
-
-          <div
-            data-testid="center-panel"
-            className="relative min-w-0 flex flex-1 flex-col overflow-hidden transition-all duration-[var(--transition-slower)]"
-          >
-            <div className="grid min-w-0 min-h-0 flex-1 grid-rows-[minmax(220px,42svh)_1px_minmax(0,1fr)] overflow-hidden">
-              <PlayerCenter videoRef={videoPlayerRef} />
-
-              {/* Separator between Player and Chat */}
-              <div className="shrink-0 h-px bg-border-subtle" />
-
-              <div className="min-h-0">
-                <ChatDock projectId={projectId} videoPlayerRef={videoPlayerRef} />
-              </div>
+          {isCreationMode ? (
+            <div
+              data-testid="right-panel"
+              className="flex h-full min-w-0 flex-1 overflow-hidden rounded-[16px] border border-border bg-bg-panel"
+            >
+              <PrismSwitcher
+                collapsed={false}
+                onToggle={() => setRightCollapsed(!rightCollapsed)}
+                onTimeClick={requestSeekTo}
+                projectId={projectId}
+              />
             </div>
-          </div>
+          ) : (
+            <>
+              {/* Left: Video Source Panel */}
+              <div
+                data-testid="left-panel"
+                className={`flex h-full shrink-0 transition-all duration-[var(--transition-base)] ${
+                  effectiveLeftCollapsed ? 'panel-collapsed' : ''
+                }`}
+                style={{ width: effectiveLeftCollapsed ? `${COLLAPSED_WIDTH}px` : `${leftWidth}px` }}
+              >
+                <VideoSourcePanel projectId={projectId} collapsed={effectiveLeftCollapsed} onToggle={() => setLeftCollapsed((prev) => !prev)} />
+              </div>
 
-          <div
-            role="separator"
-            aria-orientation="vertical"
-            data-testid="resize-handle-right"
-            onMouseDown={() => setDragging('right')}
-            className={`panel-separator relative w-1.5 cursor-col-resize transition-all duration-[var(--transition-slow)] ${
-              dragging === 'right' ? 'dragging' : ''
-            }`}
-          >
-            <div className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-border-subtle" />
-          </div>
+              <div
+                role="separator"
+                aria-orientation="vertical"
+                data-testid="resize-handle-left"
+                onMouseDown={() => setDragging('left')}
+                className={`panel-separator relative w-1.5 cursor-col-resize transition-all duration-[var(--transition-slow)] ${
+                  dragging === 'left' ? 'dragging' : ''
+                }`}
+              >
+                <div className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-border-subtle" />
+              </div>
 
-          {/* Right: Prism Studio Panel (2x2 grid) - 创作模式时展开 */}
-          <div
-            data-testid="right-panel"
-            className={`flex h-full min-w-0 overflow-hidden rounded-[16px] border border-border bg-bg-panel transition-all duration-[var(--transition-slower)] ${
-              rightCollapsed ? 'panel-collapsed' : ''
-            } shrink-0`}
-            style={{ width: rightCollapsed ? `${COLLAPSED_WIDTH}px` : rightPanelWidth }}
-          >
-            <PrismSwitcher
-              collapsed={rightCollapsed}
-              onToggle={() => setRightCollapsed(!rightCollapsed)}
-              onTimeClick={requestSeekTo}
-            />
-          </div>
+              <div
+                data-testid="center-panel"
+                className="relative min-w-0 flex flex-1 flex-col overflow-hidden transition-all duration-[var(--transition-slower)]"
+              >
+                <div className="grid min-w-0 min-h-0 flex-1 grid-rows-[minmax(220px,42svh)_1px_minmax(0,1fr)] overflow-hidden">
+                  <PlayerCenter videoRef={videoPlayerRef} />
+
+                  {/* Separator between Player and Chat */}
+                  <div className="shrink-0 h-px bg-border-subtle" />
+
+                  <div className="min-h-0">
+                    <ChatDock projectId={projectId} videoPlayerRef={videoPlayerRef} />
+                  </div>
+                </div>
+              </div>
+
+              <div
+                role="separator"
+                aria-orientation="vertical"
+                data-testid="resize-handle-right"
+                onMouseDown={() => setDragging('right')}
+                className={`panel-separator relative w-1.5 cursor-col-resize transition-all duration-[var(--transition-slow)] ${
+                  dragging === 'right' ? 'dragging' : ''
+                }`}
+              >
+                <div className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-border-subtle" />
+              </div>
+
+              {/* Right: Prism Studio Panel */}
+              <div
+                data-testid="right-panel"
+                className={`flex h-full min-w-0 overflow-hidden rounded-[16px] border border-border bg-bg-panel transition-all duration-[var(--transition-slower)] ${
+                  rightCollapsed ? 'panel-collapsed' : ''
+                } shrink-0`}
+                style={{ width: rightCollapsed ? `${COLLAPSED_WIDTH}px` : rightPanelWidth }}
+              >
+                <PrismSwitcher
+                  collapsed={rightCollapsed}
+                  onToggle={() => setRightCollapsed(!rightCollapsed)}
+                  onTimeClick={requestSeekTo}
+                  projectId={projectId}
+                />
+              </div>
+            </>
+          )}
         </div>
       </div>
     </div>

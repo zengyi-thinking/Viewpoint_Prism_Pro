@@ -16,6 +16,7 @@ import { ChatModule } from './modules/chat/chat.module';
 import { KnowledgeModule } from './modules/prism-knowledge/knowledge.module';
 import { TranslationModule } from './modules/prism-translation/translation.module';
 import { DiffractionModule } from './modules/prism-diffraction/diffraction.module';
+import { CreationModule } from './modules/prism-creation/creation.module';
 import { SettingsModule } from './modules/settings/settings.module';
 
 @Module({
@@ -39,6 +40,7 @@ import { SettingsModule } from './modules/settings/settings.module';
     SettingsModule,
     // Prism modules
     KnowledgeModule,
+    CreationModule,
     TranslationModule,
     DiffractionModule,
   ],

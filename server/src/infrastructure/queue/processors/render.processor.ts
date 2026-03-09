@@ -13,6 +13,7 @@ interface RenderJobData {
   userId: string;
   projectId: string;
   flowProjectId: string;
+  taskRecordId?: string;
 }
 
 @Processor(QUEUE_NAMES.RENDER)
@@ -28,12 +29,13 @@ export class RenderProcessor {
 
   @Process()
   async handleRender(job: Job<RenderJobData>) {
-    const { nodeId, userId, projectId, flowProjectId } = job.data;
+    const { nodeId, userId, projectId, flowProjectId, taskRecordId } = job.data;
 
     this.logger.log(`Starting render for node ${nodeId}`);
 
     try {
       await job.progress(10);
+      await this.updateTaskRecord(taskRecordId, { progress: 10, status: 'PROCESSING' });
       this.emitProgress(userId, projectId, nodeId, 'render', 10, 'Loading node data...');
 
       // Get flow node with project data
@@ -55,6 +57,7 @@ export class RenderProcessor {
       });
 
       await job.progress(20);
+      await this.updateTaskRecord(taskRecordId, { progress: 20, status: 'PROCESSING' });
       this.emitProgress(userId, projectId, nodeId, 'render', 20, 'Preparing render inputs...');
 
       // Check if we have first and last frames
@@ -64,16 +67,17 @@ export class RenderProcessor {
 
       // Get frame images
       const firstFrameBuffer = await this.storageService.download(
-        node.firstFrameUrl.split('/').slice(-2).join('/'),
+        this.storageService.resolveStorageKey(node.firstFrameUrl),
       );
       const lastFrameBuffer = await this.storageService.download(
-        node.lastFrameUrl.split('/').slice(-2).join('/'),
+        this.storageService.resolveStorageKey(node.lastFrameUrl),
       );
 
       const firstFrameBase64 = firstFrameBuffer.toString('base64');
       const lastFrameBase64 = lastFrameBuffer.toString('base64');
 
       await job.progress(40);
+      await this.updateTaskRecord(taskRecordId, { progress: 40, status: 'PROCESSING' });
       this.emitProgress(userId, projectId, nodeId, 'render', 40, 'Generating video...');
 
       // Call AI Router for video generation
@@ -90,6 +94,7 @@ export class RenderProcessor {
       );
 
       await job.progress(80);
+      await this.updateTaskRecord(taskRecordId, { progress: 80, status: 'PROCESSING' });
       this.emitProgress(userId, projectId, nodeId, 'render', 80, 'Saving rendered video...');
 
       // Save rendered video to storage
@@ -116,7 +121,20 @@ export class RenderProcessor {
       });
 
       await job.progress(100);
+      await this.updateTaskRecord(taskRecordId, {
+        progress: 100,
+        status: 'COMPLETED',
+        completedAt: new Date(),
+        result: { nodeId, videoUrl },
+      });
       this.emitProgress(userId, projectId, nodeId, 'render', 100, 'Render completed');
+      this.wsGateway.emitToUser(userId, 'task:complete', {
+        projectId,
+        nodeId,
+        task: 'render',
+        result: { nodeId, videoUrl, flowProjectId, taskRecordId },
+        timestamp: new Date().toISOString(),
+      });
 
       this.logger.log(`Render completed for node ${nodeId}`);
 
@@ -127,6 +145,11 @@ export class RenderProcessor {
       };
     } catch (error) {
       this.logger.error(`Render failed for node ${nodeId}: ${error.message}`, error.stack);
+      await this.updateTaskRecord(taskRecordId, {
+        status: 'FAILED',
+        error: error.message,
+        completedAt: new Date(),
+      });
 
       await this.prisma.flowNode.update({
         where: { id: nodeId },
@@ -160,6 +183,17 @@ export class RenderProcessor {
       task,
       error,
       timestamp: new Date().toISOString(),
+    });
+  }
+
+  private async updateTaskRecord(
+    taskRecordId: string | undefined,
+    data: Record<string, unknown>,
+  ) {
+    if (!taskRecordId) return;
+    await this.prisma.taskRecord.update({
+      where: { id: taskRecordId },
+      data: data as any,
     });
   }
 }

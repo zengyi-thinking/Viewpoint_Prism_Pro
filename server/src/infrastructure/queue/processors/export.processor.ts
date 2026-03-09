@@ -16,6 +16,7 @@ interface ExportJobData {
   userId: string;
   projectId: string;
   format?: 'markdown' | 'zip' | 'mp4';
+  taskRecordId?: string;
 }
 
 @Processor(QUEUE_NAMES.EXPORT)
@@ -31,12 +32,13 @@ export class ExportProcessor {
 
   @Process()
   async handleExport(job: Job<ExportJobData>) {
-    const { assetType, assetId, userId, projectId, format = 'zip' } = job.data;
+    const { assetType, assetId, userId, projectId, format = 'zip', taskRecordId } = job.data;
 
     this.logger.log(`Starting export for ${assetType} asset ${assetId}`);
 
     try {
       await job.progress(10);
+      await this.updateTaskRecord(taskRecordId, { progress: 10, status: 'PROCESSING' });
       this.emitProgress(userId, projectId, assetId, 'export', 10, 'Preparing export...');
 
       let exportResult: any;
@@ -59,7 +61,20 @@ export class ExportProcessor {
       }
 
       await job.progress(100);
+      await this.updateTaskRecord(taskRecordId, {
+        progress: 100,
+        status: 'COMPLETED',
+        completedAt: new Date(),
+        result: exportResult,
+      });
       this.emitProgress(userId, projectId, assetId, 'export', 100, 'Export completed');
+      this.wsGateway.emitToUser(userId, 'task:complete', {
+        projectId,
+        assetId,
+        task: 'export',
+        result: { assetType, assetId, ...exportResult, taskRecordId },
+        timestamp: new Date().toISOString(),
+      });
 
       this.logger.log(`Export completed for ${assetType} asset ${assetId}`);
 
@@ -71,6 +86,11 @@ export class ExportProcessor {
       };
     } catch (error) {
       this.logger.error(`Export failed for ${assetType} asset ${assetId}: ${error.message}`, error.stack);
+      await this.updateTaskRecord(taskRecordId, {
+        status: 'FAILED',
+        error: error.message,
+        completedAt: new Date(),
+      });
       this.emitError(userId, projectId, assetId, 'export', error.message);
       throw error;
     }
@@ -168,7 +188,7 @@ export class ExportProcessor {
     for (const node of flowProject.nodes) {
       if (node.renderedVideoUrl) {
         const videoBuffer = await this.storageService.download(
-          node.renderedVideoUrl.split('/').slice(-2).join('/'),
+          this.storageService.resolveStorageKey(node.renderedVideoUrl),
         );
         const tempPath = path.join(tempDir, `node-${node.orderIndex}.mp4`);
         await fs.writeFile(tempPath, videoBuffer);
@@ -379,6 +399,17 @@ ${draft.ctaLine || ''}
       task,
       error,
       timestamp: new Date().toISOString(),
+    });
+  }
+
+  private async updateTaskRecord(
+    taskRecordId: string | undefined,
+    data: Record<string, unknown>,
+  ) {
+    if (!taskRecordId) return;
+    await this.prisma.taskRecord.update({
+      where: { id: taskRecordId },
+      data: data as any,
     });
   }
 }
