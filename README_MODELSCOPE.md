@@ -9,13 +9,22 @@
 - 数据层：Prisma
 - 实时通信：Socket.IO
 
-魔搭创空间默认提供的是 Python 入口，因此这里增加了一个 `app.py`：
+魔搭创空间当前使用的是 **纯 Python 运行环境**。  
+因此这里的 `app.py` 已改为一个 **纯 Gradio 入口页**，直接运行在：
 
-- `app.py` 会在启动时拉起：
-  - Nest 后端（内部端口 `7861`）
-  - Next 前端（内部端口 `7862`）
-- Python `aiohttp` 反向代理统一对外暴露：
-  - `0.0.0.0:7860`
+- `0.0.0.0:7860`
+
+它的作用是：
+
+- 展示项目说明
+- 展示部署说明
+- 检查关键环境变量是否已配置
+
+说明：
+
+- 这不是原始 Next.js + NestJS 全量工作台
+- 原始工程仍然保留在仓库中
+- 但在当前“无 Node / 无 npm”的创空间运行器里，不能直接启动原始前后端
 
 ## 在魔搭创空间中设置环境变量
 
@@ -44,8 +53,6 @@
 
 - `HOST=0.0.0.0`
 - `PORT=7860`
-- `BACKEND_PORT=7861`
-- `FRONTEND_PORT=7862`
 - `DATABASE_URL`
 - `REDIS_URL`
 - `JWT_SECRET`
@@ -57,15 +64,14 @@
 
 - `HOST=0.0.0.0`
 - `PORT=7860`
-- `BACKEND_PORT=7861`
-- `FRONTEND_PORT=7862`
 - `NEXTAUTH_URL=https://你的创空间域名`
 
 ### 二、前后端代理相关
 
-- `INTERNAL_API_URL=http://127.0.0.1:7861`
-- `NEXT_PUBLIC_API_URL=` 建议留空，浏览器走同源代理
-- `NEXT_PUBLIC_WS_URL=` 建议留空，WebSocket 走同源代理
+- 如果你后续迁移到支持 Node 的环境，再配置：
+  - `INTERNAL_API_URL`
+  - `NEXT_PUBLIC_API_URL`
+  - `NEXT_PUBLIC_WS_URL`
 
 ### 三、对象存储 / 文件能力
 
@@ -151,17 +157,15 @@
 
 Python 依赖写在 `requirements.txt` 中：
 
-- `aiohttp`
-
-Node 依赖由 `app.py` 在启动时通过 `npm` 安装和构建。
+- `gradio==6.2.0`
 
 ## 注意
 
-该项目仍然依赖以下外部服务或基础设施：
+原始完整版项目仍然依赖以下外部服务或基础设施：
 
 - PostgreSQL
 - Redis
 - MinIO / S3
 - FFmpeg
 
-如果这些服务在创空间环境中不可用，需要额外配置对应环境变量或云服务地址。
+如果你后续要上线完整版，而这些服务在目标环境中不可用，就需要额外配置对应环境变量或云服务地址。

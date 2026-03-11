@@ -1,2 +1,2 @@
-# Python launcher / reverse proxy dependencies for ModelScope Studio
-aiohttp>=3.11,<4
+# ModelScope Studio Python entry
+gradio==6.2.0
