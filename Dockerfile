@@ -48,7 +48,12 @@ RUN apt-get update && apt-get install -y \
 COPY . /home/user/app
 
 RUN pip install --no-cache-dir -r requirements.txt
-RUN npm ci --workspaces --include-workspace-root --include=dev
+RUN npm config set registry https://registry.npmmirror.com/ \
+    && npm config set replace-registry-host always \
+    && npm config set fetch-retries 5 \
+    && npm config set fetch-retry-mintimeout 20000 \
+    && npm config set fetch-retry-maxtimeout 120000 \
+    && npm ci --workspaces --include-workspace-root --include=dev
 RUN npm run db:generate
 RUN npm run build:server
 RUN npm run build:client
