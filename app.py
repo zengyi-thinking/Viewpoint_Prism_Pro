@@ -15,6 +15,7 @@ PUBLIC_PORT = int(os.getenv("PORT", "7860"))
 BACKEND_PORT = int(os.getenv("BACKEND_PORT", "7861"))
 FRONTEND_PORT = int(os.getenv("FRONTEND_PORT", "7862"))
 AUTO_PRISMA_PUSH = os.getenv("AUTO_PRISMA_PUSH", "1") == "1"
+ALLOW_START_WITHOUT_DB = os.getenv("ALLOW_START_WITHOUT_DB", "1") == "1"
 
 PROCESSES: list[subprocess.Popen] = []
 
@@ -69,7 +70,17 @@ async def wait_for_port(host: str, port: int, timeout: float = 120.0) -> None:
 
 def prepare_runtime() -> None:
     if AUTO_PRISMA_PUSH:
-        run(["npm", "run", "db:push"])
+        try:
+            run(["npm", "run", "db:push"])
+        except subprocess.CalledProcessError as exc:
+            if not ALLOW_START_WITHOUT_DB:
+                raise
+            log(
+                "Database migration skipped because database is unreachable. "
+                "The site will still start, but any feature that depends on PostgreSQL "
+                "will fail until DATABASE_URL points to a reachable database. "
+                f"Original exit code: {exc.returncode}"
+            )
 
 
 async def start_services() -> None:
