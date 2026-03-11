@@ -7,7 +7,9 @@ import { videoApi } from '@/services/video.api';
 import { useVideoBehaviorTracking } from '@/hooks/useVideoBehaviorTracking';
 import { VideoEventType, VideoActionContext } from '@/types/video-behavior';
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+const API_BASE =
+  process.env.NEXT_PUBLIC_API_URL ||
+  (typeof window !== 'undefined' ? window.location.origin : 'http://127.0.0.1:7860');
 
 // Default player height (can be adjusted via resize handle)
 const MIN_PLAYER_HEIGHT = 220;

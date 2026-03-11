@@ -100,6 +100,30 @@ export class UpdateCreationNodeDto {
   videoPrompt?: string;
 
   @IsOptional()
+  @IsString()
+  characterIdentity?: string;
+
+  @IsOptional()
+  @IsString()
+  characterHair?: string;
+
+  @IsOptional()
+  @IsString()
+  characterOutfit?: string;
+
+  @IsOptional()
+  @IsString()
+  characterFace?: string;
+
+  @IsOptional()
+  @IsString()
+  characterProp?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  continuityLocked?: boolean;
+
+  @IsOptional()
   @Type(() => Number)
   @IsNumber()
   positionX?: number;

@@ -26,13 +26,13 @@ class TestConfigService {
 
     switch (key) {
       case 'SILICONFLOW_API_KEY':
-        return env.SILICONFLOW_API_KEY || env.SEEDANCE_API_KEY || 'sk-eqzwkwakkbzkgbrcnlxrtbupgxxprpfzdqoqzperankekbit';
+        return env.SILICONFLOW_API_KEY || env.SEEDANCE_API_KEY || env.SILICONFLOW_KEY;
       case 'SILICONFLOW_BASE_URL':
         return env.SILICONFLOW_BASE_URL || env.SEEDANCE_BASE_URL || 'https://api.siliconflow.cn/v1';
       case 'SEEDANCE_BASE_URL':
         return env.SEEDANCE_BASE_URL || 'https://api.siliconflow.cn/v1';
       case 'SEEDANCE_API_KEY':
-        return env.SEEDANCE_API_KEY || env.SILICONFLOW_API_KEY || 'sk-eqzwkwakkbzkgbrcnlxrtbupgxxprpfzdqoqzperankekbit';
+        return env.SEEDANCE_API_KEY || env.SILICONFLOW_API_KEY || env.SEEDANCE_KEY || env.SILICONFLOW_KEY;
       case 'SILICONFLOW_MODEL_LLM':
         return 'deepseek-ai/DeepSeek-V3';
       case 'SEEDANCE_POLL_INTERVAL_MS':

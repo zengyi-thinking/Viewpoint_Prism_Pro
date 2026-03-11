@@ -76,6 +76,22 @@ export class RenderProcessor {
       const firstFrameBase64 = firstFrameBuffer.toString('base64');
       const lastFrameBase64 = lastFrameBuffer.toString('base64');
 
+      const projectMeta = (node.flowProject?.stylePreset && typeof node.flowProject.stylePreset === 'object')
+        ? (node.flowProject.stylePreset as Record<string, any>)
+        : {};
+      const nodesMeta = (projectMeta.nodesMeta && typeof projectMeta.nodesMeta === 'object')
+        ? (projectMeta.nodesMeta as Record<string, any>)
+        : {};
+      const nodeMeta = (nodesMeta[nodeId] && typeof nodesMeta[nodeId] === 'object')
+        ? (nodesMeta[nodeId] as Record<string, any>)
+        : {};
+
+      const continuityPrompt = [
+        String(nodeMeta.videoPrompt || '').trim(),
+        String(nodeMeta.continuityNotes || '').trim(),
+        this.serializeCharacterAnchor(nodeMeta.characterAnchor),
+      ].filter(Boolean).join('\n');
+
       await job.progress(40);
       await this.updateTaskRecord(taskRecordId, { progress: 40, status: 'PROCESSING' });
       this.emitProgress(userId, projectId, nodeId, 'render', 40, 'Generating video...');
@@ -86,7 +102,11 @@ export class RenderProcessor {
         {
           firstFrame: firstFrameBase64,
           lastFrame: lastFrameBase64,
-          prompt: node.prompt || node.scriptSegment || 'Generate a smooth transition between these frames',
+          prompt:
+            continuityPrompt ||
+            node.prompt ||
+            node.scriptSegment ||
+            'Generate a smooth transition between these frames while preserving the same character identity and scene continuity',
           duration: 3, // 3 seconds default
           fps: 30,
         },
@@ -195,5 +215,22 @@ export class RenderProcessor {
       where: { id: taskRecordId },
       data: data as any,
     });
+  }
+
+  private serializeCharacterAnchor(input: unknown): string {
+    if (typeof input === 'string') {
+      return input.trim();
+    }
+    if (!input || typeof input !== 'object' || Array.isArray(input)) {
+      return '';
+    }
+    const value = input as Record<string, unknown>;
+    return [
+      value.identity ? `identity=${String(value.identity).trim()}` : '',
+      value.hair ? `hair=${String(value.hair).trim()}` : '',
+      value.outfit ? `outfit=${String(value.outfit).trim()}` : '',
+      value.face ? `face=${String(value.face).trim()}` : '',
+      value.prop ? `prop=${String(value.prop).trim()}` : '',
+    ].filter(Boolean).join('; ');
   }
 }

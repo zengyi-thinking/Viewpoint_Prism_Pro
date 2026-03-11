@@ -45,7 +45,10 @@ export class CreationRenderService {
         {
           prompt: params.prompt,
           image_size: '1280x720',
-          num_inference_steps: 8,
+          num_inference_steps: 24,
+          guidance_scale: 7,
+          negative_prompt:
+            'text, chinese characters, calligraphy, title, logo, watermark, poster layout, typography, word overlay, low detail, fantasy mountains, floating clouds, abstract concept art',
         },
         params.userId,
       );

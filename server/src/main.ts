@@ -12,11 +12,12 @@ async function bootstrap() {
   app.useGlobalFilters(new HttpExceptionFilter());
   app.useGlobalInterceptors(new ResponseInterceptor());
 
-  const port = Number(process.env.PORT || 3001);
+  const host = process.env.HOST || '0.0.0.0';
+  const port = Number(process.env.PORT || 7860);
 
   try {
-    await app.listen(port);
-    console.log(`Server running on http://localhost:${port}`);
+    await app.listen(port, host);
+    console.log(`Server running on http://${host}:${port}`);
   } catch (error: any) {
     if (error?.code === 'EADDRINUSE') {
       console.error(

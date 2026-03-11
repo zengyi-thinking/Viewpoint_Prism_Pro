@@ -18,30 +18,13 @@ function getApiBaseCandidates(): string[] {
     candidates.push(envBase);
   }
 
-  if (typeof window !== 'undefined') {
-    const host = window.location.hostname;
-    const protocol = window.location.protocol === 'https:' ? 'https:' : 'http:';
-    const sameHost3001 = `${protocol}//${host}:3001`;
-    if (!envBase) {
-      candidates.push(sameHost3001);
-
-      if (host !== 'localhost') candidates.push('http://localhost:3001');
-      if (host !== '127.0.0.1') candidates.push('http://127.0.0.1:3001');
-    }
-  } else {
-    if (!envBase) {
-      candidates.push('http://localhost:3001');
-    }
-  }
-
-  // 仅在没有显式后端地址时，才回退到 Next 的 rewrite 代理。
+  // 未显式指定后端地址时，统一回退到同源 /api，
+  // 由 Next rewrite 或上层反向代理决定实际后端目标。
   if (!envBase) {
     candidates.push('');
   }
 
-  return Array.from(
-    new Set(candidates.map((item) => normalizeBase(item)).filter((item) => item !== '')),
-  ).concat(envBase ? [] : ['']);
+  return Array.from(new Set(candidates.map((item) => normalizeBase(item))));
 }
 
 export function getToken(): string | null {
@@ -101,7 +84,7 @@ export async function apiFetch<T>(path: string, options?: RequestInit): Promise<
 
   if (!res) {
     throw new Error(
-      `网络连接失败：无法访问后端接口 ${path}。请确认后端已启动（默认 3001 端口）。${
+      `网络连接失败：无法访问后端接口 ${path}。请确认后端服务已启动并暴露到当前站点。${
         lastNetworkError instanceof Error ? ` ${lastNetworkError.message}` : ''
       }`,
     );

@@ -167,6 +167,9 @@ export class SeedanceProvider extends BaseProvider {
     if (typeof payload?.guidance_scale === 'number') {
       requestBody.guidance_scale = payload.guidance_scale;
     }
+    if (payload?.negative_prompt) {
+      requestBody.negative_prompt = payload.negative_prompt;
+    }
 
     this.logger.log(`Calling SiliconFlow image generation API, model=${model}`);
 

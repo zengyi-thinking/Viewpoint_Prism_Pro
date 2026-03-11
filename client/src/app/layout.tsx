@@ -1,18 +1,7 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider, ThemeScript } from "@/components/theme/ThemeProvider";
 import { QueryClientProvider } from "@/components/Providers";
-
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
 
 export const metadata: Metadata = {
   title: "Viewpoint Prism Pro - 视频内容工作台",
@@ -29,9 +18,7 @@ export default function RootLayout({
       <head>
         <ThemeScript />
       </head>
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
-      >
+      <body className="antialiased">
         <QueryClientProvider>
           <ThemeProvider>{children}</ThemeProvider>
         </QueryClientProvider>

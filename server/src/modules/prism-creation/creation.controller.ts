@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { CreationService } from './creation.service';
@@ -40,6 +40,11 @@ export class CreationController {
   @Get('projects/:flowProjectId/graph')
   getGraph(@CurrentUser() userId: string, @Param('flowProjectId') flowProjectId: string) {
     return this.creationService.getGraph(userId, flowProjectId);
+  }
+
+  @Post('projects/:flowProjectId/reset')
+  resetProject(@CurrentUser() userId: string, @Param('flowProjectId') flowProjectId: string) {
+    return this.creationService.resetProject(userId, flowProjectId);
   }
 
   @Post('projects/:projectId/idea-previews')
@@ -105,6 +110,11 @@ export class CreationController {
     return this.creationService.updateNode(userId, nodeId, dto);
   }
 
+  @Delete('nodes/:nodeId')
+  deleteNode(@CurrentUser() userId: string, @Param('nodeId') nodeId: string) {
+    return this.creationService.deleteNode(userId, nodeId);
+  }
+
   @Post('nodes/:nodeId/next-candidates')
   generateNextNodeCandidates(
     @CurrentUser() userId: string,
@@ -130,6 +140,11 @@ export class CreationController {
     @Body() dto: GenerateNodeImageDto,
   ) {
     return this.creationService.generateNodeImage(userId, nodeId, dto);
+  }
+
+  @Post('nodes/:nodeId/reextract-character-anchor')
+  reextractCharacterAnchor(@CurrentUser() userId: string, @Param('nodeId') nodeId: string) {
+    return this.creationService.reextractCharacterAnchor(userId, nodeId);
   }
 
   @Post('nodes/:nodeId/render-video')

@@ -1,6 +1,8 @@
 import { apiFetch, getToken } from './api';
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+const API_BASE =
+  process.env.NEXT_PUBLIC_API_URL ||
+  (typeof window !== 'undefined' ? window.location.origin : 'http://127.0.0.1:7860');
 
 export type VideoSourceType = 'LOCAL_UPLOAD' | 'URL_IMPORT' | 'YOUTUBE' | 'BILIBILI';
 

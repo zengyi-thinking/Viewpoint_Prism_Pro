@@ -14,9 +14,9 @@ import { ConfigService } from '@nestjs/config';
 import { SeedanceProvider } from '../src/infrastructure/ai-router/providers/seedance.provider';
 import { AITaskType } from '../src/infrastructure/ai-router/ai-router.interface';
 
-// 硬编码的 API Key（从 .env 文件中读取）
-const SILICONFLOW_API_KEY = 'sk-eqzwkwakkbzkgbrcnlxrtbupgxxprpfzdqoqzperankekbit';
-const SILICONFLOW_BASE_URL = 'https://api.siliconflow.cn/v1';
+const SILICONFLOW_API_KEY =
+  process.env.SILICONFLOW_API_KEY || process.env.SEEDANCE_API_KEY || process.env.SILICONFLOW_KEY || '';
+const SILICONFLOW_BASE_URL = process.env.SILICONFLOW_BASE_URL || 'https://api.siliconflow.cn/v1';
 
 async function testLLMChat_LanguageDetection() {
   console.log('\n=== 测试 LLM_CHAT (语言检测) ===');

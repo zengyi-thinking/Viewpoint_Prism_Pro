@@ -1,5 +1,13 @@
 import { apiFetch } from './api';
 
+export interface CharacterAnchor {
+  identity: string;
+  hair: string;
+  outfit: string;
+  face: string;
+  prop: string;
+}
+
 export interface CreationGraphNode {
   id: string;
   title: string;
@@ -10,6 +18,8 @@ export interface CreationGraphNode {
   imagePromptModel: string;
   videoPrompt: string;
   continuityNotes: string;
+  characterAnchor: CharacterAnchor;
+  continuityLocked: boolean;
   orderIndex: number;
   positionX: number;
   positionY: number;
@@ -76,6 +86,12 @@ export const creationApi = {
     return apiFetch<CreationGraphResponse>(`/api/prism/creation/projects/${flowProjectId}/graph`);
   },
 
+  resetProject(flowProjectId: string) {
+    return apiFetch<CreationGraphResponse>(`/api/prism/creation/projects/${flowProjectId}/reset`, {
+      method: 'POST',
+    });
+  },
+
   generateIdeaPreviews(projectId: string, payload: {
     idea: string;
     conflict?: string;
@@ -116,6 +132,18 @@ export const creationApi = {
     return apiFetch<CreationGraphResponse>(`/api/prism/creation/nodes/${nodeId}`, {
       method: 'PATCH',
       body: JSON.stringify(payload),
+    });
+  },
+
+  deleteNode(nodeId: string) {
+    return apiFetch<CreationGraphResponse>(`/api/prism/creation/nodes/${nodeId}`, {
+      method: 'DELETE',
+    });
+  },
+
+  reextractCharacterAnchor(nodeId: string) {
+    return apiFetch<CreationGraphResponse>(`/api/prism/creation/nodes/${nodeId}/reextract-character-anchor`, {
+      method: 'POST',
     });
   },
 

@@ -313,7 +313,9 @@ export function ChatDock({ projectId, height, videoPlayerRef, onFrameAnalysisReq
     let socket: any = null;
 
     const connectSocket = () => {
-      const wsUrl = process.env.NEXT_PUBLIC_WS_URL || 'http://localhost:3001';
+      const wsUrl =
+        process.env.NEXT_PUBLIC_WS_URL ||
+        (typeof window !== 'undefined' ? window.location.origin : 'http://127.0.0.1:7860');
 
       socket = io(`${wsUrl}/ws`, {
         transports: ['websocket'],

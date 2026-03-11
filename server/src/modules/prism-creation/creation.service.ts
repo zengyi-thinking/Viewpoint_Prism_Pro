@@ -3,7 +3,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { IdeaPlannerAgent, IdeaPreviewOption } from './services/idea-planner.agent';
 import { ScriptPlannerAgent, ScriptPlanResult } from './services/script-planner.agent';
 import { StoryboardAgent, StoryboardCandidate } from './services/storyboard.agent';
-import { PromptDirectorAgent } from './services/prompt-director.agent';
+import { CharacterAnchor, PromptDirectorAgent } from './services/prompt-director.agent';
 import { CreationRenderService } from './services/creation-render.service';
 import {
   BootstrapCreationProjectDto,
@@ -23,6 +23,8 @@ interface CreationNodeMeta {
   imagePromptModel?: string;
   videoPrompt?: string;
   continuityNotes?: string;
+  characterAnchor?: CharacterAnchor;
+  continuityLocked?: boolean;
 }
 
 interface CreationProjectMeta {
@@ -103,6 +105,39 @@ export class CreationService {
     });
   }
 
+  async resetProject(userId: string, flowProjectId: string) {
+    const flowProject = await this.assertProjectAccess(userId, flowProjectId);
+    const meta = this.getProjectMeta(flowProject.stylePreset);
+    const resetMeta: CreationProjectMeta = {
+      version: 'v2',
+      mode: 'idea',
+      backgroundVideoId: meta.backgroundVideoId || flowProject.videoId || null,
+      ideaInput: {},
+      previews: [],
+      selectedPreviewId: undefined,
+      scriptPlan: undefined,
+      nextCandidatesByNode: {},
+      nodesMeta: {},
+    };
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.flowNode.deleteMany({
+        where: { flowProjectId: flowProject.id },
+      });
+
+      await tx.prismFlowProject.update({
+        where: { id: flowProject.id },
+        data: {
+          scriptText: null,
+          status: 'PENDING',
+          stylePreset: resetMeta as any,
+        },
+      });
+    });
+
+    return this.getGraph(userId, flowProject.id);
+  }
+
   async getGraph(userId: string, flowProjectId: string) {
     const flowProject = await this.assertProjectAccess(userId, flowProjectId);
     const meta = this.getProjectMeta(flowProject.stylePreset);
@@ -129,15 +164,11 @@ export class CreationService {
         },
       },
       nodes: nodes.map((node) => ({
+        ...(this.getNodeMeta(meta, node.id)),
         id: node.id,
         title: node.branchName || `节点 ${node.orderIndex + 1}`,
         scriptSegment: node.scriptSegment || '',
         modelPrompt: node.prompt || '',
-        displayPromptCn: meta.nodesMeta?.[node.id]?.displayPromptCn || '',
-        imagePromptCn: meta.nodesMeta?.[node.id]?.imagePromptCn || '',
-        imagePromptModel: meta.nodesMeta?.[node.id]?.imagePromptModel || '',
-        videoPrompt: meta.nodesMeta?.[node.id]?.videoPrompt || '',
-        continuityNotes: meta.nodesMeta?.[node.id]?.continuityNotes || '',
         orderIndex: node.orderIndex,
         positionX: node.positionX,
         positionY: node.positionY,
@@ -237,6 +268,8 @@ export class CreationService {
       imagePromptModel: promptBundle.imagePromptModel,
       videoPrompt: promptBundle.videoPromptModel,
       continuityNotes: promptBundle.continuityNotes,
+      characterAnchor: promptBundle.characterAnchor,
+      continuityLocked: false,
     };
 
     await this.prisma.prismFlowProject.update({
@@ -325,6 +358,8 @@ export class CreationService {
         imagePromptModel: promptBundle.imagePromptModel,
         videoPrompt: promptBundle.videoPromptModel,
         continuityNotes: promptBundle.continuityNotes,
+        characterAnchor: promptBundle.characterAnchor,
+        continuityLocked: false,
       };
 
       prevNodeId = created.id;
@@ -343,7 +378,13 @@ export class CreationService {
     const flowProject = await this.assertProjectAccess(userId, node.flowProjectId);
     const meta = this.getProjectMeta(flowProject.stylePreset);
     meta.nodesMeta = meta.nodesMeta || {};
-    const currentNodeMeta = meta.nodesMeta[node.id] || {};
+    const currentNodeMeta = this.getNodeMeta(meta, node.id);
+    const hasCharacterPatch =
+      dto.characterIdentity !== undefined ||
+      dto.characterHair !== undefined ||
+      dto.characterOutfit !== undefined ||
+      dto.characterFace !== undefined ||
+      dto.characterProp !== undefined;
 
     await this.prisma.flowNode.update({
       where: { id: nodeId },
@@ -362,11 +403,74 @@ export class CreationService {
       ...(dto.imagePromptCn !== undefined ? { imagePromptCn: dto.imagePromptCn } : {}),
       ...(dto.modelPrompt !== undefined ? { imagePromptModel: dto.modelPrompt } : {}),
       ...(dto.videoPrompt !== undefined ? { videoPrompt: dto.videoPrompt } : {}),
+      ...(hasCharacterPatch
+        ? {
+            characterAnchor: {
+              identity: dto.characterIdentity ?? currentNodeMeta.characterAnchor.identity,
+              hair: dto.characterHair ?? currentNodeMeta.characterAnchor.hair,
+              outfit: dto.characterOutfit ?? currentNodeMeta.characterAnchor.outfit,
+              face: dto.characterFace ?? currentNodeMeta.characterAnchor.face,
+              prop: dto.characterProp ?? currentNodeMeta.characterAnchor.prop,
+            },
+          }
+        : {}),
+      ...(dto.continuityLocked !== undefined ? { continuityLocked: dto.continuityLocked } : {}),
     };
 
     await this.prisma.prismFlowProject.update({
       where: { id: flowProject.id },
       data: { stylePreset: meta as any },
+    });
+
+    return this.getGraph(userId, flowProject.id);
+  }
+
+  async deleteNode(userId: string, nodeId: string) {
+    const node = await this.assertNodeAccess(userId, nodeId);
+    const flowProject = await this.assertProjectAccess(userId, node.flowProjectId);
+    const meta = this.getProjectMeta(flowProject.stylePreset);
+
+    const siblings = await this.prisma.flowNode.findMany({
+      where: { flowProjectId: flowProject.id },
+      orderBy: { orderIndex: 'asc' },
+    });
+
+    const children = siblings.filter((item) => item.parentNodeId === node.id);
+
+    await this.prisma.$transaction(async (tx) => {
+      for (const child of children) {
+        await tx.flowNode.update({
+          where: { id: child.id },
+          data: { parentNodeId: node.parentNodeId || null },
+        });
+      }
+
+      await tx.flowNode.delete({
+        where: { id: node.id },
+      });
+
+      const remaining = siblings.filter((item) => item.id !== node.id);
+      for (let index = 0; index < remaining.length; index += 1) {
+        const item = remaining[index];
+        if (item.orderIndex !== index) {
+          await tx.flowNode.update({
+            where: { id: item.id },
+            data: { orderIndex: index },
+          });
+        }
+      }
+
+      if (meta.nodesMeta?.[node.id]) {
+        delete meta.nodesMeta[node.id];
+      }
+      if (meta.nextCandidatesByNode?.[node.id]) {
+        delete meta.nextCandidatesByNode[node.id];
+      }
+
+      await tx.prismFlowProject.update({
+        where: { id: flowProject.id },
+        data: { stylePreset: meta as any },
+      });
     });
 
     return this.getGraph(userId, flowProject.id);
@@ -400,6 +504,7 @@ export class CreationService {
     const node = await this.assertNodeAccess(userId, nodeId);
     const flowProject = await this.assertProjectAccess(userId, node.flowProjectId);
     const meta = this.getProjectMeta(flowProject.stylePreset);
+    const previousNodeMeta = this.getNodeMeta(meta, node.id);
     const candidate = meta.nextCandidatesByNode?.[node.id]?.find((item) => item.id === dto.candidateId);
     if (!candidate) throw new NotFoundException('未找到候选下一节点');
 
@@ -408,7 +513,15 @@ export class CreationService {
       nodeTitle: candidate.title,
       scriptSegment: candidate.scriptSegment,
       visualDescription: candidate.visualDescription,
+      previousNodeTitle: node.branchName || '',
       previousNodeSummary: node.scriptSegment || '',
+      previousNodeVisualPrompt:
+        previousNodeMeta.imagePromptCn ||
+        previousNodeMeta.displayPromptCn ||
+        '',
+      previousContinuityNotes: previousNodeMeta.continuityNotes || '',
+      previousCharacterAnchor: previousNodeMeta.characterAnchor,
+      previousContinuityLocked: previousNodeMeta.continuityLocked,
     });
 
     const nextOrder =
@@ -439,6 +552,8 @@ export class CreationService {
       imagePromptModel: promptBundle.imagePromptModel,
       videoPrompt: promptBundle.videoPromptModel,
       continuityNotes: promptBundle.continuityNotes,
+      characterAnchor: promptBundle.characterAnchor,
+      continuityLocked: this.getNodeMeta(meta, node.id).continuityLocked,
     };
     if (meta.nextCandidatesByNode?.[node.id]) {
       delete meta.nextCandidatesByNode[node.id];
@@ -456,9 +571,9 @@ export class CreationService {
     const node = await this.assertNodeAccess(userId, nodeId);
     const flowProject = await this.assertProjectAccess(userId, node.flowProjectId);
     const meta = this.getProjectMeta(flowProject.stylePreset);
-    const nodeMeta = meta.nodesMeta?.[node.id];
+    const nodeMeta = this.getNodeMeta(meta, node.id);
 
-    if (!nodeMeta?.imagePromptModel && node.scriptSegment) {
+    if (!nodeMeta.imagePromptModel && node.scriptSegment) {
       const compiled = await this.promptDirector.compile(userId, {
         projectIntent: flowProject.scriptText || '',
         nodeTitle: node.branchName || '',
@@ -471,6 +586,8 @@ export class CreationService {
         imagePromptModel: compiled.imagePromptModel,
         videoPrompt: compiled.videoPromptModel,
         continuityNotes: compiled.continuityNotes,
+        characterAnchor: compiled.characterAnchor,
+        continuityLocked: this.getNodeMeta(meta, node.id).continuityLocked,
       };
       await this.prisma.prismFlowProject.update({
         where: { id: flowProject.id },
@@ -558,6 +675,40 @@ export class CreationService {
     return task;
   }
 
+  async reextractCharacterAnchor(userId: string, nodeId: string) {
+    const node = await this.assertNodeAccess(userId, nodeId);
+    const flowProject = await this.assertProjectAccess(userId, node.flowProjectId);
+    const meta = this.getProjectMeta(flowProject.stylePreset);
+    const nodeMeta = this.getNodeMeta(meta, node.id);
+    const parentNode = node.parentNodeId
+      ? await this.prisma.flowNode.findUnique({ where: { id: node.parentNodeId } })
+      : null;
+    const parentNodeMeta = parentNode ? this.getNodeMeta(meta, parentNode.id) : null;
+
+    const extracted = await this.promptDirector.reextractCharacterAnchor(userId, {
+      nodeTitle: node.branchName || '',
+      scriptSegment: node.scriptSegment || '',
+      displayPromptCn: nodeMeta.displayPromptCn,
+      imagePromptCn: nodeMeta.imagePromptCn,
+      continuityNotes: nodeMeta.continuityNotes,
+      previousCharacterAnchor: parentNodeMeta?.characterAnchor,
+      continuityLocked: nodeMeta.continuityLocked,
+    });
+
+    meta.nodesMeta = meta.nodesMeta || {};
+    meta.nodesMeta[node.id] = {
+      ...nodeMeta,
+      characterAnchor: extracted,
+    };
+
+    await this.prisma.prismFlowProject.update({
+      where: { id: flowProject.id },
+      data: { stylePreset: meta as any },
+    });
+
+    return this.getGraph(userId, flowProject.id);
+  }
+
   private getProjectMeta(input: unknown): CreationProjectMeta {
     if (!input || typeof input !== 'object' || Array.isArray(input)) {
       return { version: 'v2', mode: 'idea', backgroundVideoId: null, nodesMeta: {} };
@@ -572,7 +723,70 @@ export class CreationService {
       selectedPreviewId: meta.selectedPreviewId,
       scriptPlan: meta.scriptPlan,
       nextCandidatesByNode: meta.nextCandidatesByNode || {},
-      nodesMeta: meta.nodesMeta || {},
+      nodesMeta: Object.fromEntries(
+        Object.entries(meta.nodesMeta || {}).map(([nodeId, nodeMeta]) => [nodeId, this.normalizeNodeMeta(nodeMeta)]),
+      ),
+    };
+  }
+
+  private getNodeMeta(meta: CreationProjectMeta, nodeId: string): Required<CreationNodeMeta> {
+    return this.normalizeNodeMeta(meta.nodesMeta?.[nodeId]);
+  }
+
+  private normalizeNodeMeta(input: unknown): Required<CreationNodeMeta> {
+    if (!input || typeof input !== 'object' || Array.isArray(input)) {
+      return {
+        displayPromptCn: '',
+        imagePromptCn: '',
+        imagePromptModel: '',
+        videoPrompt: '',
+        continuityNotes: '',
+        characterAnchor: this.normalizeCharacterAnchor(undefined),
+        continuityLocked: false,
+      };
+    }
+
+    const nodeMeta = input as CreationNodeMeta;
+    return {
+      displayPromptCn: String(nodeMeta.displayPromptCn || '').trim(),
+      imagePromptCn: String(nodeMeta.imagePromptCn || '').trim(),
+      imagePromptModel: String(nodeMeta.imagePromptModel || '').trim(),
+      videoPrompt: String(nodeMeta.videoPrompt || '').trim(),
+      continuityNotes: String(nodeMeta.continuityNotes || '').trim(),
+      characterAnchor: this.normalizeCharacterAnchor(nodeMeta.characterAnchor),
+      continuityLocked: Boolean(nodeMeta.continuityLocked),
+    };
+  }
+
+  private normalizeCharacterAnchor(input: unknown): CharacterAnchor {
+    if (typeof input === 'string') {
+      const value = input.trim();
+      return {
+        identity: value || '当前镜头无固定人物主体',
+        hair: '',
+        outfit: '',
+        face: '',
+        prop: '',
+      };
+    }
+
+    if (!input || typeof input !== 'object' || Array.isArray(input)) {
+      return {
+        identity: '当前镜头无固定人物主体',
+        hair: '',
+        outfit: '',
+        face: '',
+        prop: '',
+      };
+    }
+
+    const value = input as Partial<CharacterAnchor>;
+    return {
+      identity: String(value.identity || '').trim() || '当前镜头无固定人物主体',
+      hair: String(value.hair || '').trim(),
+      outfit: String(value.outfit || '').trim(),
+      face: String(value.face || '').trim(),
+      prop: String(value.prop || '').trim(),
     };
   }
 

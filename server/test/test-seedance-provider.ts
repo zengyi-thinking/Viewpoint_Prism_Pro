@@ -16,7 +16,7 @@ class TestConfigService {
     const env = process.env;
     switch (key) {
       case 'SEEDANCE_API_KEY':
-        return env.SEEDANCE_API_KEY || env.SILICONFLOW_API_KEY || 'sk-eqzwkwakkbzkgbrcnlxrtbupgxxprpfzdqoqzperankekbit';
+        return env.SEEDANCE_API_KEY || env.SILICONFLOW_API_KEY || env.SEEDANCE_KEY || env.SILICONFLOW_KEY;
       case 'SEEDANCE_BASE_URL':
         return env.SEEDANCE_BASE_URL || env.SILICONFLOW_BASE_URL || 'https://api.siliconflow.cn/v1';
       case 'SILICONFLOW_MODEL_LLM':

@@ -341,12 +341,16 @@ export class AiRouterService {
       case 'openai':
       case 'whisper':
         return this.parseApiKeyPool(
+          this.configService.get<string>('OPENAI_KEY'),
           this.configService.get<string>('OPENAI_API_KEYS'),
           this.configService.get<string>('OPENAI_API_KEY'),
+          this.configService.get<string>('OPENAI_PREMIUM_KEY'),
           this.configService.get<string>('OPENAI_PREMIUM_API_KEY'),
         );
       case 'gemini':
         return this.parseApiKeyPool(
+          this.configService.get<string>('GEMINI_KEY'),
+          this.configService.get<string>('GOOGLE_KEY'),
           this.configService.get<string>('GEMINI_API_KEYS'),
           this.configService.get<string>('GEMINI_API_KEY'),
           this.configService.get<string>('GOOGLE_API_KEY'),
@@ -361,11 +365,14 @@ export class AiRouterService {
         );
       case 'midjourney':
         return this.parseApiKeyPool(
+          this.configService.get<string>('MIDJOURNEY_KEY'),
           this.configService.get<string>('MIDJOURNEY_API_KEYS'),
           this.configService.get<string>('MIDJOURNEY_API_KEY'),
         );
       case 'seedance':
         return this.parseApiKeyPool(
+          this.configService.get<string>('SILICONFLOW_KEY'),
+          this.configService.get<string>('SEEDANCE_KEY'),
           this.configService.get<string>('SILICONFLOW_API_KEYS'),
           this.configService.get<string>('SEEDANCE_API_KEYS'),
           this.configService.get<string>('SEEDANCE_API_KEY'),
@@ -373,6 +380,8 @@ export class AiRouterService {
         );
       case 'elevenlabs':
         return this.parseApiKeyPool(
+          this.configService.get<string>('ELEVENLABS_KEY'),
+          this.configService.get<string>('ELEVENLABS_PREMIUM_KEY'),
           this.configService.get<string>('ELEVENLABS_API_KEYS'),
           this.configService.get<string>('ELEVENLABS_API_KEY'),
           this.configService.get<string>('ELEVENLABS_PREMIUM_API_KEY'),
