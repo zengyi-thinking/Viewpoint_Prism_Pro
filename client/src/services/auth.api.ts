@@ -11,6 +11,9 @@ export const authApi = {
       method: 'POST',
       body: JSON.stringify({ email, password }),
     });
+    if (!payload?.token || typeof payload.token !== 'string') {
+      throw new Error('登录成功但未收到有效令牌');
+    }
     setToken(payload.token);
     return payload;
   },
@@ -20,6 +23,9 @@ export const authApi = {
       method: 'POST',
       body: JSON.stringify({ email, password, name }),
     });
+    if (!payload?.token || typeof payload.token !== 'string') {
+      throw new Error('注册成功但未收到有效令牌');
+    }
     setToken(payload.token);
     return payload;
   },

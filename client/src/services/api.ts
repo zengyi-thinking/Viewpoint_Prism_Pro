@@ -1,4 +1,6 @@
 const API_BASE = (process.env.NEXT_PUBLIC_API_URL || '').trim();
+const TOKEN_KEY = 'token';
+const TOKEN_COOKIE_KEY = 'vp_token';
 
 function normalizeBase(base: string): string {
   if (!base) return '';
@@ -27,17 +29,57 @@ function getApiBaseCandidates(): string[] {
   return Array.from(new Set(candidates.map((item) => normalizeBase(item))));
 }
 
+function readCookie(name: string): string | null {
+  if (typeof document === 'undefined') return null;
+  const cookie = document.cookie
+    .split('; ')
+    .find((entry) => entry.startsWith(`${name}=`));
+  if (!cookie) return null;
+  return decodeURIComponent(cookie.split('=').slice(1).join('='));
+}
+
+function writeCookie(name: string, value: string, days = 7) {
+  if (typeof document === 'undefined') return;
+  const expires = new Date(Date.now() + days * 24 * 60 * 60 * 1000).toUTCString();
+  document.cookie = `${name}=${encodeURIComponent(value)}; expires=${expires}; path=/; SameSite=Lax`;
+}
+
+function removeCookie(name: string) {
+  if (typeof document === 'undefined') return;
+  document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/; SameSite=Lax`;
+}
+
 export function getToken(): string | null {
   if (typeof window === 'undefined') return null;
-  return localStorage.getItem('token');
+
+  try {
+    const token = window.localStorage.getItem(TOKEN_KEY);
+    if (token) {
+      return token;
+    }
+  } catch {
+    // Ignore storage access errors in embedded environments and fall back to cookie.
+  }
+
+  return readCookie(TOKEN_COOKIE_KEY);
 }
 
 export function setToken(token: string) {
-  localStorage.setItem('token', token);
+  try {
+    window.localStorage.setItem(TOKEN_KEY, token);
+  } catch {
+    // Ignore storage access errors in embedded environments.
+  }
+  writeCookie(TOKEN_COOKIE_KEY, token);
 }
 
 export function removeToken() {
-  localStorage.removeItem('token');
+  try {
+    window.localStorage.removeItem(TOKEN_KEY);
+  } catch {
+    // Ignore storage access errors in embedded environments.
+  }
+  removeCookie(TOKEN_COOKIE_KEY);
 }
 
 export async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
