@@ -356,7 +356,7 @@ async def start_services() -> None:
     spawn(
         [
             "node",
-            "node_modules/next/dist/bin/next",
+            "../node_modules/next/dist/bin/next",
             "start",
             "--hostname",
             "127.0.0.1",
