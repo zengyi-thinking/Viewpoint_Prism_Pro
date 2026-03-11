@@ -350,21 +350,20 @@ async def start_services() -> None:
         }
     )
 
-    spawn(["npm", "run", "start:prod", "--workspace=server"], env=backend_env)
+    spawn(["node", "dist/src/main.js"], cwd=ROOT / "server", env=backend_env)
     await wait_for_port("127.0.0.1", BACKEND_PORT)
 
     spawn(
         [
-            "npm",
-            "run",
+            "node",
+            "node_modules/next/dist/bin/next",
             "start",
-            "--workspace=client",
-            "--",
             "--hostname",
             "127.0.0.1",
             "--port",
             str(FRONTEND_PORT),
         ],
+        cwd=ROOT / "client",
         env=frontend_env,
     )
     await wait_for_port("127.0.0.1", FRONTEND_PORT)

@@ -12,7 +12,7 @@
     "start": "nest start --path tsconfig.json",
     "start:dev": "npm run free-port && nest start --path tsconfig.json --watch",
     "start:debug": "nest start --path tsconfig.json --debug --watch",
-    "start:prod": "node dist/main",
+    "start:prod": "node dist/src/main.js",
     "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
     "test": "jest",
     "test:watch": "jest --watch",
