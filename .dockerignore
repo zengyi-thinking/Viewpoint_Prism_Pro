@@ -1,0 +1,16 @@
+.git
+.gitignore
+node_modules
+client/.next
+client/out
+server/dist
+__pycache__
+*.log
+*.tsbuildinfo
+MODELSCOPE_ENV_CHECKLIST.local.md
+__creation_v2_e2e.js
+__creation_v2_e2e_result.json
+product_picture.png
+temp
+test-results
+vedios

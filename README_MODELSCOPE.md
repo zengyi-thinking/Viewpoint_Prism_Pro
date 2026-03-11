@@ -9,22 +9,28 @@
 - 数据层：Prisma
 - 实时通信：Socket.IO
 
-魔搭创空间当前使用的是 **纯 Python 运行环境**。  
-因此这里的 `app.py` 已改为一个 **纯 Gradio 入口页**，直接运行在：
+当前文档对应的是 **Docker SDK 创空间**。
 
-- `0.0.0.0:7860`
+仓库中包含：
 
-它的作用是：
+- `Dockerfile`
+- `app.py`
 
-- 展示项目说明
-- 展示部署说明
-- 检查关键环境变量是否已配置
+部署方式为：
 
-说明：
-
-- 这不是原始 Next.js + NestJS 全量工作台
-- 原始工程仍然保留在仓库中
-- 但在当前“无 Node / 无 npm”的创空间运行器里，不能直接启动原始前后端
+1. Docker 镜像中安装：
+   - Python 3.10
+   - Node.js 20
+   - ffmpeg
+2. 镜像构建阶段完成：
+   - `npm ci`
+   - Prisma Client 生成
+   - Nest 构建
+   - Next 构建
+3. 容器启动后由 `app.py` 负责：
+   - 启动 Nest 后端（内部 `7861`）
+   - 启动 Next 前端（内部 `7862`）
+   - 在 `0.0.0.0:7860` 上统一暴露站点入口
 
 ## 在魔搭创空间中设置环境变量
 
@@ -68,10 +74,11 @@
 
 ### 二、前后端代理相关
 
-- 如果你后续迁移到支持 Node 的环境，再配置：
-  - `INTERNAL_API_URL`
-  - `NEXT_PUBLIC_API_URL`
-  - `NEXT_PUBLIC_WS_URL`
+- `BACKEND_PORT=7861`
+- `FRONTEND_PORT=7862`
+- `INTERNAL_API_URL=http://127.0.0.1:7861`
+- `NEXT_PUBLIC_API_URL=` 建议留空，浏览器走同源代理
+- `NEXT_PUBLIC_WS_URL=` 建议留空，WebSocket 走同源代理
 
 ### 三、对象存储 / 文件能力
 
@@ -157,11 +164,13 @@
 
 Python 依赖写在 `requirements.txt` 中：
 
-- `gradio==6.2.0`
+- `aiohttp`
+
+Node 与 ffmpeg 在 Docker 镜像内安装。
 
 ## 注意
 
-原始完整版项目仍然依赖以下外部服务或基础设施：
+该项目仍然依赖以下外部服务或基础设施：
 
 - PostgreSQL
 - Redis

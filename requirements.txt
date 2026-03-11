@@ -1,2 +1,2 @@
-# ModelScope Studio Python entry
-gradio==6.2.0
+# Docker launcher / reverse proxy dependencies for ModelScope Studio
+aiohttp>=3.11,<4
