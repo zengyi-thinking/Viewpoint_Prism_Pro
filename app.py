@@ -69,7 +69,7 @@ async def wait_for_port(host: str, port: int, timeout: float = 120.0) -> None:
 
 def prepare_runtime() -> None:
     if AUTO_PRISMA_PUSH:
-        run(["npm", "--prefix", "server", "run", "prisma:push"])
+        run(["npm", "run", "db:push"])
 
 
 async def start_services() -> None:
@@ -91,16 +91,15 @@ async def start_services() -> None:
         }
     )
 
-    spawn(["npm", "--prefix", "server", "run", "start:prod"], env=backend_env)
+    spawn(["npm", "run", "start:prod", "--workspace=server"], env=backend_env)
     await wait_for_port("127.0.0.1", BACKEND_PORT)
 
     spawn(
         [
             "npm",
-            "--prefix",
-            "client",
             "run",
             "start",
+            "--workspace=client",
             "--",
             "--hostname",
             "127.0.0.1",

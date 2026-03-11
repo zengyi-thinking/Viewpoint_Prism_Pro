@@ -25,8 +25,8 @@ COPY . /home/user/app
 
 RUN pip install --no-cache-dir -r requirements.txt
 RUN npm ci --workspaces --include-workspace-root
-RUN npm --prefix server run prisma:generate
-RUN npm --prefix server run build
-RUN npm --prefix client run build
+RUN npm run db:generate
+RUN npm run build:server
+RUN npm run build:client
 
 ENTRYPOINT ["python", "-u", "app.py"]
