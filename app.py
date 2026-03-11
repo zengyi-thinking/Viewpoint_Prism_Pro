@@ -87,7 +87,7 @@ def inspect_env() -> tuple[list[list[str]], str]:
 
 
 def build_demo() -> gr.Blocks:
-    with gr.Blocks(title=APP_TITLE, theme=gr.themes.Soft()) as demo:
+    with gr.Blocks(title=APP_TITLE) as demo:
         gr.Markdown(
             f"""
 # {APP_TITLE}
@@ -181,8 +181,11 @@ RuntimeError: Missing required command: node
             demo.load(inspect_env, outputs=[env_table, env_summary])
 
         with gr.Tab("最低建议配置"):
-            gr.Code(
-                language="bash",
+            gr.Textbox(
+                label="建议先填写的环境变量",
+                lines=16,
+                max_lines=20,
+                interactive=False,
                 value="""HOST=0.0.0.0
 PORT=7860
 DATABASE_URL=postgresql://postgres:postgres@localhost:5433/viewpoint_prism
@@ -205,4 +208,8 @@ SILICONFLOW_KEY=请填写你自己的KEY""",
 
 if __name__ == "__main__":
     demo = build_demo()
-    demo.launch(server_name="0.0.0.0", server_port=int(os.getenv("PORT", "7860")))
+    demo.launch(
+        server_name="0.0.0.0",
+        server_port=int(os.getenv("PORT", "7860")),
+        theme=gr.themes.Soft(),
+    )
