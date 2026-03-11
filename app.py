@@ -387,6 +387,8 @@ def choose_target(request: web.Request) -> str:
     path = request.rel_url.path
     if path.startswith("/api/") or path.startswith("/socket.io/"):
         return f"http://127.0.0.1:{BACKEND_PORT}"
+    if path.startswith("/storage/"):
+        return f"http://{MINIO_HOST}:{MINIO_PORT}"
     return f"http://127.0.0.1:{FRONTEND_PORT}"
 
 
@@ -428,7 +430,13 @@ async def proxy_http(request: web.Request) -> web.StreamResponse:
     if connection_hdr == "websocket":
         return await proxy_websocket(request, target_base)
 
-    target_url = f"{target_base}{request.rel_url}"
+    if request.rel_url.path.startswith("/storage/"):
+        rewritten_path = "/" + request.rel_url.path[len("/storage/") :].lstrip("/")
+        target_url = f"{target_base}{rewritten_path}"
+        if request.rel_url.query_string:
+            target_url = f"{target_url}?{request.rel_url.query_string}"
+    else:
+        target_url = f"{target_base}{request.rel_url}"
     headers = {k: v for k, v in request.headers.items() if k.lower() not in HOP_HEADERS}
     body = await request.read()
 

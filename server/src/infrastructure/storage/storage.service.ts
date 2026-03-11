@@ -11,6 +11,7 @@ export class StorageService implements OnModuleInit {
   private port: number;
   private useSSL: boolean;
   private minioReady = false;
+  private publicBaseUrl: string | null = null;
 
   constructor(private readonly configService: ConfigService) {}
 
@@ -19,6 +20,11 @@ export class StorageService implements OnModuleInit {
     this.port = parseInt(this.configService.get('MINIO_PORT', '9000'), 10);
     this.useSSL = this.configService.get('MINIO_USE_SSL', 'false') === 'true';
     this.bucketName = this.configService.get('MINIO_BUCKET', 'viewpoint-prism');
+    this.publicBaseUrl =
+      this.configService.get('MINIO_PUBLIC_BASE_URL') ||
+      this.configService.get('APP_PUBLIC_URL') ||
+      this.configService.get('NEXTAUTH_URL') ||
+      null;
 
     const accessKey = this.configService.get('MINIO_ACCESS_KEY', 'minioadmin');
     const secretKey = this.configService.get('MINIO_SECRET_KEY', 'minioadmin');
@@ -225,6 +231,15 @@ export class StorageService implements OnModuleInit {
    * @returns Public URL
    */
   async getPublicUrl(key: string): Promise<string> {
+    if (this.shouldUseProxiedPublicUrl()) {
+      const base = this.publicBaseUrl?.replace(/\/+$/, '');
+      const normalizedKey = key
+        .split('/')
+        .map((segment) => encodeURIComponent(segment))
+        .join('/');
+      return `${base}/storage/${this.bucketName}/${normalizedKey}`;
+    }
+
     const protocol = this.useSSL ? 'https' : 'http';
     return `${protocol}://${this.endPoint}:${this.port}/${this.bucketName}/${key}`;
   }
@@ -245,12 +260,22 @@ export class StorageService implements OnModuleInit {
     const parsed = new URL(trimmed);
     const pathname = decodeURIComponent(parsed.pathname || '').replace(/^\/+/, '');
     const bucketPrefix = `${this.bucketName}/`;
+    const proxiedPrefix = `storage/${this.bucketName}/`;
 
     if (pathname.startsWith(bucketPrefix)) {
       return pathname.slice(bucketPrefix.length);
     }
 
+    if (pathname.startsWith(proxiedPrefix)) {
+      return pathname.slice(proxiedPrefix.length);
+    }
+
     return pathname;
+  }
+
+  private shouldUseProxiedPublicUrl(): boolean {
+    if (!this.publicBaseUrl) return false;
+    return ['localhost', '127.0.0.1', '0.0.0.0'].includes(this.endPoint);
   }
 
   /**
