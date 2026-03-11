@@ -380,6 +380,7 @@ HOP_HEADERS = {
     "transfer-encoding",
     "upgrade",
     "host",
+    "content-length",
 }
 
 
@@ -441,7 +442,7 @@ async def proxy_http(request: web.Request) -> web.StreamResponse:
     body = await request.read()
 
     timeout = ClientTimeout(total=None)
-    async with ClientSession(timeout=timeout) as session:
+    async with ClientSession(timeout=timeout, auto_decompress=False) as session:
         async with session.request(
             request.method,
             target_url,
