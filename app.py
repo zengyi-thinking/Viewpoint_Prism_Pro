@@ -1,6 +1,8 @@
 import asyncio
 import os
 import signal
+import shutil
+import shlex
 import socket
 import subprocess
 from pathlib import Path
@@ -16,8 +18,31 @@ BACKEND_PORT = int(os.getenv("BACKEND_PORT", "7861"))
 FRONTEND_PORT = int(os.getenv("FRONTEND_PORT", "7862"))
 AUTO_PRISMA_PUSH = os.getenv("AUTO_PRISMA_PUSH", "1") == "1"
 ALLOW_START_WITHOUT_DB = os.getenv("ALLOW_START_WITHOUT_DB", "1") == "1"
+DATA_ROOT = Path(os.getenv("APP_DATA_ROOT", "/home/user/data"))
+
+POSTGRES_HOST = os.getenv("POSTGRES_HOST", "127.0.0.1")
+POSTGRES_PORT = int(os.getenv("POSTGRES_PORT", "5433"))
+POSTGRES_USER = os.getenv("POSTGRES_USER", "postgres")
+POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD", "postgres")
+POSTGRES_DB = os.getenv("POSTGRES_DB", "viewpoint_prism")
+POSTGRES_DATA_DIR = Path(os.getenv("POSTGRES_DATA_DIR", str(DATA_ROOT / "postgres")))
+POSTGRES_LOG_FILE = Path(os.getenv("POSTGRES_LOG_FILE", str(DATA_ROOT / "postgresql.log")))
+
+REDIS_HOST = os.getenv("REDIS_HOST", "127.0.0.1")
+REDIS_PORT = int(os.getenv("REDIS_PORT", "6379"))
+REDIS_DATA_DIR = Path(os.getenv("REDIS_DATA_DIR", str(DATA_ROOT / "redis")))
+
+MINIO_HOST = os.getenv("MINIO_HOST", "127.0.0.1")
+MINIO_PORT = int(os.getenv("MINIO_PORT", "9000"))
+MINIO_CONSOLE_PORT = int(os.getenv("MINIO_CONSOLE_PORT", "9001"))
+MINIO_DATA_DIR = Path(os.getenv("MINIO_DATA_DIR", str(DATA_ROOT / "minio")))
+MINIO_ACCESS_KEY = os.getenv("MINIO_ACCESS_KEY", "minioadmin")
+MINIO_SECRET_KEY = os.getenv("MINIO_SECRET_KEY", "minioadmin")
+MINIO_BUCKET = os.getenv("MINIO_BUCKET", "viewpoint-prism")
+MINIO_USE_SSL = os.getenv("MINIO_USE_SSL", "false")
 
 PROCESSES: list[subprocess.Popen] = []
+POSTGRES_STARTED = False
 
 
 def log(message: str) -> None:
@@ -53,6 +78,21 @@ def merged_env(extra: Optional[Dict[str, str]] = None) -> Dict[str, str]:
     return env
 
 
+def set_internal_defaults() -> None:
+    os.environ.setdefault(
+        "DATABASE_URL",
+        f"postgresql://{POSTGRES_USER}:{POSTGRES_PASSWORD}@{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}",
+    )
+    os.environ.setdefault("REDIS_URL", f"redis://{REDIS_HOST}:{REDIS_PORT}")
+    os.environ.setdefault("MINIO_ENDPOINT", MINIO_HOST)
+    os.environ.setdefault("MINIO_PORT", str(MINIO_PORT))
+    os.environ.setdefault("MINIO_ACCESS_KEY", MINIO_ACCESS_KEY)
+    os.environ.setdefault("MINIO_SECRET_KEY", MINIO_SECRET_KEY)
+    os.environ.setdefault("MINIO_BUCKET", MINIO_BUCKET)
+    os.environ.setdefault("MINIO_USE_SSL", MINIO_USE_SSL)
+    os.environ.setdefault("FFMPEG_PATH", "ffmpeg")
+
+
 def port_is_open(host: str, port: int) -> bool:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
         sock.settimeout(0.5)
@@ -66,6 +106,213 @@ async def wait_for_port(host: str, port: int, timeout: float = 120.0) -> None:
             return
         await asyncio.sleep(1)
     raise TimeoutError(f"Timeout waiting for {host}:{port}")
+
+
+def find_postgres_binary(name: str) -> str:
+    direct = shutil.which(name)
+    if direct:
+        return direct
+    candidates = sorted(Path("/usr/lib/postgresql").glob(f"*/bin/{name}"))
+    if not candidates:
+        raise RuntimeError(f"PostgreSQL binary not found: {name}")
+    return str(candidates[-1])
+
+
+def run_as_postgres(command: Iterable[str]) -> subprocess.CompletedProcess[str]:
+    cmd = " ".join(shlex.quote(str(part)) for part in command)
+    log(f"Running as postgres: {cmd}")
+    return subprocess.run(
+        ["su", "-s", "/bin/sh", "postgres", "-c", cmd],
+        check=True,
+        text=True,
+        capture_output=True,
+    )
+
+
+def ensure_directory(path: Path, owner: Optional[str] = None) -> None:
+    path.mkdir(parents=True, exist_ok=True)
+    if owner:
+        shutil.chown(path, user=owner, group=owner)
+
+
+def chown_tree(path: Path, owner: str) -> None:
+    if not path.exists():
+        return
+    shutil.chown(path, user=owner, group=owner)
+    for child in path.rglob("*"):
+        try:
+            shutil.chown(child, user=owner, group=owner)
+        except FileNotFoundError:
+            continue
+
+
+def initialize_postgres() -> None:
+    ensure_directory(DATA_ROOT)
+    ensure_directory(POSTGRES_DATA_DIR, owner="postgres")
+    ensure_directory(POSTGRES_LOG_FILE.parent, owner="postgres")
+    chown_tree(POSTGRES_DATA_DIR, "postgres")
+
+    initdb = find_postgres_binary("initdb")
+    if (POSTGRES_DATA_DIR / "PG_VERSION").exists():
+        return
+
+    password_file = DATA_ROOT / ".postgres-password"
+    password_file.write_text(POSTGRES_PASSWORD, encoding="utf-8")
+    shutil.chown(password_file, user="postgres", group="postgres")
+    password_file.chmod(0o600)
+
+    try:
+        run_as_postgres(
+            [
+                initdb,
+                "-D",
+                str(POSTGRES_DATA_DIR),
+                "--auth-local=trust",
+                "--auth-host=scram-sha-256",
+                "-U",
+                POSTGRES_USER,
+                f"--pwfile={password_file}",
+            ]
+        )
+    finally:
+        password_file.unlink(missing_ok=True)
+
+    conf = POSTGRES_DATA_DIR / "postgresql.conf"
+    conf.write_text(
+        conf.read_text(encoding="utf-8")
+        + (
+            f"\nlisten_addresses = '{POSTGRES_HOST}'\n"
+            f"port = {POSTGRES_PORT}\n"
+            "max_connections = 100\n"
+            "shared_buffers = 128MB\n"
+            "fsync = off\n"
+            "full_page_writes = off\n"
+        ),
+        encoding="utf-8",
+    )
+
+
+def start_postgres() -> None:
+    global POSTGRES_STARTED
+    initialize_postgres()
+    if port_is_open(POSTGRES_HOST, POSTGRES_PORT):
+        POSTGRES_STARTED = True
+        return
+
+    pg_ctl = find_postgres_binary("pg_ctl")
+    run_as_postgres(
+        [
+            pg_ctl,
+            "-D",
+            str(POSTGRES_DATA_DIR),
+            "-l",
+            str(POSTGRES_LOG_FILE),
+            "start",
+        ]
+    )
+    POSTGRES_STARTED = True
+
+
+def stop_postgres() -> None:
+    if not POSTGRES_STARTED:
+        return
+    try:
+        pg_ctl = find_postgres_binary("pg_ctl")
+        run_as_postgres(
+            [
+                pg_ctl,
+                "-D",
+                str(POSTGRES_DATA_DIR),
+                "stop",
+                "-m",
+                "fast",
+            ]
+        )
+    except Exception as exc:
+        log(f"PostgreSQL stop warning: {exc}")
+
+
+def ensure_postgres_database() -> None:
+    createdb = find_postgres_binary("createdb")
+    psql = find_postgres_binary("psql")
+
+    try:
+        result = run_as_postgres(
+            [
+                psql,
+                "-tAc",
+                f"SELECT 1 FROM pg_database WHERE datname = '{POSTGRES_DB}'",
+                "-p",
+                str(POSTGRES_PORT),
+                "postgres",
+            ]
+        )
+        if result.stdout.strip() == "1":
+            return
+    except subprocess.CalledProcessError:
+        pass
+
+    run_as_postgres([createdb, "-p", str(POSTGRES_PORT), POSTGRES_DB])
+
+
+def start_redis() -> None:
+    ensure_directory(REDIS_DATA_DIR)
+    if port_is_open(REDIS_HOST, REDIS_PORT):
+        return
+    spawn(
+        [
+            "redis-server",
+            "--bind",
+            REDIS_HOST,
+            "--port",
+            str(REDIS_PORT),
+            "--dir",
+            str(REDIS_DATA_DIR),
+            "--save",
+            "",
+            "--appendonly",
+            "no",
+            "--protected-mode",
+            "no",
+        ]
+    )
+
+
+def start_minio() -> None:
+    ensure_directory(MINIO_DATA_DIR)
+    if port_is_open(MINIO_HOST, MINIO_PORT):
+        return
+    minio_env = merged_env(
+        {
+            "MINIO_ROOT_USER": MINIO_ACCESS_KEY,
+            "MINIO_ROOT_PASSWORD": MINIO_SECRET_KEY,
+        }
+    )
+    spawn(
+        [
+            "minio",
+            "server",
+            str(MINIO_DATA_DIR),
+            "--address",
+            f"{MINIO_HOST}:{MINIO_PORT}",
+            "--console-address",
+            f"{MINIO_HOST}:{MINIO_CONSOLE_PORT}",
+        ],
+        env=minio_env,
+    )
+
+
+async def start_infrastructure() -> None:
+    set_internal_defaults()
+    start_postgres()
+    await wait_for_port(POSTGRES_HOST, POSTGRES_PORT)
+    ensure_postgres_database()
+
+    start_redis()
+    await wait_for_port(REDIS_HOST, REDIS_PORT)
+
+    start_minio()
+    await wait_for_port(MINIO_HOST, MINIO_PORT)
 
 
 def prepare_runtime() -> None:
@@ -84,6 +331,7 @@ def prepare_runtime() -> None:
 
 
 async def start_services() -> None:
+    await start_infrastructure()
     prepare_runtime()
 
     backend_env = merged_env(
@@ -223,6 +471,7 @@ async def on_cleanup(_: web.Application) -> None:
                 proc.wait(timeout=10)
             except subprocess.TimeoutExpired:
                 proc.kill()
+    stop_postgres()
 
 
 def main() -> None:
