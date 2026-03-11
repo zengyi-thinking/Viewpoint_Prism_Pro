@@ -5,7 +5,6 @@ ENV HOST=0.0.0.0
 ENV PORT=7860
 ENV BACKEND_PORT=7861
 ENV FRONTEND_PORT=7862
-ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 
 WORKDIR /home/user/app
@@ -24,9 +23,11 @@ RUN apt-get update && apt-get install -y \
 COPY . /home/user/app
 
 RUN pip install --no-cache-dir -r requirements.txt
-RUN npm ci --workspaces --include-workspace-root
+RUN npm ci --workspaces --include-workspace-root --include=dev
 RUN npm run db:generate
 RUN npm run build:server
 RUN npm run build:client
+
+ENV NODE_ENV=production
 
 ENTRYPOINT ["python", "-u", "app.py"]
