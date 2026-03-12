@@ -57,3 +57,4 @@ client/out/
 # Others
 docs/develop/
 MODELSCOPE_ENV_CHECKLIST.local.md
+MODELSCOPE_ENV_TO_COPY.local.md
