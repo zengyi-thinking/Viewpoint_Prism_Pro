@@ -1,5 +1,6 @@
 import { Injectable, UnauthorizedException, ConflictException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
+import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcrypt';
 import { UserService } from '../user/user.service';
 import { RegisterDto, LoginDto } from './dto';
@@ -9,6 +10,7 @@ export class AuthService {
   constructor(
     private userService: UserService,
     private jwtService: JwtService,
+    private configService: ConfigService,
   ) {}
 
   private normalizeEmail(email: string) {
@@ -37,6 +39,19 @@ export class AuthService {
     const normalizedEmail = this.normalizeEmail(dto.email);
     const user = await this.userService.findByEmail(normalizedEmail);
     if (!user) {
+      if (this.configService.get<string>('AUTH_AUTO_REGISTER_ON_LOGIN', '0') === '1') {
+        const passwordHash = await bcrypt.hash(dto.password, 10);
+        const createdUser = await this.userService.create({
+          email: normalizedEmail,
+          passwordHash,
+        });
+
+        const token = this.generateToken(createdUser.id, createdUser.email);
+        return {
+          user: createdUser,
+          token,
+        };
+      }
       throw new UnauthorizedException('邮箱或密码错误');
     }
 

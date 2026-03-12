@@ -91,6 +91,7 @@ def set_internal_defaults() -> None:
     os.environ.setdefault("MINIO_BUCKET", MINIO_BUCKET)
     os.environ.setdefault("MINIO_USE_SSL", MINIO_USE_SSL)
     os.environ.setdefault("FFMPEG_PATH", "ffmpeg")
+    os.environ.setdefault("AUTH_AUTO_REGISTER_ON_LOGIN", "1")
 
 
 def port_is_open(host: str, port: int) -> bool:
