@@ -45,6 +45,11 @@ PROCESSES: list[subprocess.Popen] = []
 POSTGRES_STARTED = False
 
 
+def client_disconnected(request: web.Request) -> bool:
+    transport = request.transport
+    return transport is None or transport.is_closing()
+
+
 def log(message: str) -> None:
     print(f"[modelscope-launcher] {message}", flush=True)
 
@@ -427,49 +432,66 @@ async def proxy_websocket(request: web.Request, target_base: str) -> web.WebSock
 
 
 async def proxy_http(request: web.Request) -> web.StreamResponse:
-    target_base = choose_target(request)
-    connection_hdr = request.headers.get("Upgrade", "").lower()
-    if connection_hdr == "websocket":
-        return await proxy_websocket(request, target_base)
+    try:
+        target_base = choose_target(request)
+        connection_hdr = request.headers.get("Upgrade", "").lower()
+        if connection_hdr == "websocket":
+            return await proxy_websocket(request, target_base)
 
-    if request.rel_url.path.startswith("/storage/"):
-        rewritten_path = "/" + request.rel_url.path[len("/storage/") :].lstrip("/")
-        target_url = f"{target_base}{rewritten_path}"
-        if request.rel_url.query_string:
-            target_url = f"{target_url}?{request.rel_url.query_string}"
-    else:
-        target_url = f"{target_base}{request.rel_url}"
-    headers = {k: v for k, v in request.headers.items() if k.lower() not in HOP_HEADERS}
-    body = await request.read()
+        if request.rel_url.path.startswith("/storage/"):
+            rewritten_path = "/" + request.rel_url.path[len("/storage/") :].lstrip("/")
+            target_url = f"{target_base}{rewritten_path}"
+            if request.rel_url.query_string:
+                target_url = f"{target_url}?{request.rel_url.query_string}"
+        else:
+            target_url = f"{target_base}{request.rel_url}"
+        headers = {k: v for k, v in request.headers.items() if k.lower() not in HOP_HEADERS}
+        body = await request.read()
 
-    timeout = ClientTimeout(total=None)
-    async with ClientSession(timeout=timeout, auto_decompress=False) as session:
-        async with session.request(
-            request.method,
-            target_url,
-            headers=headers,
-            data=body if body else None,
-            allow_redirects=False,
-        ) as resp:
-            proxy_headers = {
-                k: v for k, v in resp.headers.items() if k.lower() not in HOP_HEADERS
-            }
-            streamed = web.StreamResponse(
-                status=resp.status,
-                reason=resp.reason,
-                headers=proxy_headers,
-            )
-            try:
-                await streamed.prepare(request)
-                async for chunk in resp.content.iter_chunked(65536):
-                    await streamed.write(chunk)
-                await streamed.write_eof()
-                return streamed
-            except (ClientConnectionResetError, ConnectionResetError, BrokenPipeError):
-                log(
-                    f"Client disconnected while proxying {request.method} {request.rel_url.path}"
+        timeout = ClientTimeout(total=None)
+        async with ClientSession(timeout=timeout, auto_decompress=False) as session:
+            async with session.request(
+                request.method,
+                target_url,
+                headers=headers,
+                data=body if body else None,
+                allow_redirects=False,
+            ) as resp:
+                proxy_headers = {
+                    k: v for k, v in resp.headers.items() if k.lower() not in HOP_HEADERS
+                }
+                streamed = web.StreamResponse(
+                    status=resp.status,
+                    reason=resp.reason,
+                    headers=proxy_headers,
                 )
-                return streamed
+
+                if client_disconnected(request):
+                    log(
+                        f"Client already disconnected before proxy response {request.method} {request.rel_url.path}"
+                    )
+                    return web.Response(status=204)
+
+                try:
+                    await streamed.prepare(request)
+                    async for chunk in resp.content.iter_chunked(65536):
+                        if client_disconnected(request):
+                            log(
+                                f"Client disconnected while streaming {request.method} {request.rel_url.path}"
+                            )
+                            return streamed
+                        await streamed.write(chunk)
+                    if not client_disconnected(request):
+                        await streamed.write_eof()
+                    return streamed
+                except (ClientConnectionResetError, ConnectionResetError, BrokenPipeError):
+                    log(
+                        f"Client disconnected while proxying {request.method} {request.rel_url.path}"
+                    )
+                    return streamed
+    except (ClientConnectionResetError, ConnectionResetError, BrokenPipeError):
+        log(f"Client disconnected before proxy completed {request.method} {request.rel_url.path}")
+        return web.Response(status=204)
 
 
 async def on_startup(_: web.Application) -> None:
