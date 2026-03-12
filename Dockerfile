@@ -1,6 +1,9 @@
 FROM modelscope-registry.cn-beijing.cr.aliyuncs.com/modelscope-repo/python:3.10
 
+ARG APP_GIT_SHA=unknown
+
 ENV DEBIAN_FRONTEND=noninteractive
+ENV APP_GIT_SHA=${APP_GIT_SHA}
 ENV HOST=0.0.0.0
 ENV PORT=7860
 ENV BACKEND_PORT=7861

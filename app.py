@@ -12,6 +12,7 @@ from aiohttp import ClientConnectionResetError, ClientSession, ClientTimeout, WS
 
 
 ROOT = Path(__file__).resolve().parent
+APP_GIT_SHA = os.getenv("APP_GIT_SHA", "unknown")
 PUBLIC_HOST = os.getenv("HOST", "0.0.0.0")
 PUBLIC_PORT = int(os.getenv("PORT", "7860"))
 BACKEND_PORT = int(os.getenv("BACKEND_PORT", "7861"))
@@ -495,6 +496,7 @@ async def proxy_http(request: web.Request) -> web.StreamResponse:
 
 
 async def on_startup(_: web.Application) -> None:
+    log(f"App version: {APP_GIT_SHA}")
     await start_services()
 
 
