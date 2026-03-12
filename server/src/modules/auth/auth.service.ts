@@ -11,17 +11,22 @@ export class AuthService {
     private jwtService: JwtService,
   ) {}
 
+  private normalizeEmail(email: string) {
+    return email.trim().toLowerCase();
+  }
+
   async register(dto: RegisterDto) {
-    const existing = await this.userService.findByEmail(dto.email);
+    const normalizedEmail = this.normalizeEmail(dto.email);
+    const existing = await this.userService.findByEmail(normalizedEmail);
     if (existing) {
       throw new ConflictException('该邮箱已注册');
     }
 
     const passwordHash = await bcrypt.hash(dto.password, 10);
     const user = await this.userService.create({
-      email: dto.email,
+      email: normalizedEmail,
       passwordHash,
-      name: dto.name,
+      name: dto.name?.trim() || undefined,
     });
 
     const token = this.generateToken(user.id, user.email);
@@ -29,7 +34,8 @@ export class AuthService {
   }
 
   async login(dto: LoginDto) {
-    const user = await this.userService.findByEmail(dto.email);
+    const normalizedEmail = this.normalizeEmail(dto.email);
+    const user = await this.userService.findByEmail(normalizedEmail);
     if (!user) {
       throw new UnauthorizedException('邮箱或密码错误');
     }
