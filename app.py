@@ -8,7 +8,7 @@ import subprocess
 from pathlib import Path
 from typing import Dict, Iterable, Optional
 
-from aiohttp import ClientSession, ClientTimeout, WSMsgType, web
+from aiohttp import ClientConnectionResetError, ClientSession, ClientTimeout, WSMsgType, web
 
 
 ROOT = Path(__file__).resolve().parent
@@ -459,11 +459,17 @@ async def proxy_http(request: web.Request) -> web.StreamResponse:
                 reason=resp.reason,
                 headers=proxy_headers,
             )
-            await streamed.prepare(request)
-            async for chunk in resp.content.iter_chunked(65536):
-                await streamed.write(chunk)
-            await streamed.write_eof()
-            return streamed
+            try:
+                await streamed.prepare(request)
+                async for chunk in resp.content.iter_chunked(65536):
+                    await streamed.write(chunk)
+                await streamed.write_eof()
+                return streamed
+            except (ClientConnectionResetError, ConnectionResetError, BrokenPipeError):
+                log(
+                    f"Client disconnected while proxying {request.method} {request.rel_url.path}"
+                )
+                return streamed
 
 
 async def on_startup(_: web.Application) -> None:
