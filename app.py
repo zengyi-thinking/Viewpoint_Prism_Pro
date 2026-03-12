@@ -55,6 +55,26 @@ def log(message: str) -> None:
     print(f"[modelscope-launcher] {message}", flush=True)
 
 
+def resolve_app_version() -> str:
+    if APP_GIT_SHA and APP_GIT_SHA != "unknown":
+        return APP_GIT_SHA
+    git_dir = ROOT / ".git"
+    if git_dir.exists():
+        try:
+            return (
+                subprocess.check_output(
+                    ["git", "rev-parse", "--short", "HEAD"],
+                    cwd=str(ROOT),
+                    stderr=subprocess.DEVNULL,
+                    text=True,
+                )
+                .strip()
+            )
+        except Exception:
+            return "unknown"
+    return "unknown"
+
+
 def run(
     cmd: Iterable[str],
     cwd: Optional[Path] = None,
@@ -496,7 +516,7 @@ async def proxy_http(request: web.Request) -> web.StreamResponse:
 
 
 async def on_startup(_: web.Application) -> None:
-    log(f"App version: {APP_GIT_SHA}")
+    log(f"App version: {resolve_app_version()}")
     await start_services()
 
 
