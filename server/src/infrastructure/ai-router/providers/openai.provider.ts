@@ -385,7 +385,7 @@ export class OpenAIProvider extends BaseProvider {
   }
 
   private isVideoFailureStatus(status: string) {
-    return ['failed', 'error', 'cancelled', 'canceled'].includes(status);
+    return ['failed', 'failure', 'error', 'cancelled', 'canceled'].includes(status);
   }
 
   private extractVideoUrl(data: any): string | null {

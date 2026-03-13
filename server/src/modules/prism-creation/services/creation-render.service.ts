@@ -154,6 +154,14 @@ export class CreationRenderService {
       },
     });
 
+    await this.appendRenderTask(params.flowProjectId, {
+      taskId: task.id,
+      type: 'node_render',
+      nodeId: params.nodeId,
+      status: 'PROCESSING',
+      createdAt: new Date().toISOString(),
+    });
+
     const job = await this.renderQueue.add({ ...params, taskRecordId: task.id });
     return { taskId: task.id, queueJobId: String(job.id) };
   }
@@ -170,6 +178,13 @@ export class CreationRenderService {
       },
     });
 
+    await this.appendRenderTask(params.flowProjectId, {
+      taskId: task.id,
+      type: 'project_stitch',
+      status: 'PROCESSING',
+      createdAt: new Date().toISOString(),
+    });
+
     const job = await this.exportQueue.add({
       assetType: 'creation',
       assetId: params.flowProjectId,
@@ -180,6 +195,27 @@ export class CreationRenderService {
     });
 
     return { taskId: task.id, queueJobId: String(job.id) };
+  }
+
+  private async appendRenderTask(flowProjectId: string, task: Record<string, unknown>) {
+    const flowProject = await this.prisma.prismFlowProject.findUnique({
+      where: { id: flowProjectId },
+      select: { stylePreset: true },
+    });
+    if (!flowProject) return;
+
+    const meta =
+      flowProject.stylePreset && typeof flowProject.stylePreset === 'object' && !Array.isArray(flowProject.stylePreset)
+        ? ({ ...(flowProject.stylePreset as Record<string, unknown>) } as Record<string, unknown>)
+        : ({ version: 'v2' } as Record<string, unknown>);
+    const renderTasks = Array.isArray(meta.renderTasks) ? [...(meta.renderTasks as Record<string, unknown>[])] : [];
+    renderTasks.unshift(task);
+    meta.renderTasks = renderTasks.slice(0, 50);
+
+    await this.prisma.prismFlowProject.update({
+      where: { id: flowProjectId },
+      data: { stylePreset: meta as any },
+    });
   }
 
   private emitTaskProgress(userId: string, projectId: string, nodeId: string, task: string, progress: number, message: string) {

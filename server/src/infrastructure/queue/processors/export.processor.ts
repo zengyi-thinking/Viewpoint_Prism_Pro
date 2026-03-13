@@ -67,6 +67,12 @@ export class ExportProcessor {
         completedAt: new Date(),
         result: exportResult,
       });
+      if (assetType === 'creation') {
+        await this.updateCreationExportMeta(assetId, taskRecordId, {
+          status: 'COMPLETED',
+          downloadUrl: exportResult?.downloadUrl,
+        });
+      }
       this.emitProgress(userId, projectId, assetId, 'export', 100, 'Export completed');
       this.wsGateway.emitToUser(userId, 'task:complete', {
         projectId,
@@ -91,6 +97,11 @@ export class ExportProcessor {
         error: error.message,
         completedAt: new Date(),
       });
+      if (assetType === 'creation') {
+        await this.updateCreationExportMeta(assetId, taskRecordId, {
+          status: 'FAILED',
+        });
+      }
       this.emitError(userId, projectId, assetId, 'export', error.message);
       throw error;
     }
@@ -203,9 +214,12 @@ export class ExportProcessor {
     await job.progress(60);
     this.emitProgress(userId, projectId, assetId, 'export', 60, 'Rendering final video...');
 
-    // Stitch videos together
     const outputPath = path.join(tempDir, 'final.mp4');
-    await this.ffmpegService.stitchVideos(videoPaths, outputPath);
+    if (videoPaths.length === 1) {
+      await fs.copyFile(videoPaths[0], outputPath);
+    } else {
+      await this.ffmpegService.stitchVideos(videoPaths, outputPath);
+    }
 
     await job.progress(80);
     this.emitProgress(userId, projectId, assetId, 'export', 80, 'Uploading video...');
@@ -410,6 +424,41 @@ ${draft.ctaLine || ''}
     await this.prisma.taskRecord.update({
       where: { id: taskRecordId },
       data: data as any,
+    });
+  }
+
+  private async updateCreationExportMeta(
+    flowProjectId: string,
+    taskRecordId: string | undefined,
+    patch: { status: string; downloadUrl?: string },
+  ) {
+    if (!taskRecordId) return;
+    const flowProject = await this.prisma.prismFlowProject.findUnique({
+      where: { id: flowProjectId },
+      select: { stylePreset: true },
+    });
+    if (!flowProject) return;
+
+    const meta =
+      flowProject.stylePreset && typeof flowProject.stylePreset === 'object' && !Array.isArray(flowProject.stylePreset)
+        ? ({ ...(flowProject.stylePreset as Record<string, unknown>) } as Record<string, unknown>)
+        : ({ version: 'v2' } as Record<string, unknown>);
+    const renderTasks = Array.isArray(meta.renderTasks)
+      ? (meta.renderTasks as Record<string, unknown>[]).map((item) =>
+          item.taskId === taskRecordId ? { ...item, ...patch } : item,
+        )
+      : [];
+    meta.renderTasks = renderTasks;
+    meta.finalVideo = {
+      taskId: taskRecordId,
+      status: patch.status,
+      ...(patch.downloadUrl ? { downloadUrl: patch.downloadUrl } : {}),
+      updatedAt: new Date().toISOString(),
+    };
+
+    await this.prisma.prismFlowProject.update({
+      where: { id: flowProjectId },
+      data: { stylePreset: meta as any },
     });
   }
 }

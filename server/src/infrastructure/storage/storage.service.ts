@@ -218,6 +218,10 @@ export class StorageService implements OnModuleInit {
   async getSignedUrl(key: string, expiresIn = 24 * 60 * 60): Promise<string> {
     this.assertMinioReady();
     try {
+      if (this.shouldUseProxiedPublicUrl()) {
+        return await this.getPublicUrl(key);
+      }
+
       return await this.client.presignedGetObject(this.bucketName, key, expiresIn);
     } catch (error) {
       this.logger.error(`Failed to generate presigned URL for ${key}: ${error.message}`, error.stack);
@@ -275,7 +279,12 @@ export class StorageService implements OnModuleInit {
 
   private shouldUseProxiedPublicUrl(): boolean {
     if (!this.publicBaseUrl) return false;
-    return ['localhost', '127.0.0.1', '0.0.0.0'].includes(this.endPoint);
+    if (['localhost', '127.0.0.1', '0.0.0.0'].includes(this.endPoint)) {
+      return true;
+    }
+
+    // Docker / private network aliases such as "minio" are not browser-reachable.
+    return !this.endPoint.includes('.');
   }
 
   /**
@@ -394,5 +403,9 @@ export class StorageService implements OnModuleInit {
     }
 
     return normalized;
+  }
+
+  getBucketName(): string {
+    return this.bucketName;
   }
 }

@@ -147,6 +147,10 @@ export class RenderProcessor {
         completedAt: new Date(),
         result: { nodeId, videoUrl },
       });
+      await this.updateFlowProjectRenderTask(flowProjectId, taskRecordId, {
+        status: 'COMPLETED',
+        videoUrl,
+      });
       this.emitProgress(userId, projectId, nodeId, 'render', 100, 'Render completed');
       this.wsGateway.emitToUser(userId, 'task:complete', {
         projectId,
@@ -174,6 +178,10 @@ export class RenderProcessor {
       await this.prisma.flowNode.update({
         where: { id: nodeId },
         data: { renderStatus: 'FAILED' },
+      });
+      await this.updateFlowProjectRenderTask(flowProjectId, taskRecordId, {
+        status: 'FAILED',
+        error: error.message,
       });
 
       this.emitError(userId, projectId, nodeId, 'render', error.message);
@@ -232,5 +240,34 @@ export class RenderProcessor {
       value.face ? `face=${String(value.face).trim()}` : '',
       value.prop ? `prop=${String(value.prop).trim()}` : '',
     ].filter(Boolean).join('; ');
+  }
+
+  private async updateFlowProjectRenderTask(
+    flowProjectId: string,
+    taskRecordId: string | undefined,
+    patch: Record<string, unknown>,
+  ) {
+    if (!taskRecordId) return;
+    const flowProject = await this.prisma.prismFlowProject.findUnique({
+      where: { id: flowProjectId },
+      select: { stylePreset: true },
+    });
+    if (!flowProject) return;
+
+    const meta =
+      flowProject.stylePreset && typeof flowProject.stylePreset === 'object' && !Array.isArray(flowProject.stylePreset)
+        ? ({ ...(flowProject.stylePreset as Record<string, unknown>) } as Record<string, unknown>)
+        : ({ version: 'v2' } as Record<string, unknown>);
+    const renderTasks = Array.isArray(meta.renderTasks)
+      ? (meta.renderTasks as Record<string, unknown>[]).map((item) =>
+          item.taskId === taskRecordId ? { ...item, ...patch } : item,
+        )
+      : [];
+    meta.renderTasks = renderTasks;
+
+    await this.prisma.prismFlowProject.update({
+      where: { id: flowProjectId },
+      data: { stylePreset: meta as any },
+    });
   }
 }

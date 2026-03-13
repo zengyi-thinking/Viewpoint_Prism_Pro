@@ -57,6 +57,21 @@ interface CreationProjectMeta {
   sceneAssets?: SceneAsset[];
   storyboardSegments?: StoryboardSegment[];
   voiceCasting?: VoiceCasting[];
+  renderTasks?: Array<{
+    taskId: string;
+    type: 'node_render' | 'project_stitch';
+    nodeId?: string;
+    status: string;
+    createdAt: string;
+    videoUrl?: string;
+    error?: string;
+  }>;
+  finalVideo?: {
+    taskId: string;
+    status: string;
+    downloadUrl?: string;
+    updatedAt: string;
+  } | null;
   nextCandidatesByNode?: Record<string, StoryboardCandidate[]>;
   nodesMeta?: Record<string, CreationNodeMeta>;
 }
@@ -155,6 +170,8 @@ export class CreationService {
       sceneAssets: [],
       storyboardSegments: [],
       voiceCasting: [],
+      renderTasks: [],
+      finalVideo: null,
       nodesMeta: {},
     };
 
@@ -206,6 +223,8 @@ export class CreationService {
           sceneAssets: meta.sceneAssets || [],
           storyboardSegments: meta.storyboardSegments || [],
           voiceCasting: meta.voiceCasting || [],
+          renderTasks: meta.renderTasks || [],
+          finalVideo: meta.finalVideo || null,
         },
       },
       nodes: nodes.map((node) => ({
@@ -1013,6 +1032,36 @@ export class CreationService {
     return task;
   }
 
+  async retryTask(userId: string, taskId: string) {
+    const task = await this.prisma.taskRecord.findFirst({ where: { id: taskId, userId } });
+    if (!task) throw new NotFoundException('任务不存在');
+
+    if (task.type === 'creation_render') {
+      const payload = (task.payload && typeof task.payload === 'object' && !Array.isArray(task.payload))
+        ? (task.payload as Record<string, unknown>)
+        : {};
+      const nodeId = String(payload.nodeId || '').trim();
+      const flowProjectId = String(payload.flowProjectId || '').trim();
+      if (!nodeId || !flowProjectId) {
+        throw new NotFoundException('原渲染任务缺少节点信息');
+      }
+      return this.renderNodeVideo(userId, nodeId);
+    }
+
+    if (task.type === 'creation_stitch') {
+      const payload = (task.payload && typeof task.payload === 'object' && !Array.isArray(task.payload))
+        ? (task.payload as Record<string, unknown>)
+        : {};
+      const flowProjectId = String(payload.flowProjectId || '').trim();
+      if (!flowProjectId) {
+        throw new NotFoundException('原导出任务缺少工程信息');
+      }
+      return this.stitchProject(userId, flowProjectId);
+    }
+
+    throw new NotFoundException('当前任务类型不支持重试');
+  }
+
   async reextractCharacterAnchor(userId: string, nodeId: string) {
     const node = await this.assertNodeAccess(userId, nodeId);
     const flowProject = await this.assertProjectAccess(userId, node.flowProjectId);
@@ -1067,6 +1116,8 @@ export class CreationService {
       sceneAssets: Array.isArray(meta.sceneAssets) ? meta.sceneAssets : [],
       storyboardSegments: Array.isArray(meta.storyboardSegments) ? meta.storyboardSegments : [],
       voiceCasting: Array.isArray(meta.voiceCasting) ? meta.voiceCasting : [],
+      renderTasks: Array.isArray(meta.renderTasks) ? meta.renderTasks : [],
+      finalVideo: meta.finalVideo || null,
       nextCandidatesByNode: meta.nextCandidatesByNode || {},
       nodesMeta: Object.fromEntries(
         Object.entries(meta.nodesMeta || {}).map(([nodeId, nodeMeta]) => [nodeId, this.normalizeNodeMeta(nodeMeta)]),

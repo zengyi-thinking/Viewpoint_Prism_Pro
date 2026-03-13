@@ -248,8 +248,8 @@
 - ~~增加 `sceneAssets`~~
 - ~~增加 `storyboardSegments`~~
 - ~~增加 `voiceCasting`~~
-- [ ] 增加 `renderTasks`
-- [ ] 增加 `finalVideo`
+- ~~增加 `renderTasks`~~
+- ~~增加 `finalVideo`~~
 
 ---
 
@@ -299,22 +299,22 @@
 
 ## Phase 3：视频片段渲染
 
-- [ ] 片段视频任务入队
-- [ ] 片段视频渲染
+- ~~片段视频任务入队~~
+- ~~片段视频渲染~~
 - [ ] 失败重试
-- [ ] 渲染结果写回工程
-- [ ] 测试：
-  - 单章节至少能生成一个视频片段
-  - 多片段能独立完成
+- ~~渲染结果写回工程~~
+- ~~测试：~~
+  - ~~单章节至少能生成一个视频片段~~
+  - [ ] 多片段能独立完成
 
 ## Phase 4：成片拼接
 
 - [ ] 章节排序拼接
 - [ ] TTS/旁白混入
 - [ ] BGM 混入
-- [ ] 成片导出
+- ~~成片导出~~
 - [ ] 测试：
-  - 最终视频可下载
+  - ~~最终视频可下载~~
   - 工程可重新打开继续编辑
 
 ## Phase 5：高级编辑回挂
@@ -374,3 +374,4 @@
 3. `doubao-1-5-vision-pro-32k` 当前默认分组下返回“无可用渠道”，暂时不要拿它做主多模态模型
 4. 2026-03-13 已完成一次真实联调：`docker compose up -d --build server client` 后，前端 `http://localhost:7860` 与后端 `http://localhost:7861/api/health` 返回 200，`npm run test:creation:conversation:e2e --workspace=server` 已验证 5 轮对话、剧本归纳、章节生成、局部改章与章节节点创建闭环。
 5. 2026-03-13 已完成 Phase 2 真实联调：`npm run test:creation:production:e2e --workspace=server` 已验证场景规划、角色/场景资产、分镜片段、音色映射、压缩提示词，以及角色图/场景图/分镜图的样例生成都能在新的中转商链路下通过。
+6. 2026-03-13 已完成 Phase 3 单片段真实联调：`npm run test:creation:phase3:e2e --workspace=server` 已验证单章节样片可在新中转商链路下完成“生图 -> 视频渲染 -> 导出成片 -> 本地保存 mp4”。结果文件为 [__creation_phase3_render_e2e_result.json](D:/DevProject/Viewpoint_Prism_Pro/__creation_phase3_render_e2e_result.json)，本地样片为 [creation-phase3-final-1773413754318.mp4](D:/DevProject/Viewpoint_Prism_Pro/artifacts/creation-phase3-final-1773413754318.mp4) 与 [creation-phase3-clip-1-1773413754318.mp4](D:/DevProject/Viewpoint_Prism_Pro/artifacts/creation-phase3-clip-1-1773413754318.mp4)。

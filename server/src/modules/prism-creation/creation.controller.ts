@@ -202,4 +202,9 @@ export class CreationController {
   getTask(@CurrentUser() userId: string, @Param('taskId') taskId: string) {
     return this.creationService.getTask(userId, taskId);
   }
+
+  @Post('tasks/:taskId/retry')
+  retryTask(@CurrentUser() userId: string, @Param('taskId') taskId: string) {
+    return this.creationService.retryTask(userId, taskId);
+  }
 }

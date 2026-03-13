@@ -1,5 +1,4 @@
 import { Module } from '@nestjs/common';
-import { BullModule } from '@nestjs/bull';
 import { CreationController } from './creation.controller';
 import { CreationService } from './creation.service';
 import { CreationLlmService } from './services/creation-llm.service';
@@ -16,11 +15,11 @@ import { StoryboardSegmentAgent } from './services/storyboard-segment.agent';
 import { DialogueVoiceMapperAgent } from './services/dialogue-voice-mapper.agent';
 import { PromptCompressionAgent } from './services/prompt-compression.agent';
 import { VideoPromptCompilerAgent } from './services/video-prompt-compiler.agent';
-import { QUEUE_NAMES } from '../../infrastructure/queue/queue.constants';
+import { QueueModule } from '../../infrastructure/queue/queue.module';
 import { WsModule } from '../../infrastructure/websocket/ws.module';
 
 @Module({
-  imports: [WsModule, BullModule.registerQueue({ name: QUEUE_NAMES.RENDER }, { name: QUEUE_NAMES.EXPORT })],
+  imports: [WsModule, QueueModule],
   controllers: [CreationController],
   providers: [
     CreationService,
