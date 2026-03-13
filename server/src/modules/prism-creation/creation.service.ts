@@ -6,6 +6,12 @@ import { StoryboardAgent, StoryboardCandidate } from './services/storyboard.agen
 import { CharacterAnchor, PromptDirectorAgent } from './services/prompt-director.agent';
 import { CreationRenderService } from './services/creation-render.service';
 import {
+  CreationConversationMessage,
+  CreationConversationState,
+  StoryConversationAgent,
+} from './services/story-conversation.agent';
+import {
+  AppendConversationMessageDto,
   BootstrapCreationProjectDto,
   CreateChapterNodesDto,
   GenerateIdeaPreviewsDto,
@@ -14,6 +20,7 @@ import {
   GenerateScriptPlanDto,
   SelectIdeaPreviewDto,
   SelectNextNodeCandidateDto,
+  UpdateScriptPlanChapterDto,
   UpdateCreationNodeDto,
 } from './dto';
 
@@ -31,6 +38,7 @@ interface CreationProjectMeta {
   version: 'v2';
   mode?: 'idea' | 'script';
   backgroundVideoId?: string | null;
+  conversationState?: CreationConversationState;
   ideaInput?: Record<string, unknown>;
   previews?: IdeaPreviewOption[];
   selectedPreviewId?: string;
@@ -47,6 +55,7 @@ export class CreationService {
     private readonly scriptPlanner: ScriptPlannerAgent,
     private readonly storyboardAgent: StoryboardAgent,
     private readonly promptDirector: PromptDirectorAgent,
+    private readonly storyConversation: StoryConversationAgent,
     private readonly renderService: CreationRenderService,
   ) {}
 
@@ -76,8 +85,9 @@ export class CreationService {
             version: 'v2',
             mode: 'idea',
             backgroundVideoId,
+            conversationState: this.createEmptyConversationState(),
             nodesMeta: {},
-          },
+          } as any,
           status: 'PENDING',
         },
       });
@@ -117,6 +127,7 @@ export class CreationService {
       selectedPreviewId: undefined,
       scriptPlan: undefined,
       nextCandidatesByNode: {},
+      conversationState: this.createEmptyConversationState(),
       nodesMeta: {},
     };
 
@@ -158,6 +169,7 @@ export class CreationService {
         scriptText: flowProject.scriptText,
         meta: {
           backgroundVideoId: meta.backgroundVideoId || null,
+          conversationState: meta.conversationState,
           previews: meta.previews || [],
           selectedPreviewId: meta.selectedPreviewId || null,
           scriptPlan: meta.scriptPlan || null,
@@ -223,6 +235,60 @@ export class CreationService {
       flowProjectId,
       previews: result.previews,
     };
+  }
+
+  async appendConversationMessageByProject(
+    userId: string,
+    projectId: string,
+    dto: AppendConversationMessageDto,
+  ) {
+    const bootstrapped = await this.bootstrapByProject(userId, projectId, {
+      backgroundVideoId: dto.backgroundVideoId,
+    });
+    const flowProject = await this.assertProjectAccess(userId, bootstrapped.project.id);
+    const meta = this.getProjectMeta(flowProject.stylePreset);
+    const conversationState = meta.conversationState || this.createEmptyConversationState();
+    const now = new Date().toISOString();
+    const userMessage: CreationConversationMessage = {
+      id: `user-${Date.now()}`,
+      role: 'user',
+      content: dto.content.trim(),
+      createdAt: now,
+    };
+
+    const userMessages = [...conversationState.messages, userMessage].slice(-20);
+    const summarized = await this.storyConversation.summarize(
+      userId,
+      userMessages.map(({ role, content }) => ({ role, content })),
+    );
+
+    const assistantMessage: CreationConversationMessage = {
+      id: `assistant-${Date.now()}`,
+      role: 'assistant',
+      content: summarized.assistantReply,
+      createdAt: new Date().toISOString(),
+    };
+
+    meta.mode = 'script';
+    meta.backgroundVideoId = dto.backgroundVideoId || meta.backgroundVideoId || flowProject.videoId || null;
+    meta.conversationState = {
+      messages: [...userMessages, assistantMessage].slice(-24),
+      summary: summarized.summary,
+      scriptDraft: summarized.scriptDraft,
+      chaptersHint: summarized.chaptersHint,
+      lastUpdatedAt: assistantMessage.createdAt,
+    };
+
+    await this.prisma.prismFlowProject.update({
+      where: { id: flowProject.id },
+      data: {
+        videoId: meta.backgroundVideoId || undefined,
+        scriptText: summarized.scriptDraft || flowProject.scriptText,
+        stylePreset: meta as any,
+      },
+    });
+
+    return this.getGraph(userId, flowProject.id);
   }
 
   async generateIdeaPreviews(userId: string, videoId: string, dto: GenerateIdeaPreviewsDto) {
@@ -291,6 +357,12 @@ export class CreationService {
     meta.mode = 'script';
     meta.backgroundVideoId = dto.backgroundVideoId || meta.backgroundVideoId || flowProject.videoId || null;
     meta.scriptPlan = plan;
+    meta.conversationState = {
+      ...(meta.conversationState || this.createEmptyConversationState()),
+      scriptDraft: dto.scriptText,
+      chaptersHint: dto.chaptersHint || meta.conversationState?.chaptersHint || 4,
+      lastUpdatedAt: new Date().toISOString(),
+    };
 
     await this.prisma.prismFlowProject.update({
       where: { id: flowProject.id },
@@ -313,6 +385,55 @@ export class CreationService {
       ...dto,
       backgroundVideoId: video.id,
     });
+  }
+
+  async updateScriptPlanChapter(
+    userId: string,
+    flowProjectId: string,
+    chapterIndex: number,
+    dto: UpdateScriptPlanChapterDto,
+  ) {
+    const flowProject = await this.assertProjectAccess(userId, flowProjectId);
+    const meta = this.getProjectMeta(flowProject.stylePreset);
+    const plan = meta.scriptPlan;
+    if (!plan?.chapters?.length) {
+      throw new NotFoundException('当前工程还没有章节结构');
+    }
+
+    const chapter = plan.chapters.find((item) => item.index === chapterIndex);
+    if (!chapter) {
+      throw new NotFoundException('未找到对应章节');
+    }
+
+    const updatedPlan: ScriptPlanResult = {
+      ...plan,
+      chapters: plan.chapters.map((item) =>
+        item.index === chapterIndex
+          ? {
+              ...item,
+              ...(dto.title !== undefined ? { title: dto.title.trim() } : {}),
+              ...(dto.summary !== undefined ? { summary: dto.summary.trim() } : {}),
+              ...(dto.goal !== undefined ? { goal: dto.goal.trim() } : {}),
+              ...(dto.storyboardCount !== undefined ? { storyboardCount: dto.storyboardCount } : {}),
+            }
+          : item,
+      ),
+    };
+
+    meta.scriptPlan = updatedPlan;
+    meta.conversationState = {
+      ...(meta.conversationState || this.createEmptyConversationState()),
+      lastUpdatedAt: new Date().toISOString(),
+    };
+
+    await this.prisma.prismFlowProject.update({
+      where: { id: flowProject.id },
+      data: {
+        stylePreset: meta as any,
+      },
+    });
+
+    return this.getGraph(userId, flowProject.id);
   }
 
   async createChapterNodes(userId: string, flowProjectId: string, dto: CreateChapterNodesDto) {
@@ -721,6 +842,7 @@ export class CreationService {
       ideaInput: meta.ideaInput || {},
       previews: Array.isArray(meta.previews) ? meta.previews : [],
       selectedPreviewId: meta.selectedPreviewId,
+      conversationState: meta.conversationState || this.createEmptyConversationState(),
       scriptPlan: meta.scriptPlan,
       nextCandidatesByNode: meta.nextCandidatesByNode || {},
       nodesMeta: Object.fromEntries(
@@ -731,6 +853,20 @@ export class CreationService {
 
   private getNodeMeta(meta: CreationProjectMeta, nodeId: string): Required<CreationNodeMeta> {
     return this.normalizeNodeMeta(meta.nodesMeta?.[nodeId]);
+  }
+
+  private createEmptyConversationState(): CreationConversationState {
+    return {
+      messages: [],
+      summary: {
+        storyIntent: '',
+        visualStyle: '',
+        splitPreference: '',
+      },
+      scriptDraft: '',
+      chaptersHint: 4,
+      lastUpdatedAt: null,
+    };
   }
 
   private normalizeNodeMeta(input: unknown): Required<CreationNodeMeta> {

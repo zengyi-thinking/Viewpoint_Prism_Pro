@@ -22,6 +22,7 @@ export class WhisperProvider extends BaseProvider {
     const openai = new OpenAI({
       apiKey,
       baseURL:
+        this.configService.get<string>('CREATION_AI_BASE_URL') ||
         this.configService.get<string>('OPENAI_BASE_URL') ||
         this.configService.get<string>('SILICONFLOW_BASE_URL') ||
         undefined,
@@ -33,6 +34,7 @@ export class WhisperProvider extends BaseProvider {
         language = 'auto',
         format = 'mp3',
         model =
+          this.configService.get<string>('CREATION_AI_ASR_MODEL') ||
           this.configService.get<string>('OPENAI_MODEL_WHISPER') ||
           this.configService.get<string>('SILICONFLOW_MODEL_ASR') ||
           'whisper-1',
@@ -76,6 +78,7 @@ export class WhisperProvider extends BaseProvider {
       const openai = new OpenAI({
         apiKey,
         baseURL:
+          this.configService.get<string>('CREATION_AI_BASE_URL') ||
           this.configService.get<string>('OPENAI_BASE_URL') ||
           this.configService.get<string>('SILICONFLOW_BASE_URL') ||
           undefined,

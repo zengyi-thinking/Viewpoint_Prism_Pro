@@ -8,14 +8,14 @@ import { useWorkbenchStore } from '@/stores/workbench.store';
 import { useWebSocket } from '@/hooks/use-websocket';
 import {
   CharacterAnchor,
+  CreationConversationMessage,
   CreationGraphNode,
   CreationGraphResponse,
   CreationNextCandidate,
-  IdeaPreviewOption,
-  ScriptPlanChapter,
   creationApi,
 } from '@/services/creation.api';
 import { FlowNodeCard, FlowNodeData } from './FlowNodeCard';
+import { CreationChatPanel } from './CreationChatPanel';
 
 const nodeTypes: any = { storyboard: FlowNodeCard };
 
@@ -145,6 +145,7 @@ export function CreationCanvas({ projectId }: { projectId?: string }) {
   const [imageLoadingNodeId, setImageLoadingNodeId] = useState<string | null>(null);
   const [videoLoadingNodeId, setVideoLoadingNodeId] = useState<string | null>(null);
   const [nextLoadingNodeId, setNextLoadingNodeId] = useState<string | null>(null);
+  const [conversationInput, setConversationInput] = useState('');
 
   const loadGraph = useCallback(
     async (flowProjectId: string) => {
@@ -252,6 +253,30 @@ export function CreationCanvas({ projectId }: { projectId?: string }) {
     [graph?.nodes, graph?.project.id, imageLoadingNodeId, videoLoadingNodeId, nextLoadingNodeId, loadGraph],
   );
   const flowEdges = useMemo(() => toFlowEdges(graph?.nodes || []), [graph?.nodes]);
+  const conversationState = graph?.project.meta.conversationState;
+  const conversationSummary = useMemo(() => {
+    const combined = (conversationState?.messages || [])
+      .map((message) => message.content.trim())
+      .filter(Boolean)
+      .join('\n');
+
+    return {
+      storyIntent:
+        conversationState?.summary.storyIntent ||
+        ideaForm.idea ||
+        combined ||
+        '等待用户描述故事核心、角色关系和戏剧冲突。',
+      visualStyle:
+        conversationState?.summary.visualStyle ||
+        ideaForm.visualGoal ||
+        '如果对话里没有明确提到风格，默认按“电影化、可连续分镜、适合视频生成”理解。',
+      splitPreference:
+        conversationState?.summary.splitPreference ||
+        scriptText ||
+        ideaForm.constraints ||
+        '等待用户说明章节数量、镜头颗粒度、单章时长、文戏/武戏比例等拆分偏好。',
+    };
+  }, [conversationState, ideaForm.idea, ideaForm.visualGoal, ideaForm.constraints, scriptText]);
 
   const patchSelectedNode = (patch: Partial<CreationGraphNode>) => {
     setGraph((prev) => {
@@ -415,6 +440,28 @@ export function CreationCanvas({ projectId }: { projectId?: string }) {
     }
   };
 
+  const handleUpdateChapter = async (
+    chapterIndex: number,
+    payload: Partial<{
+      title: string;
+      summary: string;
+      goal: string;
+      storyboardCount: number;
+    }>,
+  ) => {
+    if (!graph?.project.id) return;
+    setBusyText(`正在保存第 ${chapterIndex} 章`);
+    setError(null);
+    try {
+      const result = await creationApi.updateScriptPlanChapter(graph.project.id, chapterIndex, payload);
+      setGraph(normalizeGraph(result));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '保存章节失败');
+    } finally {
+      setBusyText('');
+    }
+  };
+
   const handleSaveNode = async () => {
     if (!selectedNode) return;
     setBusyText('正在保存节点');
@@ -538,6 +585,108 @@ export function CreationCanvas({ projectId }: { projectId?: string }) {
     }
   };
 
+  const handleSendConversation = () => {
+    const trimmed = conversationInput.trim();
+    if (!trimmed) return;
+    setBusyText('正在归纳导演对话');
+    setError(null);
+    void creationApi
+      .appendConversationMessage(projectId!, {
+        content: trimmed,
+        backgroundVideoId: currentVideo?.id,
+      })
+      .then((result) => {
+        setGraph(normalizeGraph(result));
+        setConversationInput('');
+      })
+      .catch((err) => {
+        setError(err instanceof Error ? err.message : '归纳对话失败');
+      })
+      .finally(() => {
+        setBusyText('');
+      });
+  };
+
+  const handleGenerateFromConversation = async () => {
+    const combined = (conversationState?.messages || [])
+      .filter((message) => message.role === 'user')
+      .map((message) => message.content.trim())
+      .filter(Boolean)
+      .join('\n');
+    const storyIntent = conversationState?.summary.storyIntent || combined;
+    const visualStyle = conversationState?.summary.visualStyle || ideaForm.visualGoal || combined;
+    const splitPreference =
+      conversationState?.summary.splitPreference ||
+      ideaForm.constraints ||
+      '按对话内容自动归纳章节、风格和分镜颗粒度。';
+
+    if (!projectId || !storyIntent) return;
+
+    setIdeaForm((prev) => ({
+      ...prev,
+      idea: storyIntent,
+      visualGoal: visualStyle,
+      constraints: splitPreference,
+    }));
+
+    setBusyText('正在根据对话生成故事方向');
+    setError(null);
+    try {
+      const result = await creationApi.generateIdeaPreviews(projectId, {
+        ...ideaForm,
+        idea: storyIntent,
+        visualGoal: visualStyle,
+        constraints: splitPreference,
+        count: 3,
+        backgroundVideoId: currentVideo?.id,
+      });
+      await loadGraph(result.flowProjectId);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '生成故事方向失败');
+    } finally {
+      setBusyText('');
+    }
+  };
+
+  const handleGenerateScriptFromConversation = async () => {
+    const combined =
+      conversationState?.scriptDraft ||
+      (conversationState?.messages || [])
+        .filter((message) => message.role === 'user')
+        .map((message) => message.content.trim())
+        .filter(Boolean)
+        .join('\n\n');
+
+    if (!projectId || !combined) return;
+
+    setScriptText(combined);
+    setIdeaForm((prev) => ({
+      ...prev,
+      constraints: prev.constraints || '按对话内容生成分章节剧本与对应分镜任务。',
+    }));
+
+    setBusyText('正在归纳对话为章节结构');
+    setError(null);
+    try {
+      const result = await creationApi.generateScriptPlan(projectId, {
+        scriptText: combined,
+        chaptersHint: conversationState?.chaptersHint || 4,
+        backgroundVideoId: currentVideo?.id,
+      });
+      await loadGraph(result.flowProjectId);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '解析对话章节失败');
+    } finally {
+      setBusyText('');
+    }
+  };
+
+  const handleEnterProduction = async () => {
+    const firstChapter = graph?.project.meta.scriptPlan?.chapters?.[0];
+    if (!firstChapter) return;
+    await handleCreateChapterNodes(firstChapter.index);
+  };
+
   if (!projectId) {
     return (
       <div className="flex h-full items-center justify-center text-sm text-text-secondary">
@@ -550,186 +699,35 @@ export function CreationCanvas({ projectId }: { projectId?: string }) {
     <div className="isolate flex h-full min-h-0 w-full overflow-hidden rounded-[16px] bg-bg-panel-secondary">
       <aside className="relative z-20 flex w-[430px] shrink-0 flex-col border-r border-border-subtle bg-bg-panel pointer-events-auto" onPointerDownCapture={(e) => e.stopPropagation()} onMouseDownCapture={(e) => e.stopPropagation()}> 
         <div className="border-b border-border-subtle px-5 py-4">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <div className="text-xs uppercase tracking-[0.22em] text-text-tertiary">Creation Prism</div>
-              <h2 className="mt-1 text-[22px] font-semibold text-text-primary">创作棱镜</h2>
-            </div>
-            <div className="inline-flex rounded-[14px] border border-border-subtle bg-bg-panel-secondary p-1">
-              <button
-                className={`rounded-xl px-4 py-2 text-sm ${mode === 'idea' ? 'bg-[#E91E8C] text-white' : 'text-text-secondary'}`}
-                onClick={() => setMode('idea')}
-              >
-                idea 模式
-              </button>
-              <button
-                className={`rounded-xl px-4 py-2 text-sm ${mode === 'script' ? 'bg-[#E91E8C] text-white' : 'text-text-secondary'}`}
-                onClick={() => setMode('script')}
-              >
-                编剧模式
-              </button>
-            </div>
+          <div>
+            <div className="text-xs uppercase tracking-[0.22em] text-text-tertiary">Creation Prism</div>
+            <h2 className="mt-1 text-[22px] font-semibold text-text-primary">创作棱镜</h2>
           </div>
           <p className="mt-3 text-xs leading-6 text-text-tertiary">
-            左侧负责输入、章节规划和节点导演台；右侧是无限可拖拽画布。创作棱镜可独立运行，当前选中视频只会作为可选背景素材参与生成，不再是前置条件。
+            左侧已切成对话式导演台。先通过持续对话归纳故事、风格和拆分偏好，再把结果送入故事方向、章节规划和后续视频生产链路。
           </p>
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
-          {mode === 'idea' ? (
-            <div className="space-y-4">
-              <SectionCard
-                title="Idea 输入"
-                description="输入一个核心想法，Agent 会生成多个故事走向与首节点预览，确认后直接落到画布。"
-              >
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between gap-3 rounded-[14px] border border-border-subtle bg-bg-panel-secondary px-3 py-2">
-                    <div className="text-[11px] leading-5 text-text-tertiary">
-                      如果要开始一个全新的故事，不需要手动刷新页面，直接重置当前创作工程。
-                    </div>
-                    <button
-                      onClick={() => void handleResetIdeaStory()}
-                      className="rounded-lg border border-border-subtle px-3 py-1.5 text-[11px] text-text-secondary"
-                    >
-                      新建故事
-                    </button>
-                  </div>
-                  <textarea
-                    value={ideaForm.idea}
-                    onChange={(e) => setIdeaForm((prev) => ({ ...prev, idea: e.target.value }))}
-                    rows={5}
-                    className="input w-full resize-none"
-                    placeholder="输入你的核心故事想法，例如：一个普通维修员被困在失控的自动化工厂，必须在整座工厂坍塌前重写主控系统。"
-                  />
-                  <input
-                    value={ideaForm.conflict}
-                    onChange={(e) => setIdeaForm((prev) => ({ ...prev, conflict: e.target.value }))}
-                    className="input w-full"
-                    placeholder="核心冲突"
-                  />
-                  <input
-                    value={ideaForm.setting}
-                    onChange={(e) => setIdeaForm((prev) => ({ ...prev, setting: e.target.value }))}
-                    className="input w-full"
-                    placeholder="故事空间 / 世界设定"
-                  />
-                  <input
-                    value={ideaForm.visualGoal}
-                    onChange={(e) => setIdeaForm((prev) => ({ ...prev, visualGoal: e.target.value }))}
-                    className="input w-full"
-                    placeholder="画面目标 / 影像要求"
-                  />
-                  <textarea
-                    value={ideaForm.constraints}
-                    onChange={(e) => setIdeaForm((prev) => ({ ...prev, constraints: e.target.value }))}
-                    rows={3}
-                    className="input w-full resize-none"
-                    placeholder="约束条件，例如：避免玄幻、时长 90 秒内、人物数量控制在 2 人。"
-                  />
-                  <button
-                    onClick={() => void handleGenerateIdeaPreviews()}
-                    className="rounded-xl bg-[#E91E8C] px-4 py-2 text-sm font-medium text-white"
-                  >
-                    生成故事方向
-                  </button>
-                </div>
-              </SectionCard>
-
-              {graph?.project.meta.previews?.length ? (
-                <SectionCard
-                  title="首节点方向预览"
-                  description="先选择故事方向，再进入第一镜。确认后会直接创建节点 1，并把后续推进放到右侧画布。"
-                >
-                  <div className="space-y-3">
-                    {graph.project.meta.previews.map((preview: IdeaPreviewOption, index) => {
-                      const isSelected = graph.project.meta.selectedPreviewId === preview.id;
-                      return (
-                        <div
-                          key={preview.id}
-                          className={`rounded-[18px] border p-4 transition ${
-                            isSelected
-                              ? 'border-[#E91E8C] bg-[rgba(233,30,140,0.08)]'
-                              : 'border-border-subtle bg-bg-panel-secondary'
-                          }`}
-                        >
-                          <div className="flex items-center justify-between gap-3">
-                            <div>
-                              <div className="text-[11px] uppercase tracking-[0.22em] text-text-tertiary">
-                                Take {index + 1}
-                              </div>
-                              <div className="mt-1 text-sm font-semibold text-text-primary">{preview.title}</div>
-                            </div>
-                            <button
-                              onClick={() => void handleSelectPreview(preview.id)}
-                              className="rounded-lg bg-[#E91E8C] px-3 py-1.5 text-xs text-white"
-                            >
-                              确认方向
-                            </button>
-                          </div>
-                          <p className="mt-3 text-sm leading-6 text-text-primary">{preview.openingScene}</p>
-                          <p className="mt-3 text-xs leading-5 text-text-secondary">冲突：{preview.conflict}</p>
-                          <p className="mt-1 text-xs leading-5 text-text-tertiary">推进：{preview.progression}</p>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </SectionCard>
-              ) : null}
-            </div>
-          ) : (
-            <div className="space-y-4">
-              <SectionCard
-                title="编剧模式"
-                description="导入剧本或小说文本后，Agent 会切章、总结每章任务，再把某一章拆成分镜节点。"
-              >
-                <div className="space-y-3">
-                  <textarea
-                    value={scriptText}
-                    onChange={(e) => setScriptText(e.target.value)}
-                    rows={14}
-                    className="input w-full resize-none"
-                    placeholder="粘贴完整剧本、小说节选或章节文本。系统会生成整体章节结构和推进关系。"
-                  />
-                  <button
-                    onClick={() => void handleGenerateScriptPlan()}
-                    className="rounded-xl bg-[#E91E8C] px-4 py-2 text-sm font-medium text-white"
-                  >
-                    解析章节结构
-                  </button>
-                </div>
-              </SectionCard>
-
-              {graph?.project.meta.scriptPlan?.chapters?.length ? (
-                <SectionCard
-                  title="章节结构"
-                  description="先生成章节规划，再选择一章落成节点。每章会按照推荐分镜颗粒度拆分。"
-                >
-                  <div className="space-y-3">
-                    {graph.project.meta.scriptPlan.chapters.map((chapter: ScriptPlanChapter) => (
-                      <div key={chapter.index} className="rounded-[18px] border border-border-subtle bg-bg-panel-secondary p-4">
-                        <div className="flex items-center justify-between gap-3">
-                          <div>
-                            <div className="text-sm font-semibold text-text-primary">{chapter.title}</div>
-                            <div className="mt-1 text-[11px] text-text-tertiary">
-                              建议分镜数：{chapter.storyboardCount}
-                            </div>
-                          </div>
-                          <button
-                            onClick={() => void handleCreateChapterNodes(chapter.index)}
-                            className="rounded-lg bg-[#E91E8C] px-3 py-1.5 text-xs text-white"
-                          >
-                            创建本章节点
-                          </button>
-                        </div>
-                        <p className="mt-2 text-xs leading-5 text-text-secondary">{chapter.summary}</p>
-                        <p className="mt-1 text-[11px] leading-5 text-text-tertiary">目标：{chapter.goal}</p>
-                      </div>
-                    ))}
-                  </div>
-                </SectionCard>
-              ) : null}
-            </div>
-          )}
+          <CreationChatPanel
+            messages={conversationState?.messages || []}
+            input={conversationInput}
+            summary={conversationSummary}
+            scriptDraft={conversationState?.scriptDraft || graph?.project.scriptText || ''}
+            previews={graph?.project.meta.previews || []}
+            selectedPreviewId={graph?.project.meta.selectedPreviewId}
+            chapters={graph?.project.meta.scriptPlan?.chapters || []}
+            busyText={busyText}
+            onInputChange={setConversationInput}
+            onSend={handleSendConversation}
+            onReset={() => void handleResetIdeaStory()}
+            onGenerateStory={() => void handleGenerateFromConversation()}
+            onGenerateChapters={() => void handleGenerateScriptFromConversation()}
+            onSelectPreview={(previewId) => void handleSelectPreview(previewId)}
+            onCreateChapterNodes={(chapterIndex) => void handleCreateChapterNodes(chapterIndex)}
+            onUpdateChapter={(chapterIndex, payload) => void handleUpdateChapter(chapterIndex, payload)}
+            onEnterProduction={() => void handleEnterProduction()}
+          />
 
           <SectionCard
             title="节点导演台"

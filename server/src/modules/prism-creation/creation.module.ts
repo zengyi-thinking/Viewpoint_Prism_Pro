@@ -8,6 +8,7 @@ import { ScriptPlannerAgent } from './services/script-planner.agent';
 import { StoryboardAgent } from './services/storyboard.agent';
 import { PromptDirectorAgent } from './services/prompt-director.agent';
 import { CreationRenderService } from './services/creation-render.service';
+import { StoryConversationAgent } from './services/story-conversation.agent';
 import { QUEUE_NAMES } from '../../infrastructure/queue/queue.constants';
 import { WsModule } from '../../infrastructure/websocket/ws.module';
 
@@ -21,6 +22,7 @@ import { WsModule } from '../../infrastructure/websocket/ws.module';
     ScriptPlannerAgent,
     StoryboardAgent,
     PromptDirectorAgent,
+    StoryConversationAgent,
     CreationRenderService,
   ],
   exports: [CreationService],

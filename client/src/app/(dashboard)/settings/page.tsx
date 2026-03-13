@@ -70,6 +70,16 @@ export default function SettingsPage() {
     const tts = serverSettings.preferredTts || 'seedance';
 
     if (
+      asr === 'whisper' &&
+      llm === 'openai' &&
+      image === 'openai' &&
+      tts === 'openai' &&
+        video === 'openai'
+    ) {
+      return 't8star_default';
+    }
+
+    if (
       asr === 'gemini' &&
       llm === 'gemini' &&
       image === 'gemini' &&
@@ -145,14 +155,30 @@ export default function SettingsPage() {
     }
   };
 
-  const applyProviderPack = async (pack: 'siliconflow' | 'google_premium_hybrid') => {
+  const applyProviderPack = async (
+    pack: 'siliconflow' | 'google_premium_hybrid' | 't8star_default',
+  ) => {
+    if (pack === 't8star_default') {
+      await updateServerSettings(
+        {
+          preferredAsr: 'whisper',
+          preferredLlm: 'openai',
+          preferredImageGen: 'openai',
+          preferredVideoGen: 'openai',
+          preferredTts: 'openai',
+        },
+        '已切换为新中转站默认套餐',
+      );
+      return;
+    }
+
     if (pack === 'siliconflow') {
       await updateServerSettings(
         {
           preferredAsr: 'seedance',
           preferredLlm: 'seedance',
           preferredImageGen: 'seedance',
-          preferredVideoGen: 'seedance',
+            preferredVideoGen: 'openai',
           preferredTts: 'seedance',
         },
         '已切换为硅基流动默认套餐',
@@ -198,20 +224,20 @@ export default function SettingsPage() {
   const handleResetAll = async () => {
     resetToDefaults();
     await updateServerSettings(
-      {
-        openaiKey: '',
-        geminiKey: '',
-        seedanceKey: '',
-        midjourneyKey: '',
-        elevenlabsKey: '',
-        preferredAsr: 'seedance',
-        preferredLlm: 'seedance',
-        preferredImageGen: 'seedance',
-        preferredVideoGen: 'seedance',
-        preferredTts: 'seedance',
-      },
-      '已重置本地与服务端设置为默认',
-    );
+        {
+          openaiKey: '',
+          geminiKey: '',
+          seedanceKey: '',
+          midjourneyKey: '',
+          elevenlabsKey: '',
+          preferredAsr: 'whisper',
+          preferredLlm: 'openai',
+          preferredImageGen: 'openai',
+          preferredVideoGen: 'seedance',
+          preferredTts: 'openai',
+        },
+        '已重置本地与服务端设置为默认',
+      );
   };
 
   return (
@@ -282,6 +308,7 @@ export default function SettingsPage() {
             </p>
             <p className="mt-1 text-[11px] text-text-tertiary">
               当前模式：
+              {activeProviderPack === 't8star_default' && ' 新中转站默认套餐'}
               {activeProviderPack === 'siliconflow' && ' 硅基流动默认套餐'}
               {activeProviderPack === 'google_premium_hybrid' && ' Google 高级套餐（视频生成保持 Seedance）'}
               {activeProviderPack === 'custom' && ' 自定义'}
@@ -290,6 +317,17 @@ export default function SettingsPage() {
           </div>
 
           <div className="flex flex-wrap gap-2">
+            <button
+              onClick={() => void applyProviderPack('t8star_default')}
+              disabled={isSaving || isLoadingSettings}
+              className={`rounded-lg px-3 py-2 text-xs font-medium transition ${
+                activeProviderPack === 't8star_default'
+                  ? 'bg-accent-primary text-text-inverse'
+                  : 'bg-bg-panel-secondary text-text-secondary hover:text-text-primary'
+              } disabled:opacity-60`}
+            >
+              新中转站默认
+            </button>
             <button
               onClick={() => void applyProviderPack('siliconflow')}
               disabled={isSaving || isLoadingSettings}

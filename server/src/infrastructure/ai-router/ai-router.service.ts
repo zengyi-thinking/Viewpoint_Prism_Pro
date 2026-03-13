@@ -12,29 +12,28 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { ConfigService } from '@nestjs/config';
 
 // Task type to provider class mappings (using constructor types)
-// 所有任务类型优先使用 Seedance (硅基流动) Provider
+// 创作主链路优先走 OpenAI-compatible 中转站，视频暂保留现有 Seedance 渲染链路。
 const PROVIDER_MAPPING: Record<AITaskType, any[]> = {
-  [AITaskType.ASR]: [SeedanceProvider, GeminiProvider, WhisperProvider, VolcengineAsrProvider, AliyunAsrProvider],
-  [AITaskType.LLM_CHAT]: [SeedanceProvider, OpenAIProvider, GeminiProvider],
-  [AITaskType.MULTIMODAL]: [SeedanceProvider, OpenAIProvider, GeminiProvider],
-  [AITaskType.IMAGE_GEN]: [SeedanceProvider, GeminiProvider, MidjourneyProvider, OpenAIProvider],
-  [AITaskType.VIDEO_GEN]: [SeedanceProvider],
-  [AITaskType.TTS]: [SeedanceProvider, GeminiProvider, ElevenLabsProvider, OpenAIProvider],
+  [AITaskType.ASR]: [WhisperProvider, OpenAIProvider, SeedanceProvider, GeminiProvider, VolcengineAsrProvider, AliyunAsrProvider],
+  [AITaskType.LLM_CHAT]: [OpenAIProvider, SeedanceProvider, GeminiProvider],
+  [AITaskType.MULTIMODAL]: [OpenAIProvider, SeedanceProvider, GeminiProvider],
+  [AITaskType.IMAGE_GEN]: [OpenAIProvider, SeedanceProvider, GeminiProvider, MidjourneyProvider],
+  [AITaskType.VIDEO_GEN]: [OpenAIProvider, SeedanceProvider],
+  [AITaskType.TTS]: [OpenAIProvider, SeedanceProvider, GeminiProvider, ElevenLabsProvider],
   [AITaskType.VOICE_CLONE]: [ElevenLabsProvider],
-  [AITaskType.TRANSLATION]: [SeedanceProvider, OpenAIProvider, GeminiProvider],
+  [AITaskType.TRANSLATION]: [OpenAIProvider, SeedanceProvider, GeminiProvider],
 };
 
-// Default provider preferences - 优先使用硅基流动
-// OpenAI/Gemini/Midjourney/ElevenLabs 为后续高端服务预留
+// Default provider preferences - 创作默认走新中转站，视频仍沿用现有能力。
 const DEFAULT_PROVIDER_PREFERENCES: Record<AITaskType, string> = {
-  [AITaskType.ASR]: 'seedance',
-  [AITaskType.LLM_CHAT]: 'seedance',
-  [AITaskType.MULTIMODAL]: 'seedance',
-  [AITaskType.IMAGE_GEN]: 'seedance',
-  [AITaskType.VIDEO_GEN]: 'seedance',
-  [AITaskType.TTS]: 'seedance',
+  [AITaskType.ASR]: 'whisper',
+  [AITaskType.LLM_CHAT]: 'openai',
+  [AITaskType.MULTIMODAL]: 'openai',
+  [AITaskType.IMAGE_GEN]: 'openai',
+  [AITaskType.VIDEO_GEN]: 'openai',
+  [AITaskType.TTS]: 'openai',
   [AITaskType.VOICE_CLONE]: 'elevenlabs',
-  [AITaskType.TRANSLATION]: 'seedance',
+  [AITaskType.TRANSLATION]: 'openai',
 };
 
 @Injectable()
@@ -341,6 +340,8 @@ export class AiRouterService {
       case 'openai':
       case 'whisper':
         return this.parseApiKeyPool(
+          this.configService.get<string>('CREATION_AI_API_KEY'),
+          this.configService.get<string>('CREATION_AI_API_KEYS'),
           this.configService.get<string>('OPENAI_KEY'),
           this.configService.get<string>('OPENAI_API_KEYS'),
           this.configService.get<string>('OPENAI_API_KEY'),

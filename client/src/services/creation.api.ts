@@ -55,6 +55,25 @@ export interface CreationNextCandidate {
   visualDescription: string;
 }
 
+export interface CreationConversationMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  createdAt: string;
+}
+
+export interface CreationConversationState {
+  messages: CreationConversationMessage[];
+  summary: {
+    storyIntent: string;
+    visualStyle: string;
+    splitPreference: string;
+  };
+  scriptDraft: string;
+  chaptersHint: number;
+  lastUpdatedAt: string | null;
+}
+
 export interface CreationGraphResponse {
   project: {
     id: string;
@@ -66,6 +85,7 @@ export interface CreationGraphResponse {
     scriptText?: string | null;
     meta: {
       backgroundVideoId?: string | null;
+      conversationState: CreationConversationState;
       previews: IdeaPreviewOption[];
       selectedPreviewId: string | null;
       scriptPlan: { summary: string; chapters: ScriptPlanChapter[] } | null;
@@ -84,6 +104,13 @@ export const creationApi = {
 
   getGraph(flowProjectId: string) {
     return apiFetch<CreationGraphResponse>(`/api/prism/creation/projects/${flowProjectId}/graph`);
+  },
+
+  appendConversationMessage(projectId: string, payload: { content: string; backgroundVideoId?: string }) {
+    return apiFetch<CreationGraphResponse>(`/api/prism/creation/projects/${projectId}/conversation/messages`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
   },
 
   resetProject(flowProjectId: string) {
@@ -126,6 +153,20 @@ export const creationApi = {
       method: 'POST',
       body: JSON.stringify({ chapterIndex }),
     });
+  },
+
+  updateScriptPlanChapter(
+    flowProjectId: string,
+    chapterIndex: number,
+    payload: Partial<Pick<ScriptPlanChapter, 'title' | 'summary' | 'goal' | 'storyboardCount'>>,
+  ) {
+    return apiFetch<CreationGraphResponse>(
+      `/api/prism/creation/projects/${flowProjectId}/script-plan/chapters/${chapterIndex}`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify(payload),
+      },
+    );
   },
 
   updateNode(nodeId: string, payload: Record<string, unknown>) {

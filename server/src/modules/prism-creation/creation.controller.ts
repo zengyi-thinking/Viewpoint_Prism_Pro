@@ -3,6 +3,7 @@ import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { CreationService } from './creation.service';
 import {
+  AppendConversationMessageDto,
   BootstrapCreationProjectDto,
   CreateChapterNodesDto,
   GenerateIdeaPreviewsDto,
@@ -11,6 +12,7 @@ import {
   GenerateScriptPlanDto,
   SelectIdeaPreviewDto,
   SelectNextNodeCandidateDto,
+  UpdateScriptPlanChapterDto,
   UpdateCreationNodeDto,
 } from './dto';
 
@@ -40,6 +42,15 @@ export class CreationController {
   @Get('projects/:flowProjectId/graph')
   getGraph(@CurrentUser() userId: string, @Param('flowProjectId') flowProjectId: string) {
     return this.creationService.getGraph(userId, flowProjectId);
+  }
+
+  @Post('projects/:projectId/conversation/messages')
+  appendConversationMessageByProject(
+    @CurrentUser() userId: string,
+    @Param('projectId') projectId: string,
+    @Body() dto: AppendConversationMessageDto,
+  ) {
+    return this.creationService.appendConversationMessageByProject(userId, projectId, dto);
   }
 
   @Post('projects/:flowProjectId/reset')
@@ -90,6 +101,16 @@ export class CreationController {
     @Body() dto: GenerateScriptPlanDto,
   ) {
     return this.creationService.generateScriptPlan(userId, videoId, dto);
+  }
+
+  @Patch('projects/:flowProjectId/script-plan/chapters/:chapterIndex')
+  updateScriptPlanChapter(
+    @CurrentUser() userId: string,
+    @Param('flowProjectId') flowProjectId: string,
+    @Param('chapterIndex') chapterIndex: string,
+    @Body() dto: UpdateScriptPlanChapterDto,
+  ) {
+    return this.creationService.updateScriptPlanChapter(userId, flowProjectId, Number(chapterIndex), dto);
   }
 
   @Post('projects/:flowProjectId/chapters/create')

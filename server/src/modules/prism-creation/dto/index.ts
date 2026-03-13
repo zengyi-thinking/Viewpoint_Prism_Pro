@@ -74,6 +74,27 @@ export class CreateChapterNodesDto {
   chapterIndex!: number;
 }
 
+export class UpdateScriptPlanChapterDto {
+  @IsOptional()
+  @IsString()
+  title?: string;
+
+  @IsOptional()
+  @IsString()
+  summary?: string;
+
+  @IsOptional()
+  @IsString()
+  goal?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(2)
+  @Max(6)
+  storyboardCount?: number;
+}
+
 export class UpdateCreationNodeDto {
   @IsOptional()
   @IsString()
@@ -157,4 +178,14 @@ export class GenerateNodeImageDto {
   @IsOptional()
   @IsBoolean()
   overwrite?: boolean;
+}
+
+export class AppendConversationMessageDto {
+  @IsString()
+  @IsNotEmpty()
+  content!: string;
+
+  @IsOptional()
+  @IsString()
+  backgroundVideoId?: string;
 }
