@@ -189,3 +189,9 @@ export class AppendConversationMessageDto {
   @IsString()
   backgroundVideoId?: string;
 }
+
+export class GenerateProductionPackageDto {
+  @IsOptional()
+  @IsString()
+  artStyle?: string;
+}

@@ -681,8 +681,31 @@ export function CreationCanvas({ projectId }: { projectId?: string }) {
     }
   };
 
+  const handleGenerateProductionPackage = async () => {
+    if (!graph?.project.id) return null;
+    setBusyText('正在生成场景、角色、分镜与音色生产包');
+    setError(null);
+    try {
+      const result = await creationApi.generateProductionPackage(graph.project.id, {
+        artStyle: conversationState?.summary.visualStyle || ideaForm.visualGoal || undefined,
+      });
+      const normalized = normalizeGraph(result);
+      setGraph(normalized);
+      return normalized;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '生成生产包失败');
+    } finally {
+      setBusyText('');
+    }
+    return null;
+  };
+
   const handleEnterProduction = async () => {
-    const firstChapter = graph?.project.meta.scriptPlan?.chapters?.[0];
+    const latestGraph =
+      !graph?.project.meta.storyboardSegments?.length && graph?.project.meta.scriptPlan?.chapters?.length
+        ? await handleGenerateProductionPackage()
+        : graph;
+    const firstChapter = latestGraph?.project.meta.scriptPlan?.chapters?.[0];
     if (!firstChapter) return;
     await handleCreateChapterNodes(firstChapter.index);
   };
@@ -717,6 +740,11 @@ export function CreationCanvas({ projectId }: { projectId?: string }) {
             previews={graph?.project.meta.previews || []}
             selectedPreviewId={graph?.project.meta.selectedPreviewId}
             chapters={graph?.project.meta.scriptPlan?.chapters || []}
+            scenes={graph?.project.meta.scenePlan?.scenes || []}
+            characterAssets={graph?.project.meta.characterAssets || []}
+            sceneAssets={graph?.project.meta.sceneAssets || []}
+            storyboardSegments={graph?.project.meta.storyboardSegments || []}
+            voiceCasting={graph?.project.meta.voiceCasting || []}
             busyText={busyText}
             onInputChange={setConversationInput}
             onSend={handleSendConversation}
@@ -726,6 +754,7 @@ export function CreationCanvas({ projectId }: { projectId?: string }) {
             onSelectPreview={(previewId) => void handleSelectPreview(previewId)}
             onCreateChapterNodes={(chapterIndex) => void handleCreateChapterNodes(chapterIndex)}
             onUpdateChapter={(chapterIndex, payload) => void handleUpdateChapter(chapterIndex, payload)}
+            onGenerateProductionPackage={() => void handleGenerateProductionPackage()}
             onEnterProduction={() => void handleEnterProduction()}
           />
 

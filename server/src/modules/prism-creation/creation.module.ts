@@ -9,6 +9,13 @@ import { StoryboardAgent } from './services/storyboard.agent';
 import { PromptDirectorAgent } from './services/prompt-director.agent';
 import { CreationRenderService } from './services/creation-render.service';
 import { StoryConversationAgent } from './services/story-conversation.agent';
+import { ScenePlannerAgent } from './services/scene-planner.agent';
+import { CharacterAssetService } from './services/character-asset.service';
+import { SceneAssetService } from './services/scene-asset.service';
+import { StoryboardSegmentAgent } from './services/storyboard-segment.agent';
+import { DialogueVoiceMapperAgent } from './services/dialogue-voice-mapper.agent';
+import { PromptCompressionAgent } from './services/prompt-compression.agent';
+import { VideoPromptCompilerAgent } from './services/video-prompt-compiler.agent';
 import { QUEUE_NAMES } from '../../infrastructure/queue/queue.constants';
 import { WsModule } from '../../infrastructure/websocket/ws.module';
 
@@ -23,6 +30,13 @@ import { WsModule } from '../../infrastructure/websocket/ws.module';
     StoryboardAgent,
     PromptDirectorAgent,
     StoryConversationAgent,
+    ScenePlannerAgent,
+    CharacterAssetService,
+    SceneAssetService,
+    StoryboardSegmentAgent,
+    DialogueVoiceMapperAgent,
+    PromptCompressionAgent,
+    VideoPromptCompilerAgent,
     CreationRenderService,
   ],
   exports: [CreationService],

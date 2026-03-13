@@ -227,13 +227,13 @@
 - [ ] 新增 `creation-chat-director.service.ts`
 - ~~新增 `story-conversation-agent.ts`~~
 - [ ] 新增 `script-synthesizer.agent.ts`
-- [ ] 新增 `scene-planner.agent.ts`
-- [ ] 新增 `character-asset.service.ts`
-- [ ] 新增 `scene-asset.service.ts`
-- [ ] 新增 `storyboard-segment.agent.ts`
-- [ ] 新增 `dialogue-voice-mapper.agent.ts`
-- [ ] 新增 `video-prompt-compiler.agent.ts`
-- [ ] 新增 `prompt-compression.agent.ts`
+- ~~新增 `scene-planner.agent.ts`~~
+- ~~新增 `character-asset.service.ts`~~
+- ~~新增 `scene-asset.service.ts`~~
+- ~~新增 `storyboard-segment.agent.ts`~~
+- ~~新增 `dialogue-voice-mapper.agent.ts`~~
+- ~~新增 `video-prompt-compiler.agent.ts`~~
+- ~~新增 `prompt-compression.agent.ts`~~
 - [ ] 新增 `storyboard-frame.service.ts`
 - [ ] 新增 `segment-video-render.service.ts`
 - [ ] 新增 `final-video-compose.service.ts`
@@ -242,12 +242,12 @@
 
 - [ ] 将 `PrismFlowProject.stylePreset` 语义升级为 `projectMeta`
 - ~~增加 `conversationState`~~
-- [ ] 增加 `scriptPackage`
-- [ ] 增加 `scenePlan`
-- [ ] 增加 `characterAssets`
-- [ ] 增加 `sceneAssets`
-- [ ] 增加 `storyboardSegments`
-- [ ] 增加 `voiceCasting`
+- ~~增加 `scriptPackage`~~
+- ~~增加 `scenePlan`~~
+- ~~增加 `characterAssets`~~
+- ~~增加 `sceneAssets`~~
+- ~~增加 `storyboardSegments`~~
+- ~~增加 `voiceCasting`~~
 - [ ] 增加 `renderTasks`
 - [ ] 增加 `finalVideo`
 
@@ -281,18 +281,18 @@
 
 ## Phase 2：复刻 n8n 中间生产层
 
-- [ ] 场景识别
-- [ ] 整体摘要
-- [ ] 场景摘要
-- [ ] 角色设定图生成
-- [ ] 场景设定图生成
-- [ ] 分镜片段生成
-- [ ] 文戏/武戏判定
-- [ ] 台词识别
-- [ ] 音色映射
-- [ ] 分镜图生成
-- [ ] 提示词压缩
-- [ ] 测试：
+- ~~场景识别~~
+- ~~整体摘要~~
+- ~~场景摘要~~
+- ~~角色设定图生成~~
+- ~~场景设定图生成~~
+- ~~分镜片段生成~~
+- ~~文戏/武戏判定~~
+- ~~台词识别~~
+- ~~音色映射~~
+- ~~分镜图生成~~
+- ~~提示词压缩~~
+- ~~测试：~~
   - 同角色跨片段一致
   - 同场景色调一致
   - 分镜片段与章节对应正确
@@ -356,6 +356,7 @@
 3. ~~设计并落地 `CreationConversationState`~~
 4. ~~把 [CreationCanvas.tsx](D:/DevProject/Viewpoint_Prism_Pro/client/src/components/prisms/creation/CreationCanvas.tsx) 左栏替换成对话式创作区~~
 5. ~~打通“对话 -> 剧本 -> 场景规划”第一段闭环~~
+6. ~~打通“章节结构 -> 场景/角色/分镜/音色生产包 -> 创建章节节点”第二段闭环~~
 
 ---
 
@@ -372,3 +373,4 @@
 2. 多模态、图片、视频等高成本接口还没有全部实跑
 3. `doubao-1-5-vision-pro-32k` 当前默认分组下返回“无可用渠道”，暂时不要拿它做主多模态模型
 4. 2026-03-13 已完成一次真实联调：`docker compose up -d --build server client` 后，前端 `http://localhost:7860` 与后端 `http://localhost:7861/api/health` 返回 200，`npm run test:creation:conversation:e2e --workspace=server` 已验证 5 轮对话、剧本归纳、章节生成、局部改章与章节节点创建闭环。
+5. 2026-03-13 已完成 Phase 2 真实联调：`npm run test:creation:production:e2e --workspace=server` 已验证场景规划、角色/场景资产、分镜片段、音色映射、压缩提示词，以及角色图/场景图/分镜图的样例生成都能在新的中转商链路下通过。

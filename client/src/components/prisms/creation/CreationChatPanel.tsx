@@ -1,7 +1,16 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { CreationConversationMessage, IdeaPreviewOption, ScriptPlanChapter } from '@/services/creation.api';
+import {
+  CharacterAsset,
+  CreationConversationMessage,
+  CreationScenePlanScene,
+  IdeaPreviewOption,
+  SceneAsset,
+  ScriptPlanChapter,
+  StoryboardSegment,
+  VoiceCasting,
+} from '@/services/creation.api';
 
 interface CreationChatPanelProps {
   messages: CreationConversationMessage[];
@@ -15,6 +24,11 @@ interface CreationChatPanelProps {
   previews: IdeaPreviewOption[];
   selectedPreviewId?: string | null;
   chapters: ScriptPlanChapter[];
+  scenes: CreationScenePlanScene[];
+  characterAssets: CharacterAsset[];
+  sceneAssets: SceneAsset[];
+  storyboardSegments: StoryboardSegment[];
+  voiceCasting: VoiceCasting[];
   busyText?: string;
   onInputChange: (value: string) => void;
   onSend: () => void;
@@ -27,6 +41,7 @@ interface CreationChatPanelProps {
     chapterIndex: number,
     payload: Partial<Pick<ScriptPlanChapter, 'title' | 'summary' | 'goal' | 'storyboardCount'>>,
   ) => void;
+  onGenerateProductionPackage: () => void;
   onEnterProduction: () => void;
 }
 
@@ -47,6 +62,11 @@ export function CreationChatPanel({
   previews,
   selectedPreviewId,
   chapters,
+  scenes,
+  characterAssets,
+  sceneAssets,
+  storyboardSegments,
+  voiceCasting,
   busyText,
   onInputChange,
   onSend,
@@ -56,6 +76,7 @@ export function CreationChatPanel({
   onSelectPreview,
   onCreateChapterNodes,
   onUpdateChapter,
+  onGenerateProductionPackage,
   onEnterProduction,
 }: CreationChatPanelProps) {
   const [chapterDrafts, setChapterDrafts] = useState<Record<number, ScriptPlanChapter>>({});
@@ -142,8 +163,15 @@ export function CreationChatPanel({
               归纳成章节结构
             </button>
             <button
-              onClick={onEnterProduction}
+              onClick={onGenerateProductionPackage}
               disabled={!chapters.length}
+              className="rounded-xl border border-border-subtle px-4 py-2 text-sm text-text-secondary disabled:opacity-40"
+            >
+              生成生产包
+            </button>
+            <button
+              onClick={onEnterProduction}
+              disabled={!storyboardSegments.length && !chapters.length}
               className="rounded-xl bg-[#111827] px-4 py-2 text-sm text-white disabled:opacity-40"
             >
               进入生产
@@ -176,6 +204,59 @@ export function CreationChatPanel({
           {scriptDraft || '等待对话生成完整剧本。'}
         </div>
       </section>
+
+      {(scenes.length || characterAssets.length || sceneAssets.length || storyboardSegments.length || voiceCasting.length) ? (
+        <section className="rounded-[20px] border border-border-subtle bg-bg-panel px-4 py-4">
+          <div className="mb-3">
+            <h3 className="text-sm font-semibold text-text-primary">中间生产层</h3>
+            <p className="mt-1 text-xs leading-5 text-text-tertiary">
+              这里对应 n8n 里的场景识别、角色/场景资产、分镜片段、台词和音色映射结果。
+            </p>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <SummaryPill label="场景数" value={scenes.length ? `${scenes.length} 个场景` : '未生成'} />
+            <SummaryPill label="角色资产" value={characterAssets.length ? `${characterAssets.length} 个角色` : '未生成'} />
+            <SummaryPill label="场景资产" value={sceneAssets.length ? `${sceneAssets.length} 个场景图设定` : '未生成'} />
+            <SummaryPill label="分镜片段" value={storyboardSegments.length ? `${storyboardSegments.length} 个片段` : '未生成'} />
+          </div>
+
+          {scenes.length ? (
+            <div className="mt-4 space-y-2">
+              {scenes.slice(0, 4).map((scene) => (
+                <div key={scene.id} className="rounded-[16px] border border-border-subtle bg-bg-panel-secondary p-3">
+                  <div className="text-sm font-medium text-text-primary">{scene.sceneName}</div>
+                  <div className="mt-1 text-[11px] text-text-tertiary">
+                    第 {scene.chapterIndex} 章 · {scene.contentType} · {scene.characters.join(' / ') || '无固定角色'}
+                  </div>
+                  <p className="mt-2 text-xs leading-5 text-text-secondary">{scene.summary}</p>
+                </div>
+              ))}
+            </div>
+          ) : null}
+
+          {storyboardSegments.length ? (
+            <div className="mt-4 space-y-2">
+              {storyboardSegments.slice(0, 4).map((segment) => (
+                <div key={segment.id} className="rounded-[16px] border border-border-subtle bg-bg-panel-secondary p-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="text-sm font-medium text-text-primary">{segment.title}</div>
+                    <div className="text-[11px] text-text-tertiary">
+                      第 {segment.chapterIndex} 章 · {segment.contentType}
+                    </div>
+                  </div>
+                  <p className="mt-2 text-xs leading-5 text-text-secondary">{segment.summary}</p>
+                  <p className="mt-1 text-[11px] leading-5 text-text-tertiary">
+                    音色：{segment.characterRefs
+                      .map((name) => voiceCasting.find((item) => item.characterName === name)?.voiceName || '待分配')
+                      .filter(Boolean)
+                      .join(' / ') || '暂无'}
+                  </p>
+                </div>
+              ))}
+            </div>
+          ) : null}
+        </section>
+      ) : null}
 
       {previews.length ? (
         <section className="rounded-[20px] border border-border-subtle bg-bg-panel px-4 py-4">

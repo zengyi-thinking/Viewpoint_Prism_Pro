@@ -74,6 +74,69 @@ export interface CreationConversationState {
   lastUpdatedAt: string | null;
 }
 
+export interface CreationScenePlanScene {
+  id: string;
+  chapterIndex: number;
+  sceneName: string;
+  summary: string;
+  visualSummary: string;
+  location: string;
+  timeOfDay: string;
+  characters: string[];
+  dialogueLines: { speaker: string; text: string }[];
+  contentType: 'dialogue' | 'action' | 'mixed';
+  continuityTone: string;
+}
+
+export interface CharacterAsset {
+  id: string;
+  name: string;
+  description: string;
+  appearance: string;
+  imagePrompt: string;
+  imageUrl?: string;
+  identity: string;
+  genderHint: string;
+  ageHint: string;
+}
+
+export interface SceneAsset {
+  id: string;
+  sceneId: string;
+  name: string;
+  description: string;
+  imagePrompt: string;
+  imageUrl?: string;
+  continuityTone: string;
+}
+
+export interface StoryboardSegment {
+  id: string;
+  chapterIndex: number;
+  sceneId: string;
+  title: string;
+  summary: string;
+  visualDescription: string;
+  contentType: 'dialogue' | 'action' | 'mixed';
+  characterRefs: string[];
+  dialogueLines: { speaker: string; text: string }[];
+  shotList: string[];
+  videoPrompt?: string;
+  compressedVideoPrompt?: string;
+  storyboardImageUrl?: string;
+  displayPromptCn?: string;
+  imagePromptCn?: string;
+  imagePromptModel?: string;
+  continuityNotes?: string;
+}
+
+export interface VoiceCasting {
+  characterName: string;
+  voiceId: string;
+  voiceName: string;
+  rationale: string;
+}
+
 export interface CreationGraphResponse {
   project: {
     id: string;
@@ -86,9 +149,15 @@ export interface CreationGraphResponse {
     meta: {
       backgroundVideoId?: string | null;
       conversationState: CreationConversationState;
+      scriptPackage: { overallSummary: string; sourceScript: string } | null;
       previews: IdeaPreviewOption[];
       selectedPreviewId: string | null;
       scriptPlan: { summary: string; chapters: ScriptPlanChapter[] } | null;
+      scenePlan: { overallSummary: string; scenes: CreationScenePlanScene[] } | null;
+      characterAssets: CharacterAsset[];
+      sceneAssets: SceneAsset[];
+      storyboardSegments: StoryboardSegment[];
+      voiceCasting: VoiceCasting[];
     };
   };
   nodes: CreationGraphNode[];
@@ -153,6 +222,26 @@ export const creationApi = {
       method: 'POST',
       body: JSON.stringify({ chapterIndex }),
     });
+  },
+
+  generateProductionPackage(flowProjectId: string, payload?: { artStyle?: string }) {
+    return apiFetch<CreationGraphResponse>(`/api/prism/creation/projects/${flowProjectId}/production-package`, {
+      method: 'POST',
+      body: JSON.stringify(payload || {}),
+    });
+  },
+
+  generateProductionAssetImage(
+    flowProjectId: string,
+    assetType: 'character' | 'scene' | 'segment',
+    assetId: string,
+  ) {
+    return apiFetch<CreationGraphResponse>(
+      `/api/prism/creation/projects/${flowProjectId}/production-assets/${assetType}/${assetId}/generate-image`,
+      {
+        method: 'POST',
+      },
+    );
   },
 
   updateScriptPlanChapter(

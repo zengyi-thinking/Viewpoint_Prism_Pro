@@ -106,6 +106,42 @@ export class CreationRenderService {
     }
   }
 
+  async generateProjectAssetImage(params: {
+    userId: string;
+    projectId: string;
+    prompt: string;
+    category: 'character-assets' | 'scene-assets' | 'storyboard-assets';
+    fileStem: string;
+  }) {
+    const imageResult = await this.aiRouter.execute(
+      AITaskType.IMAGE_GEN,
+      {
+        prompt: params.prompt,
+        image_size: '1280x720',
+        num_inference_steps: 24,
+        guidance_scale: 7,
+        negative_prompt:
+          'text, chinese characters, calligraphy, title, logo, watermark, poster layout, typography, word overlay, low detail',
+      },
+      params.userId,
+    );
+
+    const remoteUrl = String(imageResult?.imageUrl || imageResult?.url || '').trim();
+    if (!remoteUrl) throw new Error('图片模型未返回可下载 URL');
+
+    const response = await fetch(remoteUrl);
+    if (!response.ok) throw new Error(`下载生成图片失败 (${response.status})`);
+    const buffer = Buffer.from(await response.arrayBuffer());
+    const storageKey = this.storage.generateStoragePath(
+      params.userId,
+      params.projectId,
+      params.category,
+      `${params.fileStem}.png`,
+    );
+
+    return this.storage.upload(buffer, storageKey, { contentType: 'image/png' });
+  }
+
   async enqueueNodeRender(params: { userId: string; projectId: string; flowProjectId: string; nodeId: string }) {
     const task = await this.prisma.taskRecord.create({
       data: {

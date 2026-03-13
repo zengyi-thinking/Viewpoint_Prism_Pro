@@ -5,6 +5,13 @@ import { ScriptPlannerAgent, ScriptPlanResult } from './services/script-planner.
 import { StoryboardAgent, StoryboardCandidate } from './services/storyboard.agent';
 import { CharacterAnchor, PromptDirectorAgent } from './services/prompt-director.agent';
 import { CreationRenderService } from './services/creation-render.service';
+import { ScenePlanPackage, ScenePlanScene, ScenePlannerAgent } from './services/scene-planner.agent';
+import { CharacterAsset, CharacterAssetService } from './services/character-asset.service';
+import { SceneAsset, SceneAssetService } from './services/scene-asset.service';
+import { StoryboardSegment, StoryboardSegmentAgent } from './services/storyboard-segment.agent';
+import { VoiceCasting, DialogueVoiceMapperAgent } from './services/dialogue-voice-mapper.agent';
+import { PromptCompressionAgent } from './services/prompt-compression.agent';
+import { VideoPromptCompilerAgent } from './services/video-prompt-compiler.agent';
 import {
   CreationConversationMessage,
   CreationConversationState,
@@ -17,6 +24,7 @@ import {
   GenerateIdeaPreviewsDto,
   GenerateNextNodeCandidatesDto,
   GenerateNodeImageDto,
+  GenerateProductionPackageDto,
   GenerateScriptPlanDto,
   SelectIdeaPreviewDto,
   SelectNextNodeCandidateDto,
@@ -39,10 +47,16 @@ interface CreationProjectMeta {
   mode?: 'idea' | 'script';
   backgroundVideoId?: string | null;
   conversationState?: CreationConversationState;
+  scriptPackage?: { overallSummary: string; sourceScript: string };
   ideaInput?: Record<string, unknown>;
   previews?: IdeaPreviewOption[];
   selectedPreviewId?: string;
   scriptPlan?: ScriptPlanResult;
+  scenePlan?: ScenePlanPackage;
+  characterAssets?: CharacterAsset[];
+  sceneAssets?: SceneAsset[];
+  storyboardSegments?: StoryboardSegment[];
+  voiceCasting?: VoiceCasting[];
   nextCandidatesByNode?: Record<string, StoryboardCandidate[]>;
   nodesMeta?: Record<string, CreationNodeMeta>;
 }
@@ -56,6 +70,13 @@ export class CreationService {
     private readonly storyboardAgent: StoryboardAgent,
     private readonly promptDirector: PromptDirectorAgent,
     private readonly storyConversation: StoryConversationAgent,
+    private readonly scenePlanner: ScenePlannerAgent,
+    private readonly characterAssetService: CharacterAssetService,
+    private readonly sceneAssetService: SceneAssetService,
+    private readonly storyboardSegmentAgent: StoryboardSegmentAgent,
+    private readonly voiceMapper: DialogueVoiceMapperAgent,
+    private readonly promptCompression: PromptCompressionAgent,
+    private readonly videoPromptCompiler: VideoPromptCompilerAgent,
     private readonly renderService: CreationRenderService,
   ) {}
 
@@ -128,6 +149,12 @@ export class CreationService {
       scriptPlan: undefined,
       nextCandidatesByNode: {},
       conversationState: this.createEmptyConversationState(),
+      scriptPackage: undefined,
+      scenePlan: undefined,
+      characterAssets: [],
+      sceneAssets: [],
+      storyboardSegments: [],
+      voiceCasting: [],
       nodesMeta: {},
     };
 
@@ -170,9 +197,15 @@ export class CreationService {
         meta: {
           backgroundVideoId: meta.backgroundVideoId || null,
           conversationState: meta.conversationState,
+          scriptPackage: meta.scriptPackage || null,
           previews: meta.previews || [],
           selectedPreviewId: meta.selectedPreviewId || null,
           scriptPlan: meta.scriptPlan || null,
+          scenePlan: meta.scenePlan || null,
+          characterAssets: meta.characterAssets || [],
+          sceneAssets: meta.sceneAssets || [],
+          storyboardSegments: meta.storyboardSegments || [],
+          voiceCasting: meta.voiceCasting || [],
         },
       },
       nodes: nodes.map((node) => ({
@@ -436,29 +469,213 @@ export class CreationService {
     return this.getGraph(userId, flowProject.id);
   }
 
+  async generateProductionPackage(
+    userId: string,
+    flowProjectId: string,
+    dto: GenerateProductionPackageDto = {},
+  ) {
+    const flowProject = await this.assertProjectAccess(userId, flowProjectId);
+    const meta = this.getProjectMeta(flowProject.stylePreset);
+    const sourceScript = String(flowProject.scriptText || meta.conversationState?.scriptDraft || '').trim();
+    if (!sourceScript) {
+      throw new NotFoundException('当前工程还没有可用于生产的剧本文本');
+    }
+    if (!meta.scriptPlan?.chapters?.length) {
+      throw new NotFoundException('当前工程还没有章节结构，请先生成章节结构');
+    }
+
+    const artStyle = String(
+      dto.artStyle ||
+        meta.conversationState?.summary.visualStyle ||
+        meta.ideaInput?.visualGoal ||
+        '电影化、连续分镜、写实质感',
+    ).trim();
+
+    const scenePlan = await this.scenePlanner.generate(userId, {
+      scriptText: sourceScript,
+      scriptPlan: meta.scriptPlan,
+    });
+
+    const [characterAssets, sceneAssets, rawSegments] = await Promise.all([
+      this.characterAssetService.generate(userId, {
+        scriptText: sourceScript,
+        artStyle,
+        scenes: scenePlan.scenes,
+      }),
+      this.sceneAssetService.generate(userId, {
+        artStyle,
+        scenes: scenePlan.scenes,
+      }),
+      this.storyboardSegmentAgent.generate(userId, {
+        scenes: scenePlan.scenes,
+      }),
+    ]);
+
+    const voiceCasting = await this.voiceMapper.generate(userId, { characters: characterAssets });
+
+    const sceneAssetMap = new Map(sceneAssets.map((item) => [item.sceneId, item]));
+    let previousPromptBundle: Awaited<ReturnType<VideoPromptCompilerAgent['compile']>> | null = null;
+
+    const storyboardSegments: StoryboardSegment[] = [];
+    for (const segment of rawSegments) {
+      const bundle = await this.videoPromptCompiler.compile(userId, {
+        projectIntent: scenePlan.overallSummary || sourceScript,
+        segment,
+        sceneAsset: sceneAssetMap.get(segment.sceneId) || null,
+        characterAssets,
+        previousPrompt: previousPromptBundle,
+      });
+
+      const compiledVideoPrompt =
+        segment.contentType === 'action'
+          ? `${bundle.videoPromptModel} Dynamic action emphasis, motion blur, impact rhythm, environmental feedback.`
+          : segment.contentType === 'dialogue'
+            ? `${bundle.videoPromptModel} Preserve performance beats, gaze direction, subtle breathing, conversational timing.`
+            : `${bundle.videoPromptModel} Balance performance, motion, and environment continuity.`;
+
+      const compressedVideoPrompt = this.promptCompression.compress(compiledVideoPrompt, 1800);
+
+      storyboardSegments.push({
+        ...segment,
+        displayPromptCn: bundle.displayPromptCn,
+        imagePromptCn: bundle.imagePromptCn,
+        imagePromptModel: bundle.imagePromptModel,
+        continuityNotes: bundle.continuityNotes,
+        videoPrompt: compiledVideoPrompt,
+        compressedVideoPrompt,
+      });
+
+      previousPromptBundle = bundle;
+    }
+
+    meta.scriptPackage = {
+      overallSummary: scenePlan.overallSummary,
+      sourceScript,
+    };
+    meta.scenePlan = scenePlan;
+    meta.characterAssets = characterAssets;
+    meta.sceneAssets = sceneAssets;
+    meta.storyboardSegments = storyboardSegments;
+    meta.voiceCasting = voiceCasting;
+
+    await this.prisma.prismFlowProject.update({
+      where: { id: flowProject.id },
+      data: {
+        stylePreset: meta as any,
+      },
+    });
+
+    return this.getGraph(userId, flowProject.id);
+  }
+
+  async generateProductionAssetImage(
+    userId: string,
+    flowProjectId: string,
+    assetType: 'character' | 'scene' | 'segment',
+    assetId: string,
+  ) {
+    const flowProject = await this.assertProjectAccess(userId, flowProjectId);
+    const meta = this.getProjectMeta(flowProject.stylePreset);
+    const resolvedProjectId = flowProject.projectId || flowProject.video?.projectId;
+    if (!resolvedProjectId) {
+      throw new Error('创作工程缺少 projectId，无法生成生产资产图片');
+    }
+
+    if (assetType === 'character') {
+      const nextAssets = (meta.characterAssets || []).map((item) => ({ ...item }));
+      const target = nextAssets.find((item) => item.id === assetId);
+      if (!target) throw new NotFoundException('未找到对应角色资产');
+      target.imageUrl = await this.renderService.generateProjectAssetImage({
+        userId,
+        projectId: resolvedProjectId,
+        prompt: target.imagePrompt,
+        category: 'character-assets',
+        fileStem: target.id,
+      });
+      meta.characterAssets = nextAssets;
+    } else if (assetType === 'scene') {
+      const nextAssets = (meta.sceneAssets || []).map((item) => ({ ...item }));
+      const target = nextAssets.find((item) => item.id === assetId);
+      if (!target) throw new NotFoundException('未找到对应场景资产');
+      target.imageUrl = await this.renderService.generateProjectAssetImage({
+        userId,
+        projectId: resolvedProjectId,
+        prompt: target.imagePrompt,
+        category: 'scene-assets',
+        fileStem: target.id,
+      });
+      meta.sceneAssets = nextAssets;
+    } else {
+      const nextSegments = (meta.storyboardSegments || []).map((item) => ({ ...item }));
+      const target = nextSegments.find((item) => item.id === assetId);
+      if (!target) throw new NotFoundException('未找到对应分镜片段');
+      const prompt =
+        target.imagePromptModel ||
+        target.imagePromptCn ||
+        target.displayPromptCn ||
+        target.summary;
+      target.storyboardImageUrl = await this.renderService.generateProjectAssetImage({
+        userId,
+        projectId: resolvedProjectId,
+        prompt,
+        category: 'storyboard-assets',
+        fileStem: target.id,
+      });
+      meta.storyboardSegments = nextSegments;
+    }
+
+    await this.prisma.prismFlowProject.update({
+      where: { id: flowProject.id },
+      data: {
+        stylePreset: meta as any,
+      },
+    });
+
+    return this.getGraph(userId, flowProject.id);
+  }
+
   async createChapterNodes(userId: string, flowProjectId: string, dto: CreateChapterNodesDto) {
     const flowProject = await this.assertProjectAccess(userId, flowProjectId);
     const meta = this.getProjectMeta(flowProject.stylePreset);
     const chapter = meta.scriptPlan?.chapters?.find((item) => item.index === dto.chapterIndex);
     if (!chapter) throw new NotFoundException('未找到对应章节');
-
-    const nodes = await this.storyboardAgent.createChapterNodes(userId, chapter, {
-      projectIntent: flowProject.scriptText || '',
-    });
+    const precomputedSegments = (meta.storyboardSegments || []).filter((item) => item.chapterIndex === dto.chapterIndex);
+    const nodes =
+      precomputedSegments.length > 0
+        ? precomputedSegments.map((item) => ({
+            id: item.id,
+            title: item.title,
+            scriptSegment: item.summary,
+            visualDescription: item.visualDescription,
+          }))
+        : await this.storyboardAgent.createChapterNodes(userId, chapter, {
+            projectIntent: flowProject.scriptText || '',
+          });
 
     const existingCount = await this.prisma.flowNode.count({ where: { flowProjectId } });
     let prevNodeId: string | null = null;
 
     meta.nodesMeta = meta.nodesMeta || {};
+    const precomputedMap = new Map(precomputedSegments.map((item) => [item.id, item]));
 
     for (let i = 0; i < nodes.length; i += 1) {
       const candidate = nodes[i];
-      const promptBundle = await this.promptDirector.compile(userId, {
-        projectIntent: flowProject.scriptText || '',
-        nodeTitle: candidate.title,
-        scriptSegment: candidate.scriptSegment,
-        visualDescription: candidate.visualDescription,
-      });
+      const productionSegment = precomputedMap.get(candidate.id);
+      const promptBundle = productionSegment
+        ? {
+            displayPromptCn: productionSegment.displayPromptCn || '',
+            imagePromptCn: productionSegment.imagePromptCn || '',
+            imagePromptModel: productionSegment.imagePromptModel || '',
+            videoPromptModel: productionSegment.compressedVideoPrompt || productionSegment.videoPrompt || '',
+            continuityNotes: productionSegment.continuityNotes || '',
+            characterAnchor: this.buildCharacterAnchorFromSegment(productionSegment, meta.characterAssets || []),
+          }
+        : await this.promptDirector.compile(userId, {
+            projectIntent: flowProject.scriptText || '',
+            nodeTitle: candidate.title,
+            scriptSegment: candidate.scriptSegment,
+            visualDescription: candidate.visualDescription,
+          });
 
       const created = await this.prisma.flowNode.create({
         data: {
@@ -839,11 +1056,17 @@ export class CreationService {
       version: 'v2',
       mode: meta.mode || 'idea',
       backgroundVideoId: meta.backgroundVideoId || null,
+      scriptPackage: meta.scriptPackage || undefined,
       ideaInput: meta.ideaInput || {},
       previews: Array.isArray(meta.previews) ? meta.previews : [],
       selectedPreviewId: meta.selectedPreviewId,
       conversationState: meta.conversationState || this.createEmptyConversationState(),
       scriptPlan: meta.scriptPlan,
+      scenePlan: meta.scenePlan || undefined,
+      characterAssets: Array.isArray(meta.characterAssets) ? meta.characterAssets : [],
+      sceneAssets: Array.isArray(meta.sceneAssets) ? meta.sceneAssets : [],
+      storyboardSegments: Array.isArray(meta.storyboardSegments) ? meta.storyboardSegments : [],
+      voiceCasting: Array.isArray(meta.voiceCasting) ? meta.voiceCasting : [],
       nextCandidatesByNode: meta.nextCandidatesByNode || {},
       nodesMeta: Object.fromEntries(
         Object.entries(meta.nodesMeta || {}).map(([nodeId, nodeMeta]) => [nodeId, this.normalizeNodeMeta(nodeMeta)]),
@@ -923,6 +1146,24 @@ export class CreationService {
       outfit: String(value.outfit || '').trim(),
       face: String(value.face || '').trim(),
       prop: String(value.prop || '').trim(),
+    };
+  }
+
+  private buildCharacterAnchorFromSegment(segment: StoryboardSegment, assets: CharacterAsset[]): CharacterAnchor {
+    const primary = segment.characterRefs
+      .map((name) => assets.find((item) => item.name === name))
+      .find(Boolean);
+
+    if (!primary) {
+      return this.normalizeCharacterAnchor(undefined);
+    }
+
+    return {
+      identity: primary.identity || primary.name,
+      hair: primary.appearance,
+      outfit: primary.description,
+      face: primary.appearance,
+      prop: '',
     };
   }
 

@@ -9,6 +9,7 @@ import {
   GenerateIdeaPreviewsDto,
   GenerateNextNodeCandidatesDto,
   GenerateNodeImageDto,
+  GenerateProductionPackageDto,
   GenerateScriptPlanDto,
   SelectIdeaPreviewDto,
   SelectNextNodeCandidateDto,
@@ -101,6 +102,25 @@ export class CreationController {
     @Body() dto: GenerateScriptPlanDto,
   ) {
     return this.creationService.generateScriptPlan(userId, videoId, dto);
+  }
+
+  @Post('projects/:flowProjectId/production-package')
+  generateProductionPackage(
+    @CurrentUser() userId: string,
+    @Param('flowProjectId') flowProjectId: string,
+    @Body() dto: GenerateProductionPackageDto,
+  ) {
+    return this.creationService.generateProductionPackage(userId, flowProjectId, dto);
+  }
+
+  @Post('projects/:flowProjectId/production-assets/:assetType/:assetId/generate-image')
+  generateProductionAssetImage(
+    @CurrentUser() userId: string,
+    @Param('flowProjectId') flowProjectId: string,
+    @Param('assetType') assetType: 'character' | 'scene' | 'segment',
+    @Param('assetId') assetId: string,
+  ) {
+    return this.creationService.generateProductionAssetImage(userId, flowProjectId, assetType, assetId);
   }
 
   @Patch('projects/:flowProjectId/script-plan/chapters/:chapterIndex')
