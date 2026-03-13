@@ -206,6 +206,7 @@
   - `CREATION_AI_IMAGE_MODEL`
   - `CREATION_AI_VIDEO_MODEL`
   - `CREATION_AI_TTS_MODEL`
+  - `CREATION_AI_NARRATION_TTS_MODEL`
 - ~~修改 [ai-router.service.ts](D:/DevProject/Viewpoint_Prism_Pro/server/src/infrastructure/ai-router/ai-router.service.ts)，让创作棱镜优先走新中转站~~
 - ~~修改 [openai.provider.ts](D:/DevProject/Viewpoint_Prism_Pro/server/src/infrastructure/ai-router/providers/openai.provider.ts)，让它优先读取创作专用 base URL 与模型变量~~
 - ~~决定视频生成是：扩展现有 `OpenAIProvider`~~
@@ -235,8 +236,8 @@
 - ~~新增 `video-prompt-compiler.agent.ts`~~
 - ~~新增 `prompt-compression.agent.ts`~~
 - [ ] 新增 `storyboard-frame.service.ts`
-- [ ] 新增 `segment-video-render.service.ts`
-- [ ] 新增 `final-video-compose.service.ts`
+- ~~新增 `segment-video-render.service.ts`~~
+- ~~新增 `final-video-compose.service.ts`~~
 
 ## 4.4 数据结构
 
@@ -309,13 +310,13 @@
 
 ## Phase 4：成片拼接
 
-- [ ] 章节排序拼接
-- [ ] TTS/旁白混入
-- [ ] BGM 混入
+- ~~章节排序拼接~~
+- ~~TTS/旁白混入~~
+- ~~BGM 混入~~
 - ~~成片导出~~
-- [ ] 测试：
+- ~~测试：~~
   - ~~最终视频可下载~~
-  - 工程可重新打开继续编辑
+  - ~~工程可重新打开继续编辑~~
 
 ## Phase 5：高级编辑回挂
 
@@ -375,3 +376,4 @@
 4. 2026-03-13 已完成一次真实联调：`docker compose up -d --build server client` 后，前端 `http://localhost:7860` 与后端 `http://localhost:7861/api/health` 返回 200，`npm run test:creation:conversation:e2e --workspace=server` 已验证 5 轮对话、剧本归纳、章节生成、局部改章与章节节点创建闭环。
 5. 2026-03-13 已完成 Phase 2 真实联调：`npm run test:creation:production:e2e --workspace=server` 已验证场景规划、角色/场景资产、分镜片段、音色映射、压缩提示词，以及角色图/场景图/分镜图的样例生成都能在新的中转商链路下通过。
 6. 2026-03-13 已完成 Phase 3 单片段真实联调：`npm run test:creation:phase3:e2e --workspace=server` 已验证单章节样片可在新中转商链路下完成“生图 -> 视频渲染 -> 导出成片 -> 本地保存 mp4”。结果文件为 [__creation_phase3_render_e2e_result.json](D:/DevProject/Viewpoint_Prism_Pro/__creation_phase3_render_e2e_result.json)，本地样片为 [creation-phase3-final-1773413754318.mp4](D:/DevProject/Viewpoint_Prism_Pro/artifacts/creation-phase3-final-1773413754318.mp4) 与 [creation-phase3-clip-1-1773413754318.mp4](D:/DevProject/Viewpoint_Prism_Pro/artifacts/creation-phase3-clip-1-1773413754318.mp4)。
+7. 2026-03-13 已完成 Phase 4 真实联调：`npm run test:creation:phase4:e2e --workspace=server` 已验证章节顺序拼接、低成本旁白混入、BGM 混入、成片导出，以及导出后重新读取工程图数据。结果文件为 [__creation_phase4_compose_e2e_result.json](D:/DevProject/Viewpoint_Prism_Pro/__creation_phase4_compose_e2e_result.json)，本地成片为 [creation-phase4-final-1773424871228.mp4](D:/DevProject/Viewpoint_Prism_Pro/artifacts/creation-phase4-final-1773424871228.mp4)。

@@ -195,3 +195,17 @@ export class GenerateProductionPackageDto {
   @IsString()
   artStyle?: string;
 }
+
+export class StitchProjectDto {
+  @IsOptional()
+  @IsBoolean()
+  includeVoiceover?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  includeBgm?: boolean;
+
+  @IsOptional()
+  @IsString()
+  voiceoverText?: string;
+}

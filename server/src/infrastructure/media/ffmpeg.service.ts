@@ -3,6 +3,13 @@ import { ConfigService } from '@nestjs/config';
 import * as ffmpeg from 'fluent-ffmpeg';
 import * as path from 'path';
 import * as fs from 'fs/promises';
+import { spawn } from 'child_process';
+
+// Use CommonJS-compatible resolution to avoid transpilation shape mismatches in Docker.
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const ffmpegInstaller = require('@ffmpeg-installer/ffmpeg');
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const ffprobeInstaller = require('@ffprobe-installer/ffprobe');
 
 @Injectable()
 export class FfmpegService {
@@ -12,18 +19,32 @@ export class FfmpegService {
 
   constructor(private readonly configService: ConfigService) {
     // Get FFmpeg path from config or use system default
-    this.ffmpegPath = this.configService.get('FFMPEG_PATH', 'ffmpeg');
+    const configuredPath = String(this.configService.get('FFMPEG_PATH') || '').trim();
+    const installerPath = String(
+      ffmpegInstaller?.path || ffmpegInstaller?.default?.path || '',
+    ).trim();
+    this.ffmpegPath =
+      (configuredPath && configuredPath !== 'ffmpeg' ? configuredPath : '') ||
+      installerPath ||
+      'ffmpeg';
 
     // Set temp directory for processing
     this.tempDir = path.join(process.cwd(), 'temp', 'ffmpeg');
 
     // Initialize FFmpeg command
     this.setFfmpegPath();
+    this.logger.log(`Resolved ffmpeg binary: ${this.ffmpegPath}`);
   }
 
   private setFfmpegPath() {
     if (this.ffmpegPath && this.ffmpegPath !== 'ffmpeg') {
       ffmpeg.setFfmpegPath(this.ffmpegPath);
+    }
+    const ffprobePath = String(
+      ffprobeInstaller?.path || ffprobeInstaller?.default?.path || '',
+    ).trim();
+    if (ffprobePath) {
+      ffmpeg.setFfprobePath(ffprobePath);
     }
   }
 
@@ -116,50 +137,66 @@ export class FfmpegService {
     audioPath?: string,
     bgmPath?: string,
   ): Promise<string> {
+    return this.composeVideoSequence(videoPaths, outputPath, {
+      audioPath,
+      bgmPath,
+    });
+  }
+
+  async composeVideoSequence(
+    videoPaths: string[],
+    outputPath: string,
+    options?: { audioPath?: string; bgmPath?: string },
+  ): Promise<string> {
     await this.ensureTempDir();
+    if (!videoPaths.length) {
+      throw new Error('At least one video is required for composition');
+    }
+
+    if (videoPaths.length === 1 && !options?.audioPath && !options?.bgmPath) {
+      await fs.copyFile(videoPaths[0], outputPath);
+      return outputPath;
+    }
 
     // Create list file for concatenation
     const listPath = path.join(this.tempDir, `concat-${Date.now()}.txt`);
     const listContent = videoPaths.map((p) => `file '${path.resolve(p)}'`).join('\n');
     await fs.writeFile(listPath, listContent);
 
-    return new Promise((resolve, reject) => {
-      let command = ffmpeg().input(listPath).inputOptions('-f', 'concat').inputOptions('-safe', '0');
+    const concatenatedPath = path.join(this.tempDir, `concat-output-${Date.now()}.mp4`);
+    const hasAudioOverlay = Boolean(options?.audioPath || options?.bgmPath);
 
-      // Add audio overlay if provided
-      if (audioPath) {
-        command = command.addInput(audioPath);
+    try {
+      await this.runConcat(listPath, concatenatedPath, hasAudioOverlay);
+      if (!hasAudioOverlay) {
+        await fs.copyFile(concatenatedPath, outputPath);
+        return outputPath;
       }
 
-      // Add background music if provided
-      if (bgmPath) {
-        command = command.addInput(bgmPath).audioFilters([
-          {
-            filter: 'volume',
-            options: '0.3', // Lower volume for BGM
-          },
-        ]);
-      }
+      await this.runAudioMix(concatenatedPath, outputPath, options?.audioPath, options?.bgmPath);
+      return outputPath;
+    } finally {
+      await fs.unlink(listPath).catch(() => {});
+      await fs.unlink(concatenatedPath).catch(() => {});
+    }
+  }
 
-      const finalOutput = outputPath || path.join(this.tempDir, `stitched-${Date.now()}.mp4`);
-
-      command
-        .outputOptions('-c', 'copy') // Copy streams without re-encoding
-        .outputOptions('-strict', 'experimental')
-        .save(finalOutput)
-        .on('end', () => {
-          this.logger.log(`Stitched ${videoPaths.length} videos to ${finalOutput}`);
-          // Cleanup list file
-          fs.unlink(listPath).catch(() => {});
-          resolve(finalOutput);
-        })
-        .on('error', (err) => {
-          this.logger.error(`Failed to stitch videos: ${err.message}`, err.stack);
-          // Cleanup list file
-          fs.unlink(listPath).catch(() => {});
-          reject(err);
-        });
-    });
+  async generateAmbientBed(durationSec: number, outputPath: string): Promise<string> {
+    await this.ensureTempDir();
+    const safeDuration = Math.max(2, Math.ceil(durationSec));
+    await this.runFfmpeg([
+      '-y',
+      '-f',
+      'lavfi',
+      '-i',
+      `sine=frequency=196:sample_rate=44100:duration=${safeDuration}`,
+      '-filter:a',
+      `volume=0.08,lowpass=f=900,afade=t=in:st=0:d=0.6,afade=t=out:st=${Math.max(0, safeDuration - 0.8)}:d=0.8`,
+      '-c:a',
+      'libmp3lame',
+      outputPath,
+    ]);
+    return outputPath;
   }
 
   /**
@@ -433,5 +470,87 @@ export class FfmpegService {
     } catch (error) {
       this.logger.error(`Failed to cleanup: ${error.message}`, error.stack);
     }
+  }
+
+  private async runConcat(listPath: string, outputPath: string, reencode: boolean) {
+    const args = ['-y', '-f', 'concat', '-safe', '0', '-i', listPath];
+    if (reencode) {
+      args.push('-c:v', 'libx264', '-c:a', 'aac', '-pix_fmt', 'yuv420p', outputPath);
+    } else {
+      args.push('-c', 'copy', outputPath);
+    }
+    await this.runFfmpeg(args);
+    return outputPath;
+  }
+
+  private async runAudioMix(
+    videoPath: string,
+    outputPath: string,
+    audioPath?: string,
+    bgmPath?: string,
+  ) {
+    const args = ['-y', '-i', videoPath];
+    if (audioPath) {
+      args.push('-i', audioPath);
+    }
+    if (bgmPath) {
+      args.push('-i', bgmPath);
+    }
+
+    if (audioPath && bgmPath) {
+      args.push(
+        '-filter_complex',
+        '[2:a]volume=0.12[bgm];[1:a][bgm]amix=inputs=2:duration=longest:dropout_transition=2[mix]',
+        '-map',
+        '0:v:0',
+        '-map',
+        '[mix]',
+      );
+    } else if (audioPath) {
+      args.push('-map', '0:v:0', '-map', '1:a:0');
+    } else if (bgmPath) {
+      args.push(
+        '-filter_complex',
+        '[1:a]volume=0.12[mix]',
+        '-map',
+        '0:v:0',
+        '-map',
+        '[mix]',
+      );
+    }
+
+    args.push('-c:v', 'libx264', '-c:a', 'aac', '-pix_fmt', 'yuv420p', '-shortest', outputPath);
+    await this.runFfmpeg(args);
+    return outputPath;
+  }
+
+  private async runFfmpeg(args: string[]) {
+    this.setFfmpegPath();
+    this.logger.log(`Running ffmpeg command with binary: ${this.ffmpegPath}`);
+    return new Promise<void>((resolve, reject) => {
+      const child = spawn(this.ffmpegPath, args, {
+        stdio: ['ignore', 'ignore', 'pipe'],
+      });
+      let stderr = '';
+
+      child.stderr.on('data', (chunk) => {
+        stderr += chunk.toString();
+      });
+
+      child.on('error', (error) => {
+        this.logger.error(`Failed to spawn ffmpeg: ${error.message}`, error.stack);
+        reject(error);
+      });
+
+      child.on('close', (code) => {
+        if (code === 0) {
+          resolve();
+          return;
+        }
+        const message = stderr.trim() || `ffmpeg exited with code ${code}`;
+        this.logger.error(`ffmpeg command failed: ${message}`);
+        reject(new Error(message));
+      });
+    });
   }
 }

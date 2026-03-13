@@ -12,6 +12,8 @@ import { StoryboardSegment, StoryboardSegmentAgent } from './services/storyboard
 import { VoiceCasting, DialogueVoiceMapperAgent } from './services/dialogue-voice-mapper.agent';
 import { PromptCompressionAgent } from './services/prompt-compression.agent';
 import { VideoPromptCompilerAgent } from './services/video-prompt-compiler.agent';
+import { FinalVideoComposeService } from './services/final-video-compose.service';
+import { SegmentVideoRenderService } from './services/segment-video-render.service';
 import {
   CreationConversationMessage,
   CreationConversationState,
@@ -27,6 +29,7 @@ import {
   GenerateProductionPackageDto,
   GenerateScriptPlanDto,
   SelectIdeaPreviewDto,
+  StitchProjectDto,
   SelectNextNodeCandidateDto,
   UpdateScriptPlanChapterDto,
   UpdateCreationNodeDto,
@@ -93,6 +96,8 @@ export class CreationService {
     private readonly promptCompression: PromptCompressionAgent,
     private readonly videoPromptCompiler: VideoPromptCompilerAgent,
     private readonly renderService: CreationRenderService,
+    private readonly segmentVideoRenderService: SegmentVideoRenderService,
+    private readonly finalVideoComposeService: FinalVideoComposeService,
   ) {}
 
   async bootstrapByProject(userId: string, projectId: string, dto: BootstrapCreationProjectDto) {
@@ -1005,7 +1010,7 @@ export class CreationService {
       });
     }
 
-    return this.renderService.enqueueNodeRender({
+    return this.segmentVideoRenderService.enqueueNodeRender({
       userId,
       projectId: resolvedProjectId,
       flowProjectId: flowProject.id,
@@ -1013,16 +1018,19 @@ export class CreationService {
     });
   }
 
-  async stitchProject(userId: string, flowProjectId: string) {
+  async stitchProject(userId: string, flowProjectId: string, dto: StitchProjectDto = {}) {
     const flowProject = await this.assertProjectAccess(userId, flowProjectId);
     const resolvedProjectId = flowProject.projectId || flowProject.video?.projectId;
     if (!resolvedProjectId) {
       throw new Error('创作工程缺少 projectId，无法导出成片');
     }
-    return this.renderService.enqueueProjectStitch({
+    const composeOptions = await this.prepareComposeOptions(userId, resolvedProjectId, flowProject.id, dto);
+
+    return this.segmentVideoRenderService.enqueueProjectStitch({
       userId,
       projectId: resolvedProjectId,
       flowProjectId,
+      composeOptions,
     });
   }
 
@@ -1216,6 +1224,81 @@ export class CreationService {
       face: primary.appearance,
       prop: '',
     };
+  }
+
+  private async prepareComposeOptions(
+    userId: string,
+    projectId: string,
+    flowProjectId: string,
+    dto: StitchProjectDto,
+  ) {
+    const includeVoiceover = Boolean(dto.includeVoiceover);
+    const includeBgm = Boolean(dto.includeBgm);
+    if (!includeVoiceover && !includeBgm) {
+      return {};
+    }
+
+    const flowProject = await this.prisma.prismFlowProject.findUniqueOrThrow({
+      where: { id: flowProjectId },
+      include: {
+        nodes: {
+          where: { isMerged: false },
+          orderBy: { orderIndex: 'asc' },
+        },
+      },
+    });
+    const meta = this.getProjectMeta(flowProject.stylePreset);
+    const composeOptions: Record<string, unknown> = {
+      includeVoiceover,
+      includeBgm,
+    };
+
+    if (includeVoiceover) {
+      const voiceoverText = String(dto.voiceoverText || this.buildVoiceoverText(flowProject.scriptText || '', meta, flowProject.nodes)).trim();
+      if (voiceoverText) {
+        composeOptions.voiceoverText = voiceoverText;
+        composeOptions.narrationUrl = await this.finalVideoComposeService.generateNarrationAudio({
+          userId,
+          projectId,
+          text: voiceoverText,
+        });
+      }
+    }
+
+    if (includeBgm) {
+      const durationSec = Math.max(3, flowProject.nodes.length * 3);
+      composeOptions.bgmUrl = await this.finalVideoComposeService.generateAmbientBgm({
+        userId,
+        projectId,
+        durationSec,
+      });
+    }
+
+    return composeOptions;
+  }
+
+  private buildVoiceoverText(
+    scriptText: string,
+    meta: CreationProjectMeta,
+    nodes: Array<{ scriptSegment: string | null }>,
+  ) {
+    const chapterSummary = (meta.scriptPlan?.chapters || [])
+      .slice(0, 2)
+      .map((item) => item.summary)
+      .filter(Boolean)
+      .join('。');
+    const nodeSummary = nodes
+      .map((item) => String(item.scriptSegment || '').trim())
+      .filter(Boolean)
+      .slice(0, 3)
+      .join('。');
+
+    return (
+      chapterSummary ||
+      nodeSummary ||
+      String(meta.scriptPackage?.overallSummary || '').trim() ||
+      String(scriptText || '').trim().slice(0, 220)
+    );
   }
 
   private async assertProjectOwnership(userId: string, projectId: string) {

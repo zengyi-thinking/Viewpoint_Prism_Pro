@@ -17,6 +17,8 @@ import { PromptCompressionAgent } from './services/prompt-compression.agent';
 import { VideoPromptCompilerAgent } from './services/video-prompt-compiler.agent';
 import { QueueModule } from '../../infrastructure/queue/queue.module';
 import { WsModule } from '../../infrastructure/websocket/ws.module';
+import { SegmentVideoRenderService } from './services/segment-video-render.service';
+import { FinalVideoComposeService } from './services/final-video-compose.service';
 
 @Module({
   imports: [WsModule, QueueModule],
@@ -37,6 +39,8 @@ import { WsModule } from '../../infrastructure/websocket/ws.module';
     PromptCompressionAgent,
     VideoPromptCompilerAgent,
     CreationRenderService,
+    SegmentVideoRenderService,
+    FinalVideoComposeService,
   ],
   exports: [CreationService],
 })

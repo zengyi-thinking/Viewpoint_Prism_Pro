@@ -166,12 +166,17 @@ export class CreationRenderService {
     return { taskId: task.id, queueJobId: String(job.id) };
   }
 
-  async enqueueProjectStitch(params: { userId: string; projectId: string; flowProjectId: string }) {
+  async enqueueProjectStitch(params: {
+    userId: string;
+    projectId: string;
+    flowProjectId: string;
+    composeOptions?: Record<string, unknown>;
+  }) {
     const task = await this.prisma.taskRecord.create({
       data: {
         userId: params.userId,
         type: 'creation_stitch',
-        payload: { flowProjectId: params.flowProjectId },
+        payload: { flowProjectId: params.flowProjectId, composeOptions: params.composeOptions || {} } as any,
         status: 'PROCESSING',
         progress: 0,
         startedAt: new Date(),
@@ -192,6 +197,7 @@ export class CreationRenderService {
       projectId: params.projectId,
       format: 'mp4',
       taskRecordId: task.id,
+      composeOptions: params.composeOptions || {},
     });
 
     return { taskId: task.id, queueJobId: String(job.id) };

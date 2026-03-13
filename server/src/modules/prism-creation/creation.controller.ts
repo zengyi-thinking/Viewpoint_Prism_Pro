@@ -12,6 +12,7 @@ import {
   GenerateProductionPackageDto,
   GenerateScriptPlanDto,
   SelectIdeaPreviewDto,
+  StitchProjectDto,
   SelectNextNodeCandidateDto,
   UpdateScriptPlanChapterDto,
   UpdateCreationNodeDto,
@@ -194,8 +195,12 @@ export class CreationController {
   }
 
   @Post('projects/:flowProjectId/stitch')
-  stitchProject(@CurrentUser() userId: string, @Param('flowProjectId') flowProjectId: string) {
-    return this.creationService.stitchProject(userId, flowProjectId);
+  stitchProject(
+    @CurrentUser() userId: string,
+    @Param('flowProjectId') flowProjectId: string,
+    @Body() dto: StitchProjectDto,
+  ) {
+    return this.creationService.stitchProject(userId, flowProjectId, dto);
   }
 
   @Get('tasks/:taskId')

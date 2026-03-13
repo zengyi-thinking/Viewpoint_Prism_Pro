@@ -17,6 +17,13 @@ interface ExportJobData {
   projectId: string;
   format?: 'markdown' | 'zip' | 'mp4';
   taskRecordId?: string;
+  composeOptions?: {
+    narrationUrl?: string;
+    bgmUrl?: string;
+    includeVoiceover?: boolean;
+    includeBgm?: boolean;
+    voiceoverText?: string;
+  };
 }
 
 @Processor(QUEUE_NAMES.EXPORT)
@@ -48,7 +55,7 @@ export class ExportProcessor {
           exportResult = await this.exportKnowledgeAsset(assetId, userId, projectId, job);
           break;
         case 'creation':
-          exportResult = await this.exportCreationAsset(assetId, userId, projectId, job);
+          exportResult = await this.exportCreationAsset(assetId, userId, projectId, job, job.data.composeOptions);
           break;
         case 'translation':
           exportResult = await this.exportTranslationAsset(assetId, userId, projectId, job);
@@ -170,7 +177,13 @@ export class ExportProcessor {
     return { downloadUrl, format: 'zip' };
   }
 
-  private async exportCreationAsset(assetId: string, userId: string, projectId: string, job: Job) {
+  private async exportCreationAsset(
+    assetId: string,
+    userId: string,
+    projectId: string,
+    job: Job,
+    composeOptions?: ExportJobData['composeOptions'],
+  ) {
     await job.progress(20);
     this.emitProgress(userId, projectId, assetId, 'export', 20, 'Loading creation project...');
 
@@ -215,11 +228,13 @@ export class ExportProcessor {
     this.emitProgress(userId, projectId, assetId, 'export', 60, 'Rendering final video...');
 
     const outputPath = path.join(tempDir, 'final.mp4');
-    if (videoPaths.length === 1) {
-      await fs.copyFile(videoPaths[0], outputPath);
-    } else {
-      await this.ffmpegService.stitchVideos(videoPaths, outputPath);
-    }
+    const narrationPath = await this.downloadOptionalStorageAsset(composeOptions?.narrationUrl, tempDir, 'narration.mp3');
+    const bgmPath = await this.downloadOptionalStorageAsset(composeOptions?.bgmUrl, tempDir, 'bgm.mp3');
+
+    await this.ffmpegService.composeVideoSequence(videoPaths, outputPath, {
+      audioPath: narrationPath || undefined,
+      bgmPath: bgmPath || undefined,
+    });
 
     await job.progress(80);
     this.emitProgress(userId, projectId, assetId, 'export', 80, 'Uploading video...');
@@ -460,5 +475,21 @@ ${draft.ctaLine || ''}
       where: { id: flowProjectId },
       data: { stylePreset: meta as any },
     });
+  }
+
+  private async downloadOptionalStorageAsset(
+    url: string | undefined,
+    tempDir: string,
+    filename: string,
+  ) {
+    const value = String(url || '').trim();
+    if (!value) return null;
+
+    const buffer = await this.storageService.download(
+      this.storageService.resolveStorageKey(value),
+    );
+    const filePath = path.join(tempDir, filename);
+    await fs.writeFile(filePath, buffer);
+    return filePath;
   }
 }

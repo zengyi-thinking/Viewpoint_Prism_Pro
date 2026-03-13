@@ -7,6 +7,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const repoRoot = path.resolve(__dirname, '..', '..');
 const artifactsDir = path.resolve(repoRoot, 'artifacts');
+const phase3ResultPath = path.resolve(repoRoot, '__creation_phase3_render_e2e_result.json');
 
 const email = `creation-phase3-${Date.now()}@example.com`;
 const password = 'CreationE2E123!';
@@ -70,6 +71,24 @@ async function ensureAuth() {
   }
 }
 
+async function ensureAuthByEmail(targetEmail) {
+  try {
+    const loggedIn = await api('/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: targetEmail, password }),
+    });
+    return loggedIn.token;
+  } catch {
+    const registered = await api('/api/auth/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: targetEmail, password, name }),
+    });
+    return registered.token;
+  }
+}
+
 async function createProject(token) {
   return api('/api/projects', {
     method: 'POST',
@@ -80,6 +99,34 @@ async function createProject(token) {
       description: 'Creation Prism phase3 render e2e',
     }),
   });
+}
+
+function loadReusableRun() {
+  const envFlowProjectId = String(process.env.PHASE3_FLOW_PROJECT_ID || '').trim();
+  const envEmail = String(process.env.PHASE3_EMAIL || '').trim();
+  if (envFlowProjectId && envEmail) {
+    return {
+      flowProjectId: envFlowProjectId,
+      ownerEmail: envEmail,
+    };
+  }
+
+  if (!fs.existsSync(phase3ResultPath)) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(fs.readFileSync(phase3ResultPath, 'utf8'));
+    const flowProjectId = String(parsed.flowProjectId || '').trim();
+    const ownerEmail = String(parsed.ownerEmail || '').trim();
+    if (flowProjectId && ownerEmail) {
+      return { flowProjectId, ownerEmail };
+    }
+  } catch {
+    return null;
+  }
+
+  return null;
 }
 
 async function pollTask(token, taskId, timeoutMs = 900000) {
@@ -136,62 +183,80 @@ function buildDownloadCandidates(url) {
 }
 
 async function main() {
-  const token = await ensureAuth();
-  const project = await createProject(token);
-  log('project', project.id);
+  const reusable = loadReusableRun();
+  let token;
+  let flowProjectId;
+  let graph;
 
-  let graph = await api(`/api/prism/creation/projects/${project.id}/bootstrap`, {
-    method: 'POST',
-    token,
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({}),
-  });
+  if (reusable) {
+    token = await ensureAuthByEmail(reusable.ownerEmail);
+    flowProjectId = reusable.flowProjectId;
+    graph = await api(`/api/prism/creation/projects/${flowProjectId}/graph`, {
+      method: 'GET',
+      token,
+    });
+    log('reuse project', flowProjectId);
+  } else {
+    token = await ensureAuth();
+    const project = await createProject(token);
+    log('project', project.id);
 
-  const rounds = [
-    '我要做一个近未来海上能源站悬疑短片，女工程师沈岚在夜间发现系统日志出现异常，怀疑有人篡改了维护记录。',
-    '风格要求高质量、写实电影感、冷色光线、潮湿金属表面、海雾和红色警报灯，像流媒体悬疑剧。',
-    '篇幅控制成本，先用第一章做样片，每个片段保持短时长，但画面要稳，角色和场景要连续。',
-    '前半段文戏调查，后半段机械系统进入告警状态，通道逐步关闭，镜头里要有环境压迫感。',
-    '尽量输出适合 veo3.1-fast 的短视频提示词，不要过长，每个片段三秒左右就够。',
-  ];
-
-  for (const content of rounds) {
-    graph = await api(`/api/prism/creation/projects/${project.id}/conversation/messages`, {
+    graph = await api(`/api/prism/creation/projects/${project.id}/bootstrap`, {
       method: 'POST',
       token,
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ content }),
+      body: JSON.stringify({}),
+    });
+
+    const rounds = [
+      '我要做一个近未来海上能源站悬疑短片，女工程师沈岚在夜间发现系统日志出现异常，怀疑有人篡改了维护记录。',
+      '风格要求高质量、写实电影感、冷色光线、潮湿金属表面、海雾和红色警报灯，像流媒体悬疑剧。',
+      '篇幅控制成本，先用第一章做样片，每个片段保持短时长，但画面要稳，角色和场景要连续。',
+      '前半段文戏调查，后半段机械系统进入告警状态，通道逐步关闭，镜头里要有环境压迫感。',
+      '尽量输出适合 veo3.1-fast 的短视频提示词，不要过长，每个片段三秒左右就够。',
+    ];
+
+    for (const content of rounds) {
+      graph = await api(`/api/prism/creation/projects/${project.id}/conversation/messages`, {
+        method: 'POST',
+        token,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content }),
+      });
+    }
+
+    const conversation = graph.project.meta.conversationState;
+    const plan = await api(`/api/prism/creation/projects/${project.id}/script-plan`, {
+      method: 'POST',
+      token,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        scriptText: conversation.scriptDraft,
+        chaptersHint: conversation.chaptersHint,
+      }),
+    });
+
+    flowProjectId = plan.flowProjectId;
+    graph = await api(`/api/prism/creation/projects/${plan.flowProjectId}/production-package`, {
+      method: 'POST',
+      token,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ artStyle: conversation.summary.visualStyle }),
+    });
+
+    const firstChapter = graph.project.meta.scriptPlan.chapters[0];
+    graph = await api(`/api/prism/creation/projects/${plan.flowProjectId}/chapters/create`, {
+      method: 'POST',
+      token,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chapterIndex: firstChapter.index }),
     });
   }
 
-  const conversation = graph.project.meta.conversationState;
-  const plan = await api(`/api/prism/creation/projects/${project.id}/script-plan`, {
-    method: 'POST',
-    token,
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      scriptText: conversation.scriptDraft,
-      chaptersHint: conversation.chaptersHint,
-    }),
-  });
-
-  graph = await api(`/api/prism/creation/projects/${plan.flowProjectId}/production-package`, {
-    method: 'POST',
-    token,
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ artStyle: conversation.summary.visualStyle }),
-  });
-
-  const firstChapter = graph.project.meta.scriptPlan.chapters[0];
-  graph = await api(`/api/prism/creation/projects/${plan.flowProjectId}/chapters/create`, {
-    method: 'POST',
-    token,
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ chapterIndex: firstChapter.index }),
-  });
-
   assert(graph.nodes.length >= 1, 'chapter nodes should exist');
-  const nodesToRender = graph.nodes.slice(0, 1);
+  const nodesToRender = graph.nodes
+    .filter((item) => item.renderStatus !== 'COMPLETED')
+    .slice(0, 1);
 
   for (const node of nodesToRender) {
     log('generate image', node.id);
@@ -214,7 +279,7 @@ async function main() {
     renderResults.push(done);
   }
 
-  const stitchTask = await api(`/api/prism/creation/projects/${plan.flowProjectId}/stitch`, {
+  const stitchTask = await api(`/api/prism/creation/projects/${flowProjectId}/stitch`, {
     method: 'POST',
     token,
   });
@@ -226,8 +291,11 @@ async function main() {
   await downloadFile(stitched.result.downloadUrl, finalVideoPath);
 
   const clipPaths = [];
-  for (let i = 0; i < renderResults.length; i += 1) {
-    const videoUrl = renderResults[i]?.result?.videoUrl;
+  const clipUrls = renderResults.length
+    ? renderResults.map((item) => item.result?.videoUrl)
+    : graph.nodes.filter((item) => item.renderedVideoUrl).map((item) => item.renderedVideoUrl);
+  for (let i = 0; i < clipUrls.length; i += 1) {
+    const videoUrl = clipUrls[i];
     assert(videoUrl, `rendered clip ${i + 1} missing videoUrl`);
     const clipPath = path.resolve(artifactsDir, `creation-phase3-clip-${i + 1}-${timestamp}.mp4`);
     await downloadFile(videoUrl, clipPath);
@@ -237,9 +305,12 @@ async function main() {
   const result = {
     success: true,
     apiBase: API_BASE,
-    flowProjectId: plan.flowProjectId,
-    renderedNodeIds: nodesToRender.map((item) => item.id),
-    renderedClipUrls: renderResults.map((item) => item.result?.videoUrl),
+    flowProjectId,
+    ownerEmail: reusable?.ownerEmail || email,
+    renderedNodeIds: nodesToRender.length
+      ? nodesToRender.map((item) => item.id)
+      : graph.nodes.filter((item) => item.renderedVideoUrl).map((item) => item.id),
+    renderedClipUrls: clipUrls,
     stitchedUrl: stitched.result.downloadUrl,
     localFinalVideoPath: finalVideoPath,
     localClipPaths: clipPaths,
