@@ -28,6 +28,7 @@ import {
   GenerateNodeImageDto,
   GenerateProductionPackageDto,
   GenerateScriptPlanDto,
+  MergeCreationNodesDto,
   SelectIdeaPreviewDto,
   StitchProjectDto,
   SelectNextNodeCandidateDto,
@@ -43,6 +44,7 @@ interface CreationNodeMeta {
   continuityNotes?: string;
   characterAnchor?: CharacterAnchor;
   continuityLocked?: boolean;
+  mergedFromNodeIds?: string[];
 }
 
 interface CreationProjectMeta {
@@ -246,6 +248,7 @@ export class CreationService {
         lastFrameUrl: node.lastFrameUrl,
         renderedVideoUrl: node.renderedVideoUrl,
         renderStatus: node.renderStatus,
+        isMerged: Boolean(node.isMerged),
       })),
     };
   }
@@ -735,6 +738,106 @@ export class CreationService {
     return this.getGraph(userId, flowProjectId);
   }
 
+  async mergeNodes(userId: string, flowProjectId: string, dto: MergeCreationNodesDto) {
+    const flowProject = await this.assertProjectAccess(userId, flowProjectId);
+    const meta = this.getProjectMeta(flowProject.stylePreset);
+    const sourceNodeIds = Array.from(
+      new Set(dto.sourceNodeIds.map((item) => String(item || '').trim()).filter(Boolean)),
+    );
+
+    if (sourceNodeIds.length < 2) {
+      throw new NotFoundException('至少需要两个节点才能合并');
+    }
+
+    const sourceNodes = await this.prisma.flowNode.findMany({
+      where: {
+        flowProjectId,
+        id: { in: sourceNodeIds },
+      },
+      orderBy: { orderIndex: 'asc' },
+    });
+
+    if (sourceNodes.length !== sourceNodeIds.length) {
+      throw new NotFoundException('部分待合并节点不存在或不属于当前工程');
+    }
+
+    const primaryNode = sourceNodes[0];
+    const primaryMeta = this.getNodeMeta(meta, primaryNode.id);
+    const mergedTitle =
+      String(dto.title || '').trim() ||
+      `合并镜头：${sourceNodes.map((item) => item.branchName || `节点${item.orderIndex + 1}`).join(' + ')}`;
+    const mergedScript = sourceNodes
+      .map(
+        (item, index) =>
+          `${index + 1}. ${String(item.scriptSegment || item.branchName || `节点${item.orderIndex + 1}`).trim()}`,
+      )
+      .join('\n');
+    const visualDescription =
+      String(dto.instructions || '').trim() ||
+      `把以上多个分支镜头合并成一个新的收束镜头，保留人物锚点、场景色调和连续性，并自然衔接已有叙事。`;
+
+    const promptBundle = await this.promptDirector.compile(userId, {
+      projectIntent: flowProject.scriptText || '',
+      nodeTitle: mergedTitle,
+      scriptSegment: mergedScript,
+      visualDescription,
+      previousNodeTitle: primaryNode.branchName || '',
+      previousNodeSummary: primaryNode.scriptSegment || '',
+      previousNodeVisualPrompt:
+        primaryMeta.imagePromptCn ||
+        primaryMeta.displayPromptCn ||
+        '',
+      previousContinuityNotes: primaryMeta.continuityNotes || '',
+      previousCharacterAnchor: primaryMeta.characterAnchor,
+      previousContinuityLocked: true,
+    });
+
+    const nextOrder =
+      (
+        await this.prisma.flowNode.aggregate({
+          where: { flowProjectId: flowProject.id },
+          _max: { orderIndex: true },
+        })
+      )._max.orderIndex ?? 0;
+    const averageY = sourceNodes.reduce((sum, item) => sum + Number(item.positionY || 0), 0) / sourceNodes.length;
+    const maxX = Math.max(...sourceNodes.map((item) => Number(item.positionX || 0)));
+
+    const created = await this.prisma.flowNode.create({
+      data: {
+        flowProjectId: flowProject.id,
+        orderIndex: nextOrder + 1,
+        branchName: mergedTitle,
+        scriptSegment: mergedScript,
+        prompt: promptBundle.videoPromptModel || promptBundle.imagePromptModel,
+        positionX: maxX + 360,
+        positionY: Number.isFinite(averageY) ? averageY : primaryNode.positionY,
+        parentNodeId: primaryNode.id,
+        isMerged: true,
+      },
+    });
+
+    meta.nodesMeta = meta.nodesMeta || {};
+    meta.nodesMeta[created.id] = {
+      displayPromptCn: promptBundle.displayPromptCn,
+      imagePromptCn: promptBundle.imagePromptCn,
+      imagePromptModel: promptBundle.imagePromptModel,
+      videoPrompt: promptBundle.videoPromptModel,
+      continuityNotes: `${promptBundle.continuityNotes}\n合并来源：${sourceNodes
+        .map((item) => item.branchName || `节点${item.orderIndex + 1}`)
+        .join(' / ')}`.trim(),
+      characterAnchor: promptBundle.characterAnchor,
+      continuityLocked: true,
+      mergedFromNodeIds: sourceNodeIds,
+    };
+
+    await this.prisma.prismFlowProject.update({
+      where: { id: flowProject.id },
+      data: { stylePreset: meta as any },
+    });
+
+    return this.getGraph(userId, flowProject.id);
+  }
+
   async updateNode(userId: string, nodeId: string, dto: UpdateCreationNodeDto) {
     const node = await this.assertNodeAccess(userId, nodeId);
     const flowProject = await this.assertProjectAccess(userId, node.flowProjectId);
@@ -1161,6 +1264,7 @@ export class CreationService {
         continuityNotes: '',
         characterAnchor: this.normalizeCharacterAnchor(undefined),
         continuityLocked: false,
+        mergedFromNodeIds: [],
       };
     }
 
@@ -1173,6 +1277,9 @@ export class CreationService {
       continuityNotes: String(nodeMeta.continuityNotes || '').trim(),
       characterAnchor: this.normalizeCharacterAnchor(nodeMeta.characterAnchor),
       continuityLocked: Boolean(nodeMeta.continuityLocked),
+      mergedFromNodeIds: Array.isArray(nodeMeta.mergedFromNodeIds)
+        ? nodeMeta.mergedFromNodeIds.map((item) => String(item || '').trim()).filter(Boolean)
+        : [],
     };
   }
 

@@ -11,6 +11,7 @@ import {
   GenerateNodeImageDto,
   GenerateProductionPackageDto,
   GenerateScriptPlanDto,
+  MergeCreationNodesDto,
   SelectIdeaPreviewDto,
   StitchProjectDto,
   SelectNextNodeCandidateDto,
@@ -141,6 +142,15 @@ export class CreationController {
     @Body() dto: CreateChapterNodesDto,
   ) {
     return this.creationService.createChapterNodes(userId, flowProjectId, dto);
+  }
+
+  @Post('projects/:flowProjectId/nodes/merge')
+  mergeNodes(
+    @CurrentUser() userId: string,
+    @Param('flowProjectId') flowProjectId: string,
+    @Body() dto: MergeCreationNodesDto,
+  ) {
+    return this.creationService.mergeNodes(userId, flowProjectId, dto);
   }
 
   @Patch('nodes/:nodeId')

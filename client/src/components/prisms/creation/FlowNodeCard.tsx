@@ -19,6 +19,7 @@ export interface FlowNodeData extends Record<string, unknown> {
   imageUrl?: string | null;
   videoUrl?: string | null;
   renderStatus: string;
+  isMerged?: boolean;
   isGeneratingImage?: boolean;
   isRenderingVideo?: boolean;
   isGeneratingNext?: boolean;
@@ -207,9 +208,16 @@ function FlowNodeCardComponent({ data, selected }: NodeProps<any>) {
       </button>
 
       <div className="mt-3 flex items-center justify-between gap-2">
-        <span className="rounded-full border border-border-subtle px-2 py-1 text-[10px] text-text-tertiary">
-          {isRootNode ? '起始节点' : '承接上一镜'}
-        </span>
+        <div className="flex items-center gap-2">
+          <span className="rounded-full border border-border-subtle px-2 py-1 text-[10px] text-text-tertiary">
+            {isRootNode ? '起始节点' : '承接上一镜'}
+          </span>
+          {data.isMerged ? (
+            <span className="rounded-full border border-[#E91E8C]/30 bg-[rgba(233,30,140,0.08)] px-2 py-1 text-[10px] text-[#E91E8C]">
+              合并节点
+            </span>
+          ) : null}
+        </div>
         <span className="rounded-full border border-border-subtle px-2 py-1 text-[10px] text-text-secondary">
           {data.renderStatus}
         </span>

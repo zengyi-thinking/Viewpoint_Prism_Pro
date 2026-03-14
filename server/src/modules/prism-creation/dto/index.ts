@@ -1,5 +1,5 @@
 import { Type } from 'class-transformer';
-import { IsBoolean, IsInt, IsNotEmpty, IsNumber, IsOptional, IsString, Max, Min } from 'class-validator';
+import { ArrayMinSize, IsArray, IsBoolean, IsInt, IsNotEmpty, IsNumber, IsOptional, IsString, Max, Min } from 'class-validator';
 
 export class BootstrapCreationProjectDto {
   @IsOptional()
@@ -208,4 +208,19 @@ export class StitchProjectDto {
   @IsOptional()
   @IsString()
   voiceoverText?: string;
+}
+
+export class MergeCreationNodesDto {
+  @IsArray()
+  @ArrayMinSize(2)
+  @IsString({ each: true })
+  sourceNodeIds!: string[];
+
+  @IsOptional()
+  @IsString()
+  title?: string;
+
+  @IsOptional()
+  @IsString()
+  instructions?: string;
 }

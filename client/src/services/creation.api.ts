@@ -28,6 +28,8 @@ export interface CreationGraphNode {
   lastFrameUrl?: string | null;
   renderedVideoUrl?: string | null;
   renderStatus: 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED';
+  isMerged?: boolean;
+  mergedFromNodeIds?: string[];
 }
 
 export interface IdeaPreviewOption {
@@ -158,6 +160,21 @@ export interface CreationGraphResponse {
       sceneAssets: SceneAsset[];
       storyboardSegments: StoryboardSegment[];
       voiceCasting: VoiceCasting[];
+      renderTasks?: Array<{
+        taskId: string;
+        type: 'node_render' | 'project_stitch';
+        nodeId?: string;
+        status: string;
+        createdAt: string;
+        videoUrl?: string;
+        error?: string;
+      }>;
+      finalVideo?: {
+        taskId: string;
+        status: string;
+        downloadUrl?: string;
+        updatedAt: string;
+      } | null;
     };
   };
   nodes: CreationGraphNode[];
@@ -221,6 +238,17 @@ export const creationApi = {
     return apiFetch<CreationGraphResponse>(`/api/prism/creation/projects/${flowProjectId}/chapters/create`, {
       method: 'POST',
       body: JSON.stringify({ chapterIndex }),
+    });
+  },
+
+  mergeNodes(flowProjectId: string, payload: {
+    sourceNodeIds: string[];
+    title?: string;
+    instructions?: string;
+  }) {
+    return apiFetch<CreationGraphResponse>(`/api/prism/creation/projects/${flowProjectId}/nodes/merge`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
     });
   },
 
@@ -312,5 +340,11 @@ export const creationApi = {
 
   getTask(taskId: string) {
     return apiFetch<any>(`/api/prism/creation/tasks/${taskId}`);
+  },
+
+  retryTask(taskId: string) {
+    return apiFetch<{ taskId: string; queueJobId?: string }>(`/api/prism/creation/tasks/${taskId}/retry`, {
+      method: 'POST',
+    });
   },
 };

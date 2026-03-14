@@ -1,6 +1,6 @@
 # 创作棱镜重构清单与实现清单
 
-更新时间：2026-03-13
+更新时间：2026-03-14
 
 本文档用于作为创作棱镜重构执行单。规则如下：
 
@@ -168,9 +168,9 @@
 
 ## 3. 当前未通过或待验证项
 
-- [ ] 完成新中转站多模态真实图片输入验证
+- ~~完成新中转站多模态真实图片输入验证~~
 说明：
-当前对 `gemini-2.5-flash` 的图片输入测试拿到了 200 响应，但服务端没有真正识别到图像内容；对 `gpt-4o` 的远程图像 URL 测试则返回图片不可访问；因此“多模态模型可真正吃图”这一点还不能算通过。
+2026-03-14 已使用本地图片 [product_picture.png](D:/DevProject/Viewpoint_Prism_Pro/product_picture.png) 通过 `gemini-2.5-flash` 实测，脚本为 [test-creation-multimodal.mjs](D:/DevProject/Viewpoint_Prism_Pro/server/scripts/test-creation-multimodal.mjs)，返回内容已准确描述“棱锥、多媒体界面、科技感”。
 
 - ~~完成新中转站图片生成接口验证~~
 - ~~完成新中转站视频生成接口验证~~
@@ -221,7 +221,7 @@
   - 当前剧本版本
   - 当前章节版本
   - 进入生产按钮
-- [ ] 将 React Flow 画布降级为“高级编辑模式”
+- ~~将 React Flow 画布降级为“高级编辑模式”~~
 
 ## 4.3 创作服务层
 
@@ -302,11 +302,11 @@
 
 - ~~片段视频任务入队~~
 - ~~片段视频渲染~~
-- [ ] 失败重试
+- ~~失败重试~~
 - ~~渲染结果写回工程~~
 - ~~测试：~~
   - ~~单章节至少能生成一个视频片段~~
-  - [ ] 多片段能独立完成
+  - ~~多片段能独立完成~~
 
 ## Phase 4：成片拼接
 
@@ -320,11 +320,11 @@
 
 ## Phase 5：高级编辑回挂
 
-- [ ] 恢复高级节点画布
-- [ ] 支持局部改 prompt
-- [ ] 支持局部重生图
-- [ ] 支持局部重生视频
-- [ ] 支持分支与合并
+- ~~恢复高级节点画布~~
+- ~~支持局部改 prompt~~
+- ~~支持局部重生图~~
+- ~~支持局部重生视频~~
+- ~~支持分支与合并~~
 
 ---
 
@@ -377,3 +377,6 @@
 5. 2026-03-13 已完成 Phase 2 真实联调：`npm run test:creation:production:e2e --workspace=server` 已验证场景规划、角色/场景资产、分镜片段、音色映射、压缩提示词，以及角色图/场景图/分镜图的样例生成都能在新的中转商链路下通过。
 6. 2026-03-13 已完成 Phase 3 单片段真实联调：`npm run test:creation:phase3:e2e --workspace=server` 已验证单章节样片可在新中转商链路下完成“生图 -> 视频渲染 -> 导出成片 -> 本地保存 mp4”。结果文件为 [__creation_phase3_render_e2e_result.json](D:/DevProject/Viewpoint_Prism_Pro/__creation_phase3_render_e2e_result.json)，本地样片为 [creation-phase3-final-1773413754318.mp4](D:/DevProject/Viewpoint_Prism_Pro/artifacts/creation-phase3-final-1773413754318.mp4) 与 [creation-phase3-clip-1-1773413754318.mp4](D:/DevProject/Viewpoint_Prism_Pro/artifacts/creation-phase3-clip-1-1773413754318.mp4)。
 7. 2026-03-13 已完成 Phase 4 真实联调：`npm run test:creation:phase4:e2e --workspace=server` 已验证章节顺序拼接、低成本旁白混入、BGM 混入、成片导出，以及导出后重新读取工程图数据。结果文件为 [__creation_phase4_compose_e2e_result.json](D:/DevProject/Viewpoint_Prism_Pro/__creation_phase4_compose_e2e_result.json)，本地成片为 [creation-phase4-final-1773424871228.mp4](D:/DevProject/Viewpoint_Prism_Pro/artifacts/creation-phase4-final-1773424871228.mp4)。
+8. 2026-03-14 已完成失败重试真实联调：`npm run test:creation:retry:e2e --workspace=server` 已验证故意破坏成片导出输入后，任务失败并可通过 `/tasks/:taskId/retry` 成功重试。结果文件为 [__creation_retry_e2e_result.json](D:/DevProject/Viewpoint_Prism_Pro/__creation_retry_e2e_result.json)。
+9. 2026-03-14 已完成多片段拼接真实联调：`npm run test:creation:multisegment:e2e --workspace=server` 已验证同一工程下至少两个片段可被识别并完成成片导出。当前由于中转商余额不足以继续提交新的 `video_gen`，该联调使用 Phase 3 已验证通过的短片样片回填到第二节点，用于验证“多片段独立片段进入成片拼接链路”的工程能力。结果文件为 [__creation_multisegment_e2e_result.json](D:/DevProject/Viewpoint_Prism_Pro/__creation_multisegment_e2e_result.json)。
+10. 2026-03-14 已完成 Phase 5 高级编辑回挂：前端已支持高级编辑模式切换、局部修改 prompt 并保存、对单节点局部重生图片/视频、失败任务重试，以及多选节点合并。核心文件为 [CreationCanvas.tsx](D:/DevProject/Viewpoint_Prism_Pro/client/src/components/prisms/creation/CreationCanvas.tsx)、[FlowNodeCard.tsx](D:/DevProject/Viewpoint_Prism_Pro/client/src/components/prisms/creation/FlowNodeCard.tsx)、[creation.service.ts](D:/DevProject/Viewpoint_Prism_Pro/server/src/modules/prism-creation/creation.service.ts)。

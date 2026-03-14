@@ -72,6 +72,7 @@ function toFlowNodes(
       continuityNotes: node.continuityNotes,
       characterAnchor: node.characterAnchor,
       continuityLocked: node.continuityLocked,
+      isMerged: node.isMerged,
       parentTitle: node.parentNodeId ? nodeMap.get(node.parentNodeId)?.title || null : null,
       parentImageUrl: node.parentNodeId
         ? nodeMap.get(node.parentNodeId)?.lastFrameUrl || nodeMap.get(node.parentNodeId)?.firstFrameUrl || null
@@ -146,6 +147,11 @@ export function CreationCanvas({ projectId }: { projectId?: string }) {
   const [videoLoadingNodeId, setVideoLoadingNodeId] = useState<string | null>(null);
   const [nextLoadingNodeId, setNextLoadingNodeId] = useState<string | null>(null);
   const [conversationInput, setConversationInput] = useState('');
+  const [editorMode, setEditorMode] = useState<'director' | 'advanced'>('director');
+  const [selectedNodeIds, setSelectedNodeIds] = useState<string[]>([]);
+  const [mergeTitle, setMergeTitle] = useState('');
+  const [mergeInstructions, setMergeInstructions] = useState('');
+  const [retryingTaskId, setRetryingTaskId] = useState<string | null>(null);
 
   const loadGraph = useCallback(
     async (flowProjectId: string) => {
@@ -211,6 +217,14 @@ export function CreationCanvas({ projectId }: { projectId?: string }) {
     () => graph?.nodes.find((node) => node.id === selectedNodeId) || null,
     [graph?.nodes, selectedNodeId],
   );
+  const selectedNodes = useMemo(
+    () => (graph?.nodes || []).filter((node) => selectedNodeIds.includes(node.id)),
+    [graph?.nodes, selectedNodeIds],
+  );
+  const failedTasks = useMemo(
+    () => (graph?.project.meta.renderTasks || []).filter((task) => task.status === 'FAILED'),
+    [graph?.project.meta.renderTasks],
+  );
 
   const flowNodes = useMemo(
     () =>
@@ -219,9 +233,13 @@ export function CreationCanvas({ projectId }: { projectId?: string }) {
         videoLoadingNodeId,
         nextLoadingNodeId,
       }, {
-        onSelect: setSelectedNodeId,
+        onSelect: (nodeId) => {
+          setSelectedNodeId(nodeId);
+          setSelectedNodeIds([nodeId]);
+        },
         onGenerateImage: (nodeId) => {
           setSelectedNodeId(nodeId);
+          setSelectedNodeIds([nodeId]);
           setImageLoadingNodeId(nodeId);
           void creationApi.generateNodeImage(nodeId).then(async () => {
             if (graph?.project.id) await loadGraph(graph.project.id);
@@ -233,6 +251,7 @@ export function CreationCanvas({ projectId }: { projectId?: string }) {
         },
         onRenderVideo: (nodeId) => {
           setSelectedNodeId(nodeId);
+          setSelectedNodeIds([nodeId]);
           setVideoLoadingNodeId(nodeId);
           void creationApi.renderNodeVideo(nodeId).then(async () => {
             if (graph?.project.id) await loadGraph(graph.project.id);
@@ -243,6 +262,7 @@ export function CreationCanvas({ projectId }: { projectId?: string }) {
         },
         onGenerateNext: (nodeId) => {
           setSelectedNodeId(nodeId);
+          setSelectedNodeIds([nodeId]);
           setNextCandidates([]);
           void handleGenerateNextCandidates(nodeId);
         },
@@ -287,6 +307,11 @@ export function CreationCanvas({ projectId }: { projectId?: string }) {
       };
     });
   };
+
+  useEffect(() => {
+    if (!selectedNodeId) return;
+    setSelectedNodeIds((prev) => (prev.length <= 1 ? [selectedNodeId] : prev));
+  }, [selectedNodeId]);
 
   const handleDeleteNode = async (nodeId: string) => {
     const targetNode = graph?.nodes.find((node) => node.id === nodeId);
@@ -585,6 +610,46 @@ export function CreationCanvas({ projectId }: { projectId?: string }) {
     }
   };
 
+  const handleRetryTask = async (taskId: string) => {
+    if (!graph?.project.id) return;
+    setRetryingTaskId(taskId);
+    setBusyText('正在重试失败任务');
+    setError(null);
+    try {
+      await creationApi.retryTask(taskId);
+      await loadGraph(graph.project.id);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '重试任务失败');
+    } finally {
+      setRetryingTaskId(null);
+      setBusyText('');
+    }
+  };
+
+  const handleMergeNodes = async () => {
+    if (!graph?.project.id || selectedNodeIds.length < 2) return;
+    setBusyText('正在合并多个节点');
+    setError(null);
+    try {
+      const result = await creationApi.mergeNodes(graph.project.id, {
+        sourceNodeIds: selectedNodeIds,
+        title: mergeTitle.trim() || undefined,
+        instructions: mergeInstructions.trim() || undefined,
+      });
+      const normalized = normalizeGraph(result);
+      setGraph(normalized);
+      const mergedNode = normalized.nodes[normalized.nodes.length - 1];
+      setSelectedNodeId(mergedNode?.id || null);
+      setSelectedNodeIds(mergedNode?.id ? [mergedNode.id] : []);
+      setMergeTitle('');
+      setMergeInstructions('');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '合并节点失败');
+    } finally {
+      setBusyText('');
+    }
+  };
+
   const handleSendConversation = () => {
     const trimmed = conversationInput.trim();
     if (!trimmed) return;
@@ -722,9 +787,17 @@ export function CreationCanvas({ projectId }: { projectId?: string }) {
     <div className="isolate flex h-full min-h-0 w-full overflow-hidden rounded-[16px] bg-bg-panel-secondary">
       <aside className="relative z-20 flex w-[430px] shrink-0 flex-col border-r border-border-subtle bg-bg-panel pointer-events-auto" onPointerDownCapture={(e) => e.stopPropagation()} onMouseDownCapture={(e) => e.stopPropagation()}> 
         <div className="border-b border-border-subtle px-5 py-4">
-          <div>
-            <div className="text-xs uppercase tracking-[0.22em] text-text-tertiary">Creation Prism</div>
-            <h2 className="mt-1 text-[22px] font-semibold text-text-primary">创作棱镜</h2>
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <div className="text-xs uppercase tracking-[0.22em] text-text-tertiary">Creation Prism</div>
+              <h2 className="mt-1 text-[22px] font-semibold text-text-primary">创作棱镜</h2>
+            </div>
+            <button
+              onClick={() => setEditorMode((prev) => (prev === 'director' ? 'advanced' : 'director'))}
+              className="rounded-lg border border-border-subtle px-3 py-1.5 text-[11px] text-text-secondary"
+            >
+              {editorMode === 'advanced' ? '退出高级编辑' : '进入高级编辑'}
+            </button>
           </div>
           <p className="mt-3 text-xs leading-6 text-text-tertiary">
             左侧已切成对话式导演台。先通过持续对话归纳故事、风格和拆分偏好，再把结果送入故事方向、章节规划和后续视频生产链路。
@@ -757,6 +830,42 @@ export function CreationCanvas({ projectId }: { projectId?: string }) {
             onGenerateProductionPackage={() => void handleGenerateProductionPackage()}
             onEnterProduction={() => void handleEnterProduction()}
           />
+
+          {editorMode === 'advanced' ? (
+            <SectionCard
+              title="高级编辑模式"
+              description="支持任务重试、合并节点、局部重生和直接拖拽编辑。框选两个以上节点后，可以创建一个新的合并节点。"
+            >
+              <div className="space-y-3">
+                <div className="rounded-[16px] border border-border-subtle bg-bg-panel-secondary p-3 text-xs leading-6 text-text-secondary">
+                  当前已选中 {selectedNodeIds.length} 个节点
+                  {selectedNodes.length
+                    ? `：${selectedNodes.map((node) => node.title || `节点${node.orderIndex + 1}`).join(' / ')}`
+                    : '。'}
+                </div>
+                <input
+                  value={mergeTitle}
+                  onChange={(e) => setMergeTitle(e.target.value)}
+                  className="input w-full"
+                  placeholder="合并后节点标题，可留空自动生成"
+                />
+                <textarea
+                  value={mergeInstructions}
+                  onChange={(e) => setMergeInstructions(e.target.value)}
+                  rows={3}
+                  className="input w-full resize-none"
+                  placeholder="描述如何合并这些镜头，例如：把两个支线在警报灯闪烁中收束到主角重新汇合。"
+                />
+                <button
+                  onClick={() => void handleMergeNodes()}
+                  disabled={selectedNodeIds.length < 2}
+                  className="rounded-xl border border-border-subtle px-3 py-2 text-xs text-text-secondary disabled:opacity-40"
+                >
+                  将选中节点合并成新节点
+                </button>
+              </div>
+            </SectionCard>
+          ) : null}
 
           <SectionCard
             title="节点导演台"
@@ -967,6 +1076,79 @@ export function CreationCanvas({ projectId }: { projectId?: string }) {
               </div>
             )}
           </SectionCard>
+
+          {editorMode === 'advanced' ? (
+            <SectionCard
+              title="任务与导出"
+              description="这里会显示当前工程的渲染任务和成片状态。失败任务可以直接重试。"
+            >
+              <div className="space-y-3">
+                {graph?.project.meta.finalVideo ? (
+                  <div className="rounded-[16px] border border-border-subtle bg-bg-panel-secondary p-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <div className="text-sm font-medium text-text-primary">最终成片</div>
+                        <div className="mt-1 text-[11px] text-text-tertiary">
+                          状态：{graph.project.meta.finalVideo.status}
+                        </div>
+                      </div>
+                      {graph.project.meta.finalVideo.downloadUrl ? (
+                        <a
+                          href={graph.project.meta.finalVideo.downloadUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="rounded-lg bg-[#111827] px-3 py-1.5 text-[11px] text-white"
+                        >
+                          打开成片
+                        </a>
+                      ) : null}
+                    </div>
+                  </div>
+                ) : null}
+
+                {(graph?.project.meta.renderTasks || []).length ? (
+                  <div className="space-y-2">
+                    {(graph?.project.meta.renderTasks || []).slice(0, 8).map((task) => (
+                      <div key={task.taskId} className="rounded-[16px] border border-border-subtle bg-bg-panel-secondary p-3">
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <div className="text-sm font-medium text-text-primary">
+                              {task.type === 'project_stitch' ? '成片导出任务' : `节点渲染任务 ${task.nodeId ? `#${task.nodeId.slice(-6)}` : ''}`}
+                            </div>
+                            <div className="mt-1 text-[11px] text-text-tertiary">
+                              {task.status} · {new Date(task.createdAt).toLocaleString()}
+                            </div>
+                            {task.error ? (
+                              <div className="mt-1 text-[11px] leading-5 text-[#EF4444]">{task.error}</div>
+                            ) : null}
+                          </div>
+                          {task.status === 'FAILED' ? (
+                            <button
+                              onClick={() => void handleRetryTask(task.taskId)}
+                              disabled={retryingTaskId === task.taskId}
+                              className="rounded-lg border border-border-subtle px-3 py-1.5 text-[11px] text-text-secondary disabled:opacity-40"
+                            >
+                              {retryingTaskId === task.taskId ? '重试中' : '重试'}
+                            </button>
+                          ) : null}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="rounded-[16px] border border-dashed border-border-subtle px-4 py-5 text-center text-xs text-text-tertiary">
+                    当前还没有渲染任务记录。
+                  </div>
+                )}
+
+                {failedTasks.length ? (
+                  <div className="rounded-[16px] border border-[#EF4444]/20 bg-[rgba(239,68,68,0.06)] px-3 py-3 text-[11px] leading-5 text-[#EF4444]">
+                    当前有 {failedTasks.length} 个失败任务，已经支持在这里直接重试。
+                  </div>
+                ) : null}
+              </div>
+            </SectionCard>
+          ) : null}
         </div>
       </aside>
 
@@ -1016,6 +1198,13 @@ export function CreationCanvas({ projectId }: { projectId?: string }) {
               fitView
               defaultViewport={{ x: 0, y: 0, zoom: 0.78 }}
               onNodeDragStop={handleNodeDragStop}
+              onSelectionChange={({ nodes }) => {
+                const ids = nodes.map((item) => item.id);
+                setSelectedNodeIds(ids);
+                if (ids.length === 1) {
+                  setSelectedNodeId(ids[0]);
+                }
+              }}
             >
               <MiniMap pannable zoomable nodeColor="#E91E8C" />
               <Controls />
