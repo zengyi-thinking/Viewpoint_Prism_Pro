@@ -30,6 +30,7 @@ export interface CreationGraphNode {
   renderStatus: 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED';
   isMerged?: boolean;
   mergedFromNodeIds?: string[];
+  sourceSegmentId?: string;
 }
 
 export interface IdeaPreviewOption {
@@ -180,22 +181,76 @@ export interface CreationGraphResponse {
   nodes: CreationGraphNode[];
 }
 
+export interface CreationSessionSummary {
+  id: string;
+  name: string;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+  videoId: string | null;
+  hasNodes: boolean;
+  lastSummary: string;
+}
+
 export const creationApi = {
-  bootstrap(projectId: string, backgroundVideoId?: string) {
+  bootstrap(projectId: string, backgroundVideoId?: string, flowProjectId?: string) {
     return apiFetch<CreationGraphResponse>(`/api/prism/creation/projects/${projectId}/bootstrap`, {
       method: 'POST',
-      body: JSON.stringify(backgroundVideoId ? { backgroundVideoId } : {}),
+      body: JSON.stringify({
+        ...(backgroundVideoId ? { backgroundVideoId } : {}),
+        ...(flowProjectId ? { flowProjectId } : {}),
+      }),
     });
+  },
+
+  listSessions(projectId: string) {
+    return apiFetch<CreationSessionSummary[]>(`/api/prism/creation/projects/${projectId}/sessions`);
+  },
+
+  createSession(projectId: string, payload?: { name?: string; backgroundVideoId?: string }) {
+    return apiFetch<CreationGraphResponse>(`/api/prism/creation/projects/${projectId}/sessions`, {
+      method: 'POST',
+      body: JSON.stringify(payload || {}),
+    });
+  },
+
+  renameSession(flowProjectId: string, payload: { name: string }) {
+    return apiFetch<CreationGraphResponse>(`/api/prism/creation/projects/${flowProjectId}/session`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    });
+  },
+
+  deleteSession(flowProjectId: string) {
+    return apiFetch<{ deleted: boolean; sessions: CreationSessionSummary[] }>(
+      `/api/prism/creation/projects/${flowProjectId}/session`,
+      {
+        method: 'DELETE',
+      },
+    );
   },
 
   getGraph(flowProjectId: string) {
     return apiFetch<CreationGraphResponse>(`/api/prism/creation/projects/${flowProjectId}/graph`);
   },
 
-  appendConversationMessage(projectId: string, payload: { content: string; backgroundVideoId?: string }) {
+  appendConversationMessage(
+    projectId: string,
+    payload: { content: string; backgroundVideoId?: string; flowProjectId?: string },
+  ) {
     return apiFetch<CreationGraphResponse>(`/api/prism/creation/projects/${projectId}/conversation/messages`, {
       method: 'POST',
       body: JSON.stringify(payload),
+    });
+  },
+
+  confirmConversationWorkflow(
+    flowProjectId: string,
+    payload?: { previewChapterIndex?: number; previewImageCount?: number },
+  ) {
+    return apiFetch<CreationGraphResponse>(`/api/prism/creation/projects/${flowProjectId}/conversation/confirm`, {
+      method: 'POST',
+      body: JSON.stringify(payload || {}),
     });
   },
 
@@ -205,15 +260,19 @@ export const creationApi = {
     });
   },
 
-  generateIdeaPreviews(projectId: string, payload: {
-    idea: string;
-    conflict?: string;
-    setting?: string;
-    visualGoal?: string;
-    constraints?: string;
-    count?: number;
-    backgroundVideoId?: string;
-  }) {
+  generateIdeaPreviews(
+    projectId: string,
+    payload: {
+      flowProjectId?: string;
+      idea: string;
+      conflict?: string;
+      setting?: string;
+      visualGoal?: string;
+      constraints?: string;
+      count?: number;
+      backgroundVideoId?: string;
+    },
+  ) {
     return apiFetch<{ flowProjectId: string; previews: IdeaPreviewOption[] }>(`/api/prism/creation/projects/${projectId}/idea-previews`, {
       method: 'POST',
       body: JSON.stringify(payload),
@@ -227,7 +286,10 @@ export const creationApi = {
     });
   },
 
-  generateScriptPlan(projectId: string, payload: { scriptText: string; chaptersHint?: number; backgroundVideoId?: string }) {
+  generateScriptPlan(
+    projectId: string,
+    payload: { flowProjectId?: string; scriptText: string; chaptersHint?: number; backgroundVideoId?: string },
+  ) {
     return apiFetch<{ flowProjectId: string; scriptPlan: { summary: string; chapters: ScriptPlanChapter[] } }>(`/api/prism/creation/projects/${projectId}/script-plan`, {
       method: 'POST',
       body: JSON.stringify(payload),
@@ -282,6 +344,25 @@ export const creationApi = {
       {
         method: 'PATCH',
         body: JSON.stringify(payload),
+      },
+    );
+  },
+
+  adjustDraft(
+    flowProjectId: string,
+    payload: { targetType: 'preview' | 'chapter'; targetId: string; instruction: string },
+  ) {
+    return apiFetch<CreationGraphResponse>(`/api/prism/creation/projects/${flowProjectId}/drafts/adjust`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
+
+  confirmSegmentPreview(flowProjectId: string, segmentId: string) {
+    return apiFetch<{ nodeId: string; segmentId: string; renderTask: { taskId: string; queueJobId: string }; graph: CreationGraphResponse }>(
+      `/api/prism/creation/projects/${flowProjectId}/segments/${segmentId}/confirm`,
+      {
+        method: 'POST',
       },
     );
   },

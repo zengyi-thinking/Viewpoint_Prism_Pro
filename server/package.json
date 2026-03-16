@@ -21,6 +21,7 @@
     "test:e2e": "jest --config ./test/jest-e2e.json",
     "test:creation:v2:e2e": "node ./test/test-creation-v2-e2e.mjs",
     "test:creation:conversation:e2e": "node ./test/test-creation-conversation-e2e.mjs",
+    "test:creation:sessions:e2e": "node ./test/test-creation-sessions-e2e.mjs",
     "test:creation:production:e2e": "node ./test/test-creation-production-package-e2e.mjs",
     "test:creation:phase3:e2e": "node ./test/test-creation-phase3-render-e2e.mjs",
     "test:creation:multisegment:e2e": "node ./test/test-creation-multisegment-e2e.mjs",

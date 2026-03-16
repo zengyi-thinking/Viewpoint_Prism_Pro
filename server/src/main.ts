@@ -1,8 +1,15 @@
+import * as path from 'node:path';
+import * as dotenv from 'dotenv';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { GlobalValidationPipe } from './common/pipes/validation.pipe';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { ResponseInterceptor } from './common/interceptors/response.interceptor';
+
+dotenv.config({
+  path: path.resolve(__dirname, '../../.env'),
+  override: true,
+});
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -13,7 +20,7 @@ async function bootstrap() {
   app.useGlobalInterceptors(new ResponseInterceptor());
 
   const host = process.env.HOST || '0.0.0.0';
-  const port = Number(process.env.PORT || 7860);
+  const port = Number(process.env.PORT || 7871);
 
   try {
     await app.listen(port, host);

@@ -1,6 +1,7 @@
 'use client';
 
 import * as React from 'react';
+import { cn } from '@/lib/utils';
 
 export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: 'default' | 'outline' | 'ghost' | 'accent';
@@ -8,30 +9,33 @@ export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElemen
 }
 
 export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
-  ({ className = '', variant = 'default', size = 'default', ...props }, ref) => {
-    const baseClasses = 'inline-flex items-center justify-center rounded-lg font-medium transition-all duration-[var(--transition-base)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[var(--accent-primary)] disabled:pointer-events-none disabled:opacity-50';
-
+  ({ className, variant = 'default', size = 'default', ...props }, ref) => {
     const variantClasses = {
-      default: 'bg-[var(--bg-panel-secondary)] text-[var(--text-primary)] border border-[var(--border)] hover:bg-[var(--bg-panel-tertiary)] hover:border-[var(--border)] active:scale-[0.98] shadow-[var(--shadow-xs)]',
-      outline: 'border border-[var(--border)] bg-transparent text-[var(--text-primary)] hover:bg-[var(--bg-panel-secondary)] hover:border-[var(--accent-primary)] active:scale-[0.98]',
-      ghost: 'bg-transparent text-[var(--text-primary)] hover:bg-[var(--bg-panel-secondary)] active:bg-[var(--bg-panel-tertiary)]',
-      accent: 'bg-[var(--accent-primary)] text-[var(--text-inverse)] hover:bg-[var(--accent-hover)] active:scale-[0.98] shadow-[var(--shadow-sm)]',
+      default: 'border border-stroke-default bg-surface text-text-primary hover:border-stroke-strong hover:bg-bg-panel-secondary',
+      outline: 'border border-stroke-default bg-transparent text-text-primary hover:border-stroke-strong hover:bg-bg-panel-secondary/70',
+      ghost: 'border border-transparent bg-transparent text-text-secondary hover:text-text-primary hover:bg-bg-panel-secondary/70',
+      accent: 'border border-transparent bg-[linear-gradient(135deg,var(--accent-strong),var(--accent-primary))] text-white shadow-[0_18px_40px_rgba(255,77,141,0.18)] hover:opacity-95',
     };
 
     const sizeClasses = {
-      default: 'h-9 px-3 py-1.5 text-[13px]',
-      sm: 'h-7 px-2.5 py-1 text-[12px]',
-      lg: 'h-11 px-5 py-2.5 text-[14px]',
+      default: 'h-10 px-4 text-sm',
+      sm: 'h-8 px-3 text-xs',
+      lg: 'h-12 px-5 text-sm',
     };
 
     return (
       <button
-        className={`${baseClasses} ${variantClasses[variant]} ${sizeClasses[size]} ${className}`}
         ref={ref}
+        className={cn(
+          'inline-flex items-center justify-center gap-2 rounded-full font-medium transition duration-[var(--transition-fast)] disabled:pointer-events-none disabled:opacity-50',
+          variantClasses[variant],
+          sizeClasses[size],
+          className,
+        )}
         {...props}
       />
     );
-  }
+  },
 );
 
 Button.displayName = 'Button';

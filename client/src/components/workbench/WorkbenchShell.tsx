@@ -1,29 +1,29 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import Link from 'next/link';
+import { projectApi } from '@/services/project.api';
+import { ThemeSelector } from '@/components/theme';
+import { PrismSwitcher } from './PrismSwitcher';
 import { VideoSourcePanel } from './VideoSourcePanel';
 import { PlayerCenter } from './PlayerCenter';
 import { ChatDock } from './ChatDock';
-import { PrismSwitcher } from './PrismSwitcher';
-import { ThemeSelector } from '@/components/theme';
-import Link from 'next/link';
 import { useWorkbenchStore } from '@/stores/workbench.store';
-import { projectApi } from '@/services/project.api';
 
 const LEFT_MIN_WIDTH = 220;
 const RIGHT_MIN_WIDTH = 260;
-const CENTER_MIN_WIDTH = 400;
+const CENTER_MIN_WIDTH = 420;
 const COLLAPSED_WIDTH = 48;
 
 type DragTarget = 'left' | 'right' | null;
 
 export function WorkbenchShell({ projectName, projectId }: { projectName?: string; projectId?: string }) {
-  const requestSeekTo = useWorkbenchStore((s) => s.requestSeekTo);
-  const activePrism = useWorkbenchStore((s) => s.activePrism);
+  const requestSeekTo = useWorkbenchStore((state) => state.requestSeekTo);
+  const activePrism = useWorkbenchStore((state) => state.activePrism);
   const containerRef = useRef<HTMLDivElement>(null);
-  const videoPlayerRef = useRef<HTMLVideoElement>(null); // 共享的视频引用，用于画面分析
+  const videoPlayerRef = useRef<HTMLVideoElement>(null);
   const [leftWidth, setLeftWidth] = useState(280);
-  const [rightWidth, setRightWidth] = useState(320);
+  const [rightWidth, setRightWidth] = useState(340);
   const [leftCollapsed, setLeftCollapsed] = useState(false);
   const [rightCollapsed, setRightCollapsed] = useState(false);
   const [dragging, setDragging] = useState<DragTarget>(null);
@@ -34,18 +34,16 @@ export function WorkbenchShell({ projectName, projectId }: { projectName?: strin
   const isKnowledgeMode = activePrism === 'knowledge';
   const isCreationMode = activePrism === 'creation';
   const effectiveLeftCollapsed = leftCollapsed || isKnowledgeMode || isCreationMode;
-  const rightPanelWidth =
-    !rightCollapsed && isKnowledgeMode
-      ? 'clamp(520px, 42vw, 760px)'
-      : !rightCollapsed && isCreationMode
-      ? 'clamp(760px, 60vw, 1240px)'
+  const rightPanelWidth = !rightCollapsed && isKnowledgeMode
+    ? 'clamp(540px, 44vw, 780px)'
+    : !rightCollapsed && isCreationMode
+      ? 'clamp(780px, 62vw, 1260px)'
       : `${rightWidth}px`;
 
   useEffect(() => {
     const applyResponsiveCollapse = () => {
-      const width = window.innerWidth;
-      if (width < 1280) setLeftCollapsed(true);
-      if (width < 1100) setRightCollapsed(true);
+      if (window.innerWidth < 1280) setLeftCollapsed(true);
+      if (window.innerWidth < 1120) setRightCollapsed(true);
     };
     applyResponsiveCollapse();
     window.addEventListener('resize', applyResponsiveCollapse);
@@ -55,10 +53,8 @@ export function WorkbenchShell({ projectName, projectId }: { projectName?: strin
   useEffect(() => {
     if (!containerRef.current) return;
     const totalWidth = containerRef.current.getBoundingClientRect().width;
-    const suggestedLeft = Math.round(Math.min(320, Math.max(LEFT_MIN_WIDTH, totalWidth * 0.18)));
-    const suggestedRight = Math.round(Math.min(380, Math.max(RIGHT_MIN_WIDTH, totalWidth * 0.22)));
-    setLeftWidth(suggestedLeft);
-    setRightWidth(suggestedRight);
+    setLeftWidth(Math.round(Math.min(330, Math.max(LEFT_MIN_WIDTH, totalWidth * 0.18))));
+    setRightWidth(Math.round(Math.min(400, Math.max(RIGHT_MIN_WIDTH, totalWidth * 0.24))));
   }, []);
 
   useEffect(() => {
@@ -68,25 +64,20 @@ export function WorkbenchShell({ projectName, projectId }: { projectName?: strin
   useEffect(() => {
     const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
 
-    const onMouseMove = (e: MouseEvent) => {
+    const onMouseMove = (event: MouseEvent) => {
       if (!containerRef.current) return;
-
       const rect = containerRef.current.getBoundingClientRect();
 
       if (dragging === 'left') {
-        const totalWidth = rect.width;
-        const rawLeft = e.clientX - rect.left;
-        const maxLeft = Math.max(LEFT_MIN_WIDTH, totalWidth - rightWidth - CENTER_MIN_WIDTH);
+        const rawLeft = event.clientX - rect.left;
+        const maxLeft = Math.max(LEFT_MIN_WIDTH, rect.width - rightWidth - CENTER_MIN_WIDTH);
         setLeftWidth(clamp(rawLeft, LEFT_MIN_WIDTH, maxLeft));
-        return;
       }
 
       if (dragging === 'right') {
-        const totalWidth = rect.width;
-        const rawRight = rect.right - e.clientX;
-        const maxRight = Math.max(RIGHT_MIN_WIDTH, totalWidth - leftWidth - CENTER_MIN_WIDTH);
+        const rawRight = rect.right - event.clientX;
+        const maxRight = Math.max(RIGHT_MIN_WIDTH, rect.width - leftWidth - CENTER_MIN_WIDTH);
         setRightWidth(clamp(rawRight, RIGHT_MIN_WIDTH, maxRight));
-        return;
       }
     };
 
@@ -108,64 +99,20 @@ export function WorkbenchShell({ projectName, projectId }: { projectName?: strin
   }, [dragging, leftWidth, rightWidth]);
 
   useEffect(() => {
-    const keepLayoutValid = () => {
-      if (!containerRef.current) return;
-      const totalWidth = containerRef.current.getBoundingClientRect().width;
-
-      const leftMax = Math.max(LEFT_MIN_WIDTH, totalWidth - rightWidth - CENTER_MIN_WIDTH);
-      if (leftWidth > leftMax) {
-        setLeftWidth(leftMax);
-      }
-
-      const rightMax = Math.max(RIGHT_MIN_WIDTH, totalWidth - leftWidth - CENTER_MIN_WIDTH);
-      if (rightWidth > rightMax) {
-        setRightWidth(rightMax);
-      }
-    };
-
-    keepLayoutValid();
-    window.addEventListener('resize', keepLayoutValid);
-    return () => window.removeEventListener('resize', keepLayoutValid);
-  }, [leftWidth, rightWidth]);
-
-  // Keyboard shortcuts
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // Ignore if user is typing in an input
-      const target = e.target as HTMLElement;
-      if (
-        target.tagName === 'INPUT' ||
-        target.tagName === 'TEXTAREA' ||
-        target.contentEditable === 'true'
-      ) {
-        return;
-      }
-
-      // Ctrl/Cmd + B: Toggle left panel
-      if ((e.ctrlKey || e.metaKey) && e.key === 'b') {
-        e.preventDefault();
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement;
+      if (['INPUT', 'TEXTAREA'].includes(target.tagName) || target.contentEditable === 'true') return;
+      if ((event.ctrlKey || event.metaKey) && event.key === 'b') {
+        event.preventDefault();
         setLeftCollapsed((prev) => !prev);
       }
-
-      // Ctrl/Cmd + Shift + B: Toggle right panel
-      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'B') {
-        e.preventDefault();
-        setRightCollapsed(!rightCollapsed);
+      if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key === 'B') {
+        event.preventDefault();
+        setRightCollapsed((prev) => !prev);
       }
-
-      // Ctrl/Cmd + K: Open command palette (placeholder)
-      if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
-        e.preventDefault();
-        // TODO: Open command palette
-        console.log('Command palette shortcut triggered');
-      }
-
-      // Escape: Reset panel collapses
-      if (e.key === 'Escape') {
-        if (leftCollapsed || rightCollapsed) {
-          setLeftCollapsed(false);
-          setRightCollapsed(false);
-        }
+      if (event.key === 'Escape' && (leftCollapsed || rightCollapsed)) {
+        setLeftCollapsed(false);
+        setRightCollapsed(false);
       }
     };
 
@@ -174,20 +121,15 @@ export function WorkbenchShell({ projectName, projectId }: { projectName?: strin
   }, [leftCollapsed, rightCollapsed]);
 
   const commitProjectTitle = async () => {
-    const trimmed = titleDraft.trim();
-    const fallback = projectName || '工作台';
-    const nextTitle = trimmed || fallback;
+    const nextTitle = titleDraft.trim() || projectName || '工作台';
     setTitleDraft(nextTitle);
     setIsEditingTitle(false);
-
-    if (!projectId || !nextTitle || nextTitle === projectName) return;
-
+    if (!projectId || nextTitle === projectName) return;
     setIsSavingTitle(true);
     try {
       await projectApi.update(projectId, { name: nextTitle });
-    } catch (error) {
-      console.error('Failed to update project title:', error);
-      setTitleDraft(fallback);
+    } catch {
+      setTitleDraft(projectName || '工作台');
     } finally {
       setIsSavingTitle(false);
     }
@@ -195,155 +137,96 @@ export function WorkbenchShell({ projectName, projectId }: { projectName?: strin
 
   return (
     <div className="workbench-shell flex h-dvh min-h-0 flex-col bg-bg-primary text-text-primary">
-      {/* Top bar */}
-      <header className="flex h-[clamp(56px,6.2vh,72px)] shrink-0 items-center justify-between border-b border-border bg-bg-panel px-[clamp(14px,1.8vw,26px)]">
-        <div className="flex items-center gap-[clamp(8px,1vw,14px)]">
-          <Link href="/projects" className="flex items-center gap-2 text-text-secondary transition-all duration-[var(--transition-base)] hover:text-text-primary hover:scale-105">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M15 18l-6-6 6-6" />
-            </svg>
-          </Link>
-          <div className="h-5 w-px bg-border" />
-          <svg width="24" height="24" viewBox="0 0 28 28" fill="none" className="shrink-0">
-            <defs>
-              <linearGradient id="wlg" x1="0" y1="0" x2="28" y2="28">
-                <stop offset="0%" stopColor="#FF6B35" />
-                <stop offset="50%" stopColor="#E91E8C" />
-                <stop offset="100%" stopColor="#4F46E5" />
-              </linearGradient>
-            </defs>
-            <path d="M14 2L26 24H2L14 2Z" stroke="url(#wlg)" strokeWidth="1.5" fill="none" />
-          </svg>
-          {isEditingTitle ? (
-            <input
-              value={titleDraft}
-              onChange={(e) => setTitleDraft(e.target.value)}
-              onBlur={commitProjectTitle}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  e.preventDefault();
-                  void commitProjectTitle();
-                }
-                if (e.key === 'Escape') {
-                  setTitleDraft(projectName || '工作台');
-                  setIsEditingTitle(false);
-                }
-              }}
-              autoFocus
-              className="h-9 w-[clamp(180px,28vw,360px)] rounded-lg border border-border bg-bg-panel-secondary px-3 text-[clamp(17px,1.15vw,22px)] font-semibold text-text-primary outline-none transition focus:border-[#E91E8C]"
-            />
-          ) : (
-            <button
-              type="button"
-              onClick={() => setIsEditingTitle(true)}
-              className="wb-title rounded-md px-1 py-0.5 text-left transition hover:bg-bg-panel-secondary"
-              title="点击编辑工程标题"
-            >
-              {titleDraft}
-            </button>
-          )}
-          {isSavingTitle ? <span className="wb-meta">保存中...</span> : null}
-        </div>
-
-        <div className="flex items-center gap-[clamp(6px,0.8vw,10px)]">
-          {/* Engine status indicator */}
-          <div className="flex items-center gap-1.5 rounded-lg border border-border-subtle bg-bg-panel-secondary px-2.5 py-1 transition-all duration-[var(--transition-base)] hover:border-border">
-            <span className="status-dot status-dot-warning" />
-            <span className="wb-meta">引擎待配置</span>
+      <header className="border-b border-stroke-default bg-[color:color-mix(in_srgb,var(--bg-surface)_88%,transparent)] backdrop-blur-xl">
+        <div className="flex h-[72px] items-center justify-between gap-4 px-[clamp(14px,1.8vw,26px)]">
+          <div className="flex min-w-0 items-center gap-3">
+            <Link href="/projects" className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-stroke-default bg-bg-panel-secondary/70 text-text-secondary transition hover:text-text-primary">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M15 18l-6-6 6-6" /></svg>
+            </Link>
+            <div className="flex h-10 w-10 items-center justify-center rounded-full border border-stroke-default bg-bg-panel-secondary/70">
+              <svg width="20" height="20" viewBox="0 0 28 28" fill="none"><path d="M14 2L26 24H2L14 2Z" stroke="url(#workbench-prism)" strokeWidth="1.6" /><defs><linearGradient id="workbench-prism" x1="2" y1="2" x2="26" y2="24"><stop offset="0%" stopColor="var(--prism-orange)" /><stop offset="50%" stopColor="var(--prism-pink)" /><stop offset="100%" stopColor="var(--prism-indigo)" /></linearGradient></defs></svg>
+            </div>
+            <div className="min-w-0">
+              <div className="text-[11px] uppercase tracking-[0.22em] text-text-muted">Current Workspace</div>
+              {isEditingTitle ? (
+                <input
+                  value={titleDraft}
+                  onChange={(event) => setTitleDraft(event.target.value)}
+                  onBlur={() => void commitProjectTitle()}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') void commitProjectTitle();
+                    if (event.key === 'Escape') {
+                      setTitleDraft(projectName || '工作台');
+                      setIsEditingTitle(false);
+                    }
+                  }}
+                  autoFocus
+                  className="mt-1 h-10 w-[clamp(220px,28vw,360px)] rounded-full border border-stroke-default bg-bg-panel-secondary/75 px-4 text-base font-semibold outline-none focus:border-[var(--accent-primary)]"
+                />
+              ) : (
+                <button type="button" onClick={() => setIsEditingTitle(true)} className="wb-title mt-1 max-w-[30vw] truncate rounded-full border border-transparent px-1 py-1 text-left hover:border-stroke-default">
+                  {titleDraft}
+                </button>
+              )}
+            </div>
+            {isSavingTitle ? <StatusMini text="保存中" /> : null}
           </div>
 
-          {/* Theme toggle (sun/moon icon) */}
-          <ThemeSelector />
+          <div className="flex items-center gap-3">
+            <StatusMini text={activePrism ? `当前棱镜 · ${activePrism}` : 'Prism Studio 待命'} tone={activePrism ? 'info' : 'warning'} />
+            <ThemeSelector />
+          </div>
         </div>
       </header>
 
-      {/* Main content area */}
       <div className="wb-main-gap flex min-h-0 flex-1">
-        <div ref={containerRef} className="flex min-h-0 flex-1 overflow-hidden gap-0">
+        <div ref={containerRef} className="flex min-h-0 flex-1 gap-0 overflow-hidden">
           {isCreationMode ? (
-            <div
-              data-testid="right-panel"
-              className="flex h-full min-w-0 flex-1 overflow-hidden rounded-[16px] border border-border bg-bg-panel"
-            >
-              <PrismSwitcher
-                collapsed={false}
-                onToggle={() => setRightCollapsed(!rightCollapsed)}
-                onTimeClick={requestSeekTo}
-                projectId={projectId}
-              />
+            <div className="flex min-w-0 flex-1 overflow-hidden rounded-[24px] border border-stroke-default bg-bg-panel shadow-[var(--shadow-card)]">
+              <PrismSwitcher collapsed={false} onToggle={() => setRightCollapsed((prev) => !prev)} onTimeClick={requestSeekTo} projectId={projectId} />
             </div>
           ) : (
             <>
-              {/* Left: Video Source Panel */}
               <div
-                data-testid="left-panel"
-                className={`flex h-full shrink-0 transition-all duration-[var(--transition-base)] ${
-                  effectiveLeftCollapsed ? 'panel-collapsed' : ''
-                }`}
+                className={`${effectiveLeftCollapsed ? 'panel-collapsed' : ''} flex h-full shrink-0 overflow-hidden rounded-[24px] border border-stroke-default bg-bg-panel shadow-[var(--shadow-card)] transition-all duration-[var(--transition-base)]`}
                 style={{ width: effectiveLeftCollapsed ? `${COLLAPSED_WIDTH}px` : `${leftWidth}px` }}
               >
                 <VideoSourcePanel projectId={projectId} collapsed={effectiveLeftCollapsed} onToggle={() => setLeftCollapsed((prev) => !prev)} />
               </div>
 
-              <div
-                role="separator"
-                aria-orientation="vertical"
-                data-testid="resize-handle-left"
-                onMouseDown={() => setDragging('left')}
-                className={`panel-separator relative w-1.5 cursor-col-resize transition-all duration-[var(--transition-slow)] ${
-                  dragging === 'left' ? 'dragging' : ''
-                }`}
-              >
-                <div className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-border-subtle" />
+              <div role="separator" aria-orientation="vertical" onMouseDown={() => setDragging('left')} className={`panel-separator relative w-2 cursor-col-resize ${dragging === 'left' ? 'dragging' : ''}`}>
+                <div className="absolute inset-y-4 left-1/2 w-px -translate-x-1/2 bg-stroke-default" />
               </div>
 
-              <div
-                data-testid="center-panel"
-                className="relative min-w-0 flex flex-1 flex-col overflow-hidden transition-all duration-[var(--transition-slower)]"
-              >
-                <div className="grid min-w-0 min-h-0 flex-1 grid-rows-[minmax(220px,42svh)_1px_minmax(0,1fr)] overflow-hidden">
+              <div className="flex min-w-0 flex-1 flex-col overflow-hidden rounded-[24px] border border-stroke-default bg-bg-panel shadow-[var(--shadow-card)]">
+                <div className="grid min-h-0 flex-1 grid-rows-[minmax(240px,43svh)_1px_minmax(0,1fr)] overflow-hidden">
                   <PlayerCenter videoRef={videoPlayerRef} />
-
-                  {/* Separator between Player and Chat */}
-                  <div className="shrink-0 h-px bg-border-subtle" />
-
-                  <div className="min-h-0">
-                    <ChatDock projectId={projectId} videoPlayerRef={videoPlayerRef} />
-                  </div>
+                  <div className="bg-stroke-default" />
+                  <ChatDock projectId={projectId} videoPlayerRef={videoPlayerRef} />
                 </div>
               </div>
 
-              <div
-                role="separator"
-                aria-orientation="vertical"
-                data-testid="resize-handle-right"
-                onMouseDown={() => setDragging('right')}
-                className={`panel-separator relative w-1.5 cursor-col-resize transition-all duration-[var(--transition-slow)] ${
-                  dragging === 'right' ? 'dragging' : ''
-                }`}
-              >
-                <div className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-border-subtle" />
+              <div role="separator" aria-orientation="vertical" onMouseDown={() => setDragging('right')} className={`panel-separator relative w-2 cursor-col-resize ${dragging === 'right' ? 'dragging' : ''}`}>
+                <div className="absolute inset-y-4 left-1/2 w-px -translate-x-1/2 bg-stroke-default" />
               </div>
 
-              {/* Right: Prism Studio Panel */}
-              <div
-                data-testid="right-panel"
-                className={`flex h-full min-w-0 overflow-hidden rounded-[16px] border border-border bg-bg-panel transition-all duration-[var(--transition-slower)] ${
-                  rightCollapsed ? 'panel-collapsed' : ''
-                } shrink-0`}
-                style={{ width: rightCollapsed ? `${COLLAPSED_WIDTH}px` : rightPanelWidth }}
-              >
-                <PrismSwitcher
-                  collapsed={rightCollapsed}
-                  onToggle={() => setRightCollapsed(!rightCollapsed)}
-                  onTimeClick={requestSeekTo}
-                  projectId={projectId}
-                />
+              <div className={`${rightCollapsed ? 'panel-collapsed' : ''} flex h-full min-w-0 shrink-0 overflow-hidden rounded-[24px] border border-stroke-default bg-bg-panel shadow-[var(--shadow-card)] transition-all duration-[var(--transition-slow)]`} style={{ width: rightCollapsed ? `${COLLAPSED_WIDTH}px` : rightPanelWidth }}>
+                <PrismSwitcher collapsed={rightCollapsed} onToggle={() => setRightCollapsed((prev) => !prev)} onTimeClick={requestSeekTo} projectId={projectId} />
               </div>
             </>
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+function StatusMini({ text, tone = 'default' }: { text: string; tone?: 'default' | 'info' | 'warning'; }) {
+  const dot = tone === 'info' ? 'var(--signal-info)' : tone === 'warning' ? 'var(--signal-warning)' : 'var(--signal-success)';
+  return (
+    <div className="hidden items-center gap-2 rounded-full border border-stroke-default bg-bg-panel-secondary/70 px-3 py-2 text-xs text-text-secondary lg:flex">
+      <span className="h-2 w-2 rounded-full" style={{ background: dot }} />
+      <span>{text}</span>
     </div>
   );
 }

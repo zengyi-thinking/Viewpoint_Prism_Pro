@@ -1,324 +1,143 @@
-/**
- * 主题类型定义
- * 支持 VS Code 风格的多主题切换系统
- */
+export type ThemeId = 'prism-dark' | 'prism-light';
+export type ThemeMode = 'dark' | 'light';
 
-export type ThemeType = 'dark' | 'light' | 'high-contrast';
-
-/**
- * 主题颜色配置
- */
-export interface ThemeColors {
-  // 背景色
-  background: string;      // 主背景
-  panel: string;           // 面板/卡片背景
-  panelSecondary: string;  // 次级面板
-  panelTertiary: string;   // 悬浮/高亮面板
-
-  // 边框色
-  border: string;          // 主边框
-  borderSubtle: string;    // 次级边框
-  borderFocus: string;     // 聚焦边框
-
-  // 文字色
-  textPrimary: string;     // 主要文字
-  textSecondary: string;   // 次要文字
-  textTertiary: string;    // 占位/禁用文字
-  textInverse: string;     // 反色文字（用于深色背景上的浅色文字）
-
-  // 强调色
-  accent: string;          // 主强调色（棱镜粉）
-  accentHover: string;     // 悬浮时强调色
-  accentMuted: string;     // 柔和强调色
-
-  // 状态色
+export interface ThemePalette {
+  base: string;
+  surface: string;
+  surfaceAlt: string;
+  elevated: string;
+  stroke: string;
+  strokeStrong: string;
+  textPrimary: string;
+  textSecondary: string;
+  textMuted: string;
+  textInverse: string;
+  accent: string;
+  accentHover: string;
+  accentSoft: string;
+  accentStrong: string;
   success: string;
   warning: string;
   error: string;
   info: string;
+  glowOrange: string;
+  glowPink: string;
+  glowIndigo: string;
 }
 
-/**
- * 主题配置
- */
-export interface Theme {
-  id: string;
+export interface ThemeDefinition {
+  id: ThemeId;
   name: string;
-  nameEn: string;
-  type: ThemeType;
-  colors: ThemeColors;
+  mode: ThemeMode;
+  palette: ThemePalette;
 }
 
-/**
- * 预设主题列表
- */
-export const PRESET_THEMES: Theme[] = [
-  {
-    id: 'vsm-dark',
-    name: 'Viewpoint 深色',
-    nameEn: 'Viewpoint Dark',
-    type: 'dark',
-    colors: {
-      background: '#0A0A0A',
-      panel: '#141414',
-      panelSecondary: '#1A1A1A',
-      panelTertiary: '#202020',
-      border: 'rgba(255,255,255,0.08)',
-      borderSubtle: 'rgba(255,255,255,0.04)',
-      borderFocus: '#E91E8C',
-      textPrimary: '#E5E5E5',
-      textSecondary: '#A0A0A0',
-      textTertiary: '#6B6B6B',
-      textInverse: '#FFFFFF',
-      accent: '#E91E8C',
-      accentHover: '#F06A9D',
-      accentMuted: 'rgba(233,30,140,0.12)',
-      success: '#10B981',
-      warning: '#F59E0B',
-      error: '#EF4444',
-      info: '#06B6D4',
+export const THEMES: Record<ThemeId, ThemeDefinition> = {
+  'prism-dark': {
+    id: 'prism-dark',
+    name: 'Prism Dark',
+    mode: 'dark',
+    palette: {
+      base: '#0a0b10',
+      surface: '#11131a',
+      surfaceAlt: '#161924',
+      elevated: '#1d2230',
+      stroke: 'rgba(255,255,255,0.08)',
+      strokeStrong: 'rgba(255,255,255,0.14)',
+      textPrimary: '#f5f7fb',
+      textSecondary: 'rgba(235,241,255,0.78)',
+      textMuted: 'rgba(210,219,240,0.5)',
+      textInverse: '#0a0b10',
+      accent: '#ff4d8d',
+      accentHover: '#ff6ba2',
+      accentSoft: 'rgba(255,77,141,0.14)',
+      accentStrong: '#ff7a45',
+      success: '#33c38e',
+      warning: '#ffb24b',
+      error: '#ff6b7a',
+      info: '#4ba8ff',
+      glowOrange: 'rgba(255,122,69,0.28)',
+      glowPink: 'rgba(255,77,141,0.2)',
+      glowIndigo: 'rgba(93,102,255,0.2)',
     },
   },
-  {
-    id: 'vsm-dark-plus',
-    name: '深度专注',
-    nameEn: 'Deep Focus',
-    type: 'dark',
-    colors: {
-      background: '#060606',
-      panel: '#0D0D0D',
-      panelSecondary: '#141414',
-      panelTertiary: '#1A1A1A',
-      border: 'rgba(255,255,255,0.06)',
-      borderSubtle: 'rgba(255,255,255,0.03)',
-      borderFocus: '#E91E8C',
-      textPrimary: '#DEDEDE',
-      textSecondary: '#8A8A8A',
-      textTertiary: '#5A5A5A',
-      textInverse: '#FFFFFF',
-      accent: '#E91E8C',
-      accentHover: '#F06A9D',
-      accentMuted: 'rgba(233,30,140,0.12)',
-      success: '#10B981',
-      warning: '#F59E0B',
-      error: '#EF4444',
-      info: '#06B6D4',
+  'prism-light': {
+    id: 'prism-light',
+    name: 'Prism Light',
+    mode: 'light',
+    palette: {
+      base: '#f5f1eb',
+      surface: 'rgba(255,255,255,0.82)',
+      surfaceAlt: '#fcfaf7',
+      elevated: '#efe7dc',
+      stroke: 'rgba(61,46,33,0.1)',
+      strokeStrong: 'rgba(61,46,33,0.16)',
+      textPrimary: '#1d1a17',
+      textSecondary: 'rgba(37,31,25,0.72)',
+      textMuted: 'rgba(61,46,33,0.48)',
+      textInverse: '#ffffff',
+      accent: '#d93f77',
+      accentHover: '#b53162',
+      accentSoft: 'rgba(217,63,119,0.1)',
+      accentStrong: '#ef7d46',
+      success: '#1f9b6b',
+      warning: '#c48426',
+      error: '#cf4d5d',
+      info: '#2e7bd9',
+      glowOrange: 'rgba(239,125,70,0.18)',
+      glowPink: 'rgba(217,63,119,0.14)',
+      glowIndigo: 'rgba(93,102,255,0.12)',
     },
   },
-  {
-    id: 'vsm-light',
-    name: 'Viewpoint 浅色',
-    nameEn: 'Viewpoint Light',
-    type: 'light',
-    colors: {
-      background: '#FFFFFF',
-      panel: '#F5F5F5',
-      panelSecondary: '#E8E8E8',
-      panelTertiary: '#DCDCDC',
-      border: 'rgba(0,0,0,0.1)',
-      borderSubtle: 'rgba(0,0,0,0.06)',
-      borderFocus: '#E91E8C',
-      textPrimary: '#1F1F1F',
-      textSecondary: '#5A5A5A',
-      textTertiary: '#8A8A8A',
-      textInverse: '#FFFFFF',
-      accent: '#E91E8C',
-      accentHover: '#D6147A',
-      accentMuted: 'rgba(233,30,140,0.1)',
-      success: '#10B981',
-      warning: '#F59E0B',
-      error: '#EF4444',
-      info: '#06B6D4',
-    },
-  },
-  {
-    id: 'vscode-dark',
-    name: 'VS Code Dark',
-    nameEn: 'VS Code Dark',
-    type: 'dark',
-    colors: {
-      background: '#1E1E1E',
-      panel: '#252526',
-      panelSecondary: '#2D2D30',
-      panelTertiary: '#333337',
-      border: 'rgba(255,255,255,0.1)',
-      borderSubtle: 'rgba(255,255,255,0.06)',
-      borderFocus: '#007ACC',
-      textPrimary: '#CCCCCC',
-      textSecondary: '#858585',
-      textTertiary: '#6E6E6E',
-      textInverse: '#FFFFFF',
-      accent: '#007ACC',
-      accentHover: '#1C97EA',
-      accentMuted: 'rgba(0,122,204,0.15)',
-      success: '#4EC9B0',
-      warning: '#DCDCAA',
-      error: '#F48771',
-      info: '#75BEFF',
-    },
-  },
-  {
-    id: 'vscode-dark-plus',
-    name: 'VS Code Dark+',
-    nameEn: 'VS Code Dark+',
-    type: 'dark',
-    colors: {
-      background: '#1E1E1E',
-      panel: '#2D2D2D',
-      panelSecondary: '#353535',
-      panelTertiary: '#3E3E42',
-      border: 'rgba(255,255,255,0.12)',
-      borderSubtle: 'rgba(255,255,255,0.08)',
-      borderFocus: '#3794FF',
-      textPrimary: '#D4D4D4',
-      textSecondary: '#808080',
-      textTertiary: '#5A5A5A',
-      textInverse: '#FFFFFF',
-      accent: '#3794FF',
-      accentHover: '#55AAFF',
-      accentMuted: 'rgba(55,148,255,0.15)',
-      success: '#4EC9B0',
-      warning: '#DCDCAA',
-      error: '#F48771',
-      info: '#75BEFF',
-    },
-  },
-  {
-    id: 'notebook',
-    name: 'NotebookLM',
-    nameEn: 'NotebookLM',
-    type: 'dark',
-    colors: {
-      background: '#0F0F0F',
-      panel: '#1E1E1E',
-      panelSecondary: '#252525',
-      panelTertiary: '#2A2A2A',
-      border: 'rgba(255,255,255,0.08)',
-      borderSubtle: 'rgba(255,255,255,0.05)',
-      borderFocus: '#8AB4F8',
-      textPrimary: '#E8EAED',
-      textSecondary: '#9AA0A6',
-      textTertiary: '#6E7681',
-      textInverse: '#FFFFFF',
-      accent: '#8AB4F8',
-      accentHover: '#A5C9FF',
-      accentMuted: 'rgba(138,180,248,0.15)',
-      success: '#81C995',
-      warning: '#F28B82',
-      error: '#F28B82',
-      info: '#8AB4F8',
-    },
-  },
-  {
-    id: 'soft-cream',
-    name: '柔和米白',
-    nameEn: 'Soft Cream',
-    type: 'light',
-    colors: {
-      background: '#FAF9F6',
-      panel: '#FFFFFF',
-      panelSecondary: '#F5F3EF',
-      panelTertiary: '#EBE8E3',
-      border: 'rgba(0,0,0,0.08)',
-      borderSubtle: 'rgba(0,0,0,0.04)',
-      borderFocus: '#E91E8C',
-      textPrimary: '#2C2A27',
-      textSecondary: '#6B6762',
-      textTertiary: '#9C9891',
-      textInverse: '#FFFFFF',
-      accent: '#E91E8C',
-      accentHover: '#D6147A',
-      accentMuted: 'rgba(233,30,140,0.08)',
-      success: '#0F9D6E',
-      warning: '#E67E22',
-      error: '#E74C3C',
-      info: '#3498DB',
-    },
-  },
-  {
-    id: 'fresh-mint',
-    name: '清新薄荷',
-    nameEn: 'Fresh Mint',
-    type: 'light',
-    colors: {
-      background: '#F7FDFB',
-      panel: '#FFFFFF',
-      panelSecondary: '#F0FAF7',
-      panelTertiary: '#E3F5EF',
-      border: 'rgba(16,185,129,0.12)',
-      borderSubtle: 'rgba(16,185,129,0.06)',
-      borderFocus: '#10B981',
-      textPrimary: '#1A2E27',
-      textSecondary: '#4A6B5E',
-      textTertiary: '#7A9B8E',
-      textInverse: '#FFFFFF',
-      accent: '#10B981',
-      accentHover: '#059669',
-      accentMuted: 'rgba(16,185,129,0.1)',
-      success: '#10B981',
-      warning: '#F59E0B',
-      error: '#EF4444',
-      info: '#06B6D4',
-    },
-  },
-  {
-    id: 'warm-sand',
-    name: '温暖沙色',
-    nameEn: 'Warm Sand',
-    type: 'light',
-    colors: {
-      background: '#FDFBF7',
-      panel: '#FFFFFF',
-      panelSecondary: '#F9F6F0',
-      panelTertiary: '#F0EBE3',
-      border: 'rgba(180,140,90,0.15)',
-      borderSubtle: 'rgba(180,140,90,0.08)',
-      borderFocus: '#D97706',
-      textPrimary: '#2D2416',
-      textSecondary: '#6B5D45',
-      textTertiary: '#9C8E76',
-      textInverse: '#FFFFFF',
-      accent: '#D97706',
-      accentHover: '#B45309',
-      accentMuted: 'rgba(217,119,6,0.1)',
-      success: '#10B981',
-      warning: '#F59E0B',
-      error: '#DC2626',
-      info: '#0891B2',
-    },
-  },
-];
+};
 
-/**
- * 获取主题配置
- */
-export function getThemeById(id: string): Theme {
-  return PRESET_THEMES.find(t => t.id === id) || PRESET_THEMES[0];
+export const DEFAULT_THEME_ID: ThemeId = 'prism-dark';
+
+export function getThemeById(themeId: string | undefined): ThemeDefinition {
+  if (themeId && themeId in THEMES) {
+    return THEMES[themeId as ThemeId];
+  }
+  return THEMES[DEFAULT_THEME_ID];
 }
 
-/**
- * 将主题颜色转换为 CSS 变量字符串
- */
-export function themeToCSSVariables(theme: Theme): Record<string, string> {
-  const { colors } = theme;
+export function themeToCSSVariables(theme: ThemeDefinition): Record<string, string> {
+  const { palette, mode } = theme;
+
   return {
-    '--bg-primary': colors.background,
-    '--bg-panel': colors.panel,
-    '--bg-panel-secondary': colors.panelSecondary,
-    '--bg-panel-tertiary': colors.panelTertiary,
-    '--border': colors.border,
-    '--border-subtle': colors.borderSubtle,
-    '--border-focus': colors.borderFocus,
-    '--text-primary': colors.textPrimary,
-    '--text-secondary': colors.textSecondary,
-    '--text-tertiary': colors.textTertiary,
-    '--text-inverse': colors.textInverse,
-    '--accent-primary': colors.accent,
-    '--accent-hover': colors.accentHover,
-    '--accent-muted': colors.accentMuted,
-    '--color-success': colors.success,
-    '--color-warning': colors.warning,
-    '--color-error': colors.error,
-    '--color-info': colors.info,
+    '--bg-base': palette.base,
+    '--bg-surface': palette.surface,
+    '--bg-surface-alt': palette.surfaceAlt,
+    '--bg-elevated': palette.elevated,
+    '--stroke-default': palette.stroke,
+    '--stroke-strong': palette.strokeStrong,
+    '--text-primary': palette.textPrimary,
+    '--text-secondary': palette.textSecondary,
+    '--text-muted': palette.textMuted,
+    '--text-inverse': palette.textInverse,
+    '--accent-primary': palette.accent,
+    '--accent-hover': palette.accentHover,
+    '--accent-soft': palette.accentSoft,
+    '--accent-strong': palette.accentStrong,
+    '--signal-success': palette.success,
+    '--signal-warning': palette.warning,
+    '--signal-error': palette.error,
+    '--signal-info': palette.info,
+    '--glow-orange': palette.glowOrange,
+    '--glow-pink': palette.glowPink,
+    '--glow-indigo': palette.glowIndigo,
+    '--theme-mode': mode,
+    '--bg-primary': palette.base,
+    '--bg-panel': palette.surface,
+    '--bg-panel-secondary': palette.surfaceAlt,
+    '--bg-panel-tertiary': palette.elevated,
+    '--border': palette.stroke,
+    '--border-subtle': palette.stroke,
+    '--border-focus': palette.accent,
+    '--text-tertiary': palette.textMuted,
+    '--accent-muted': palette.accentSoft,
+    '--color-success': palette.success,
+    '--color-warning': palette.warning,
+    '--color-error': palette.error,
+    '--color-info': palette.info,
   };
 }

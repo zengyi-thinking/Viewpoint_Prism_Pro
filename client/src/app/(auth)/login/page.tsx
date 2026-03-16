@@ -12,34 +12,28 @@ export default function LoginPage() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setError('');
     setLoading(true);
     try {
-      const form = e.currentTarget as HTMLFormElement;
+      const form = e.currentTarget;
       const formData = new FormData(form);
       const submittedEmail = String(formData.get('email') || '').trim().toLowerCase();
       const submittedPassword = String(formData.get('password') || '');
 
       await authApi.login(submittedEmail, submittedPassword);
       router.push('/projects');
-    } catch (err: any) {
-      setError(err.message || '登录失败，请检查邮箱和密码');
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : '登录失败，请检查邮箱和密码';
+      setError(message);
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div
-      className="relative flex min-h-screen w-full items-center justify-center overflow-hidden bg-[#0a0a0f] px-4"
-      style={{
-        writingMode: 'horizontal-tb',
-        textOrientation: 'mixed',
-        minWidth: '100vw',
-      }}
-    >
+    <div className="relative flex min-h-screen w-full items-center justify-center overflow-hidden bg-[#0a0a0f] px-4">
       {/* 背景光晕 */}
       <div className="auth-glow auth-glow-orange" />
       <div className="auth-glow auth-glow-pink" />
@@ -60,7 +54,7 @@ export default function LoginPage() {
         </svg>
       </div>
 
-      <div className="relative z-10 mx-auto w-full max-w-[28rem]">
+      <div className="relative z-10 mx-auto w-full max-w-112">
         {/* Logo */}
         <div className="mb-8 text-center">
           <Link href="/" className="inline-flex items-center gap-2.5 group">
@@ -76,7 +70,7 @@ export default function LoginPage() {
                 <path d="M14 2L26 24H2L14 2Z" stroke="url(#auth-logo)" strokeWidth="2" fill="none" />
                 <path d="M14 8L20 20H8L14 8Z" fill="url(#auth-logo)" opacity="0.2" />
               </svg>
-              <div className="absolute -inset-2 rounded-full bg-gradient-to-r from-[#FF6B35]/20 to-[#E91E8C]/20 blur-xl group-hover:from-[#FF6B35]/30 group-hover:to-[#E91E8C]/30 transition-all" />
+              <div className="absolute -inset-2 rounded-full bg-linear-to-r from-[#FF6B35]/20 to-[#E91E8C]/20 blur-xl group-hover:from-[#FF6B35]/30 group-hover:to-[#E91E8C]/30 transition-all" />
             </div>
             <span className="text-xl font-bold tracking-tight text-white">Viewpoint Prism</span>
           </Link>
@@ -84,7 +78,7 @@ export default function LoginPage() {
         </div>
 
         {/* Card */}
-        <div className="prism-card overflow-hidden !p-0">
+        <div className="prism-card overflow-hidden p-0!">
           <div className="p-8">
             <div className="mb-6">
               <h1 className="text-2xl font-bold text-white">欢迎回来</h1>
@@ -105,7 +99,7 @@ export default function LoginPage() {
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     placeholder="you@example.com"
-                    className="w-full rounded-lg border border-white/10 bg-white/5 px-4 py-3 pl-10 text-sm text-white placeholder-white/20 outline-none transition-all focus:border-[#E91E8C]/50 focus:bg-white/[0.08] focus:ring-1 focus:ring-[#E91E8C]/20"
+                    className="w-full rounded-lg border border-white/10 bg-white/5 px-4 py-3 pl-10 text-sm text-white placeholder-white/20 outline-none transition-all focus:border-[#E91E8C]/50 focus:bg-white/8 focus:ring-1 focus:ring-[#E91E8C]/20"
                   />
                   <svg className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-white/20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                     <path d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
@@ -126,7 +120,7 @@ export default function LoginPage() {
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder="••••••••"
-                    className="w-full rounded-lg border border-white/10 bg-white/5 px-4 py-3 pl-10 text-sm text-white placeholder-white/20 outline-none transition-all focus:border-[#E91E8C]/50 focus:bg-white/[0.08] focus:ring-1 focus:ring-[#E91E8C]/20"
+                    className="w-full rounded-lg border border-white/10 bg-white/5 px-4 py-3 pl-10 text-sm text-white placeholder-white/20 outline-none transition-all focus:border-[#E91E8C]/50 focus:bg-white/8 focus:ring-1 focus:ring-[#E91E8C]/20"
                   />
                   <svg className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-white/20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                     <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
@@ -137,7 +131,7 @@ export default function LoginPage() {
 
               {error && (
                 <div className="flex items-start gap-2 rounded-lg bg-red-500/10 px-3 py-2.5">
-                  <svg className="h-4 w-4 text-red-400 mt-0.5 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <svg className="h-4 w-4 text-red-400 mt-0.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                     <circle cx="12" cy="12" r="10" />
                     <path d="M12 8v4M12 16h.01" />
                   </svg>
@@ -148,7 +142,7 @@ export default function LoginPage() {
               <button
                 type="submit"
                 disabled={loading}
-                className="group relative mt-2 w-full overflow-hidden rounded-lg bg-gradient-to-r from-[#FF6B35] via-[#E91E8C] to-[#4F46E5] py-3 text-sm font-semibold text-white transition-all hover:opacity-90 disabled:opacity-50"
+                className="group relative mt-2 w-full overflow-hidden rounded-lg bg-linear-to-r from-[#FF6B35] via-[#E91E8C] to-[#4F46E5] py-3 text-sm font-semibold text-white transition-all hover:opacity-90 disabled:opacity-50"
               >
                 <span className="relative z-10">{loading ? '登录中...' : '登录'}</span>
                 <div className="absolute inset-0 bg-gradient-to-r from-[#FF6B35] via-[#E91E8C] to-[#4F46E5] opacity-0 transition-opacity group-hover:opacity-100" />

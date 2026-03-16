@@ -8,51 +8,45 @@ export interface SelectProps {
   onValueChange?: (value: string) => void;
 }
 
-export interface SelectContentProps {
-  children: React.ReactNode;
-}
+export interface SelectContentProps { children: React.ReactNode; }
+export interface SelectItemProps { value: string; children: React.ReactNode; }
+export interface SelectTriggerProps { children: React.ReactNode; className?: string; }
+export interface SelectValueProps { placeholder?: string; }
 
-export interface SelectItemProps {
-  value: string;
-  children: React.ReactNode;
-}
-
-export interface SelectTriggerProps {
-  children: React.ReactNode;
-  className?: string;
-}
-
-export interface SelectValueProps {
+type SelectLikeProps = {
+  children?: React.ReactNode;
   placeholder?: string;
-}
+  value?: string;
+};
 
 export const Select: React.FC<SelectProps> = ({ children, value, onValueChange }) => {
-  // Extract options from children using a simpler approach
   const [options, setOptions] = React.useState<Array<{ value: string; label: string }>>([]);
-  const [placeholder, setPlaceholder] = React.useState<string>('');
+  const [placeholder, setPlaceholder] = React.useState('');
 
   React.useEffect(() => {
     const extractedOptions: Array<{ value: string; label: string }> = [];
     let extractedPlaceholder = '';
 
     React.Children.forEach(children, (child) => {
-      if (React.isValidElement(child)) {
-        if (child.type === SelectTrigger) {
-          React.Children.forEach((child.props as any).children, (grandChild: React.ReactElement) => {
-            if (React.isValidElement(grandChild) && grandChild.type === SelectValue) {
-              extractedPlaceholder = (grandChild.props as any).placeholder || '';
-            }
-          });
-        } else if (child.type === SelectContent) {
-          React.Children.forEach((child.props as any).children, (grandChild: React.ReactElement) => {
-            if (React.isValidElement(grandChild) && grandChild.type === SelectItem) {
-              extractedOptions.push({
-                value: (grandChild.props as any).value,
-                label: String((grandChild.props as any).children),
-              });
-            }
-          });
-        }
+      if (!React.isValidElement(child)) return;
+      const childProps = child.props as SelectLikeProps;
+      if (child.type === SelectTrigger) {
+        React.Children.forEach(childProps.children, (grandChild) => {
+          if (React.isValidElement(grandChild) && grandChild.type === SelectValue) {
+            extractedPlaceholder = ((grandChild.props as SelectLikeProps).placeholder || '');
+          }
+        });
+      }
+      if (child.type === SelectContent) {
+        React.Children.forEach(childProps.children, (grandChild) => {
+          if (React.isValidElement(grandChild) && grandChild.type === SelectItem) {
+            const itemProps = grandChild.props as SelectLikeProps;
+            extractedOptions.push({
+              value: itemProps.value || '',
+              label: String(itemProps.children),
+            });
+          }
+        });
       }
     });
 
@@ -63,13 +57,13 @@ export const Select: React.FC<SelectProps> = ({ children, value, onValueChange }
   return (
     <select
       value={value}
-      onChange={(e) => onValueChange?.(e.target.value)}
-      className="input flex h-9 w-full items-center justify-between rounded-lg border border-border bg-bg-panel-secondary px-3 py-1.5 text-[13px] text-text-primary transition-all duration-[var(--transition-base)] hover:border-border hover:bg-bg-panel-tertiary focus:outline-none focus:ring-2 focus:ring-accent-primary focus:ring-offset-2 focus:ring-offset-bg-primary cursor-pointer"
+      onChange={(event) => onValueChange?.(event.target.value)}
+      className="input cursor-pointer appearance-none bg-[linear-gradient(180deg,color-mix(in_srgb,var(--bg-surface-alt)_92%,transparent),color-mix(in_srgb,var(--bg-surface)_100%,transparent))]"
     >
-      {placeholder && <option value="">{placeholder}</option>}
-      {options.map((opt) => (
-        <option key={opt.value} value={opt.value}>
-          {opt.label}
+      {placeholder ? <option value="">{placeholder}</option> : null}
+      {options.map((option) => (
+        <option key={option.value} value={option.value}>
+          {option.label}
         </option>
       ))}
     </select>
@@ -77,9 +71,6 @@ export const Select: React.FC<SelectProps> = ({ children, value, onValueChange }
 };
 
 export const SelectContent: React.FC<SelectContentProps> = () => null;
-
 export const SelectItem: React.FC<SelectItemProps> = () => null;
-
 export const SelectTrigger: React.FC<SelectTriggerProps> = () => null;
-
 export const SelectValue: React.FC<SelectValueProps> = () => null;

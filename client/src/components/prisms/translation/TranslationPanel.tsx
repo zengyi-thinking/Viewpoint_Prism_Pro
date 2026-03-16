@@ -10,38 +10,40 @@ import { translationApi } from '@/services/translation.api';
  * 支持多语言工程、字幕编辑、音色克隆、视频修复、导出等功能
  */
 
+import { StatusPill } from '@/components/system';
+
 // 语言列表
 const LANGUAGES = [
-  { code: 'auto', name: '自动检测', icon: '🔍' },
-  { code: 'zh-CN', name: '简体中文', icon: '🇨🇳' },
-  { code: 'zh-TW', name: '繁体中文', icon: '🇹🇼' },
-  { code: 'en', name: '英语', icon: '🇺🇸' },
-  { code: 'ja', name: '日语', icon: '🇯🇵' },
-  { code: 'ko', name: '韩语', icon: '🇰🇷' },
-  { code: 'es', name: '西班牙语', icon: '🇪🇸' },
-  { code: 'fr', name: '法语', icon: '🇫🇷' },
-  { code: 'de', name: '德语', icon: '🇩🇪' },
-  { code: 'th', name: '泰语', icon: '🇹🇭' },
-  { code: 'vi', name: '越南语', icon: '🇻🇳' },
-  { code: 'ru', name: '俄语', icon: '🇷🇺' },
-  { code: 'ar', name: '阿拉伯语', icon: '🇸🇦' },
-  { code: 'pt', name: '葡萄牙语', icon: '🇵🇹' },
-  { code: 'it', name: '意大利语', icon: '🇮🇹' },
+  { code: 'auto', name: '自动检测', icon: 'AUTO' },
+  { code: 'zh-CN', name: '简体中文', icon: 'ZH' },
+  { code: 'zh-TW', name: '繁体中文', icon: 'ZT' },
+  { code: 'en', name: '英语', icon: 'EN' },
+  { code: 'ja', name: '日语', icon: 'JA' },
+  { code: 'ko', name: '韩语', icon: 'KO' },
+  { code: 'es', name: '西班牙语', icon: 'ES' },
+  { code: 'fr', name: '法语', icon: 'FR' },
+  { code: 'de', name: '德语', icon: 'DE' },
+  { code: 'th', name: '泰语', icon: 'TH' },
+  { code: 'vi', name: '越南语', icon: 'VI' },
+  { code: 'ru', name: '俄语', icon: 'RU' },
+  { code: 'ar', name: '阿拉伯语', icon: 'AR' },
+  { code: 'pt', name: '葡萄牙语', icon: 'PT' },
+  { code: 'it', name: '意大利语', icon: 'IT' },
 ];
 
 // 导出格式列表
 const EXPORT_FORMATS = [
-  { code: 'mp4', name: 'MP4 视频', icon: '🎬' },
-  { code: 'webm', name: 'WebM 视频', icon: '🎥' },
-  { code: 'srt', name: 'SRT 字幕', icon: '📄' },
-  { code: 'ass', name: 'ASS 字幕', icon: '📝' },
+  { code: 'mp4', name: 'MP4 视频', icon: 'MP4' },
+  { code: 'webm', name: 'WebM 视频', icon: 'WEBM' },
+  { code: 'srt', name: 'SRT 字幕', icon: 'SRT' },
+  { code: 'ass', name: 'ASS 字幕', icon: 'ASS' },
 ];
 
 // 字幕对齐模式
 const ALIGNMENT_MODES = [
-  { code: 'bilingual', name: '双语对照', icon: '📊' },
-  { code: 'side-by-side', name: '左右对照', icon: '⬌' },
-  { code: 'switch', name: '切换显示', icon: '🔄' },
+  { code: 'bilingual', name: '双语对照', icon: 'BI' },
+  { code: 'side-by-side', name: '左右对照', icon: 'LR' },
+  { code: 'switch', name: '切换显示', icon: 'SW' },
 ];
 
 // 格式化时间
@@ -317,65 +319,69 @@ export function TranslationPanel({ videoId, onTimeClick }: TranslationPanelProps
   }
 
   const isTaskActive = !!taskId;
+  const taskStages = [
+    { status: 'EXTRACTING', label: '字幕' },
+    { status: 'TRANSLATING', label: '翻译' },
+    { status: 'INPAINTING', label: '修复' },
+    { status: 'VOICE_CLONING', label: '音色' },
+    { status: 'EXPORTING', label: '导出' },
+  ] as const;
+  const currentStageIndex = task ? taskStages.findIndex((step) => step.status === task.overallStatus) : -1;
 
   return (
-    <div className="panel flex h-full flex-col rounded-none border-x-0 border-t-0 border-b-0" ref={containerRef}>
+    <div className="panel flex h-full flex-col rounded-none border-x-0 border-t-0 border-b-0 bg-transparent" ref={containerRef}>
       {/* 头部：任务状态概览 */}
-      <div className="border-b border-border-subtle px-4 py-3">
-        <div className="flex items-center justify-between">
+      <div className="border-b border-border-subtle px-4 py-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-2">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                <path d="M4 15l4-4 4-4-2-2l4 4-1 2-2-2v6m10a2 2 2z" />
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7">
+                <path d="M4 6h10" />
+                <path d="M9 6c0 6-3 10-6 12" />
+                <path d="M8 12c1.2 1.8 2.7 3.3 4.5 4.5" />
+                <path d="M16 8l4 10" />
+                <path d="M14.5 14h6" />
               </svg>
-              <h3 className="wb-section-title">翻译任务</h3>
+              <h3 className="wb-section-title">翻译流水线</h3>
             </div>
             {isTaskActive && (
               <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                task?.overallStatus === 'COMPLETED' ? 'bg-emerald-500/10 text-emerald-100' :
-                task?.overallStatus === 'FAILED' ? 'bg-red-500/10 text-red-100' :
-                ['EXTRACTING', 'TRANSLATING', 'INPAINTING', 'VOICE_CLONING', 'LIP_SYNCING', 'EXPORTING'].includes(task?.overallStatus || '') ? 'bg-amber-500/10 text-amber-100' :
+                task?.overallStatus === 'COMPLETED' ? 'bg-emerald-500/10 text-emerald-200' :
+                task?.overallStatus === 'FAILED' ? 'bg-red-500/10 text-red-200' :
+                ['EXTRACTING', 'TRANSLATING', 'INPAINTING', 'VOICE_CLONING', 'LIP_SYNCING', 'EXPORTING'].includes(task?.overallStatus || '') ? 'bg-cyan-500/10 text-cyan-200' :
                 'bg-gray-500/10 text-gray-100'
               }`}>
                 {task?.id?.slice(0, 8)}
               </span>
             )}
           </div>
-          {error && (
-            <div className="text-xs text-red-500 bg-red-500/10 px-2 py-0.5 rounded">
-              {error}
-            </div>
-          )}
+          <div className="flex items-center gap-2">
+            <StatusPill tone={isTaskActive ? 'info' : 'default'}>{isTaskActive ? '任务已启动' : '等待开始'}</StatusPill>
+            {error ? <div className="rounded-full bg-red-500/10 px-3 py-1 text-xs text-red-300">{error}</div> : null}
+          </div>
         </div>
 
         {/* 任务进度指示器 */}
         {isTaskActive && task && (
-          <div className="flex items-center gap-6 mt-3 px-4 py-2 bg-bg-panel-secondary rounded-lg">
-            {[
-              { status: 'EXTRACTING', label: '提取字幕', icon: '📝' },
-              { status: 'TRANSLATING', label: '翻译字幕', icon: '🌐' },
-              { status: 'INPAINTING', label: '视频修复', icon: '🎨' },
-              { status: 'VOICE_CLONING', label: '音色克隆', icon: '🎙' },
-              { status: 'LIP_SYNCING', label: '口型同步', icon: '👄' },
-              { status: 'EXPORTING', label: '导出视频', icon: '📤' },
-            ].map((step) => {
+          <div className="mt-4 grid gap-3 rounded-[20px] bg-bg-panel-secondary/70 px-4 py-4 md:grid-cols-5">
+            {taskStages.map((step, index) => {
               const isActive = task?.overallStatus === step.status;
-              const isCompleted = step.status === 'COMPLETED';
+              const isCompleted = currentStageIndex > index || task?.overallStatus === 'COMPLETED';
 
               return (
-                <div key={step.status} className={`flex items-center gap-3 ${isActive ? 'opacity-100' : 'opacity-40'}`}>
-                  <div className={`flex h-8 w-8 items-center justify-center rounded-full transition-colors ${
-                    isCompleted ? 'bg-emerald-500 text-white' : 'bg-bg-panel-tertiary'
+                <div key={step.status} className={`rounded-[16px] border px-3 py-3 ${isActive ? 'border-cyan-400/30 bg-cyan-500/8' : 'border-border-subtle bg-bg-panel'}`}>
+                  <div className={`inline-flex h-8 min-w-8 items-center justify-center rounded-full px-2 text-[11px] font-semibold ${
+                    isCompleted ? 'bg-emerald-500 text-white' : isActive ? 'bg-cyan-500 text-white' : 'bg-bg-panel-tertiary text-text-secondary'
                   }`}>
-                    {step.icon}
+                    0{index + 1}
                   </div>
-                  <div className="flex-1">
-                    <p className={`text-sm font-medium ${isActive ? 'text-primary' : 'text-text-tertiary'}`}>
+                  <div className="mt-3">
+                    <p className={`text-sm font-medium ${isActive ? 'text-text-primary' : 'text-text-secondary'}`}>
                       {step.label}
                     </p>
-                    {isActive && (
-                      <span className="text-xs text-text-tertiary ml-2">进行中...</span>
-                    )}
+                    <span className="mt-1 block text-xs text-text-tertiary">
+                      {isCompleted ? '已完成' : isActive ? '进行中' : '等待中'}
+                    </span>
                   </div>
                 </div>
               );
@@ -385,23 +391,22 @@ export function TranslationPanel({ videoId, onTimeClick }: TranslationPanelProps
       </div>
 
       {/* 标签页 */}
-      <div className="flex items-center gap-1 px-4 border-b border-border-subtle">
+      <div className="flex items-center gap-2 overflow-x-auto px-4 py-2 border-b border-border-subtle">
         {[
-          { id: 'subtitles', label: '字幕编辑', icon: '📝' },
-          { id: 'voice-clone', label: '音色克隆', icon: '🎙' },
-          { id: 'inpainting', label: '视频修复', icon: '🎨' },
-          { id: 'export', label: '导出设置', icon: '📤' },
+          { id: 'subtitles', label: '步骤 1 · 字幕' },
+          { id: 'voice-clone', label: '步骤 2 · 音色' },
+          { id: 'inpainting', label: '步骤 3 · 修复' },
+          { id: 'export', label: '步骤 4 · 导出' },
         ].map((tab) => (
           <button
             key={tab.id}
-            onClick={() => setActiveTab(tab.id as any)}
-            className={`flex items-center gap-2 px-3 py-2 text-sm font-medium transition-colors ${
+            onClick={() => setActiveTab(tab.id as 'subtitles' | 'voice-clone' | 'inpainting' | 'export')}
+            className={`shrink-0 rounded-full px-4 py-2 text-sm font-medium transition-colors ${
               activeTab === tab.id
-                ? 'text-[#06B6D4] border-b-2 border-[#06B6D4]'
-                : 'text-text-tertiary border-b-2 border-transparent hover:border-border-subtle'
+                ? 'bg-cyan-500/10 text-cyan-200'
+                : 'text-text-tertiary hover:bg-bg-panel-secondary'
             }`}
           >
-            <span className="text-base">{tab.icon}</span>
             <span>{tab.label}</span>
           </button>
         ))}
@@ -425,7 +430,7 @@ export function TranslationPanel({ videoId, onTimeClick }: TranslationPanelProps
           <button
             onClick={handleStartTranslation}
             disabled={isLoading}
-            className="w-full py-3 rounded-lg text-sm font-medium bg-[#06B6D4] text-white hover:opacity-90 disabled:opacity-50 transition-colors"
+            className="w-full rounded-full bg-[linear-gradient(135deg,var(--signal-info),var(--prism-indigo))] py-3 text-sm font-medium text-white transition hover:opacity-95 disabled:opacity-50"
           >
             {isLoading ? '处理中...' : '开始翻译'}
           </button>
@@ -499,7 +504,7 @@ function SubtitleEditorPanel() {
               {ALIGNMENT_MODES.map((mode) => (
                 <button
                   key={mode.code}
-                  onClick={() => setAlignmentMode(mode.code as any)}
+                  onClick={() => setAlignmentMode(mode.code as 'bilingual' | 'side-by-side' | 'switch')}
                   className={`px-2 py-1 text-xs rounded transition-colors ${
                     alignmentMode === mode.code ? 'bg-[#06B6D4]/10 text-white' : 'hover:bg-bg-panel-tertiary'
                   }`}
@@ -871,7 +876,7 @@ function ExportPanel() {
           {EXPORT_FORMATS.map((format) => (
             <button
               key={format.code}
-              onClick={() => handleFormatChange(format.code as any)}
+              onClick={() => handleFormatChange(format.code as 'mp4' | 'webm' | 'srt' | 'ass')}
               className={`flex flex-col items-center gap-2 p-3 rounded-lg border transition-colors ${
                 exportConfig.format === format.code
                   ? 'border-[#06B6D4] bg-[#06B6D4]/5'

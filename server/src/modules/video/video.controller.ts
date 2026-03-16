@@ -14,6 +14,7 @@ import {
   HttpStatus,
   Res,
   StreamableFile,
+  BadRequestException,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { Response } from 'express';
@@ -36,6 +37,39 @@ import {
 export class VideoController {
   constructor(private readonly videoService: VideoService) {}
 
+  private isSupportedVideoFile(file: Express.Multer.File): boolean {
+    const filename = (file.originalname || '').toLowerCase();
+    const mimeType = (file.mimetype || '').toLowerCase();
+
+    const allowedExtensions = [
+      '.mp4',
+      '.webm',
+      '.ogg',
+      '.mov',
+      '.avi',
+      '.mkv',
+      '.flv',
+      '.wmv',
+    ];
+
+    const allowedMimeTypes = [
+      'video/mp4',
+      'video/webm',
+      'video/ogg',
+      'video/quicktime',
+      'video/x-msvideo',
+      'video/x-matroska',
+      'video/x-flv',
+      'video/x-ms-wmv',
+      'application/octet-stream',
+    ];
+
+    return (
+      allowedExtensions.some((ext) => filename.endsWith(ext)) ||
+      allowedMimeTypes.includes(mimeType)
+    );
+  }
+
   /**
    * Upload a video file
    * POST /api/videos/upload?projectId=xxx
@@ -47,9 +81,6 @@ export class VideoController {
     @CurrentUser() userId: string,
     @UploadedFile(
       new ParseFilePipeBuilder()
-        .addFileTypeValidator({
-          fileType: /(mp4|webm|ogg|mov|avi|mkv|flv|wmv)$/i,
-        })
         .addMaxSizeValidator({
           maxSize: 1024 * 1024 * 1024 * 2, // 2GB
           message: 'File size exceeds 2GB limit',
@@ -60,6 +91,10 @@ export class VideoController {
     )
     file: Express.Multer.File,
   ) {
+    if (!this.isSupportedVideoFile(file)) {
+      throw new BadRequestException('Unsupported video file type');
+    }
+
     const normalizedOriginalName = decodeMojibakeUtf8(file.originalname);
     const title = stripFileExtension(normalizedOriginalName) || `video-${Date.now()}`;
     const video = await this.videoService.create(

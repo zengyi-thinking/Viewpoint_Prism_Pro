@@ -4,8 +4,11 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { CreationService } from './creation.service';
 import {
   AppendConversationMessageDto,
+  AdjustCreationDraftDto,
   BootstrapCreationProjectDto,
+  ConfirmConversationWorkflowDto,
   CreateChapterNodesDto,
+  CreateCreationSessionDto,
   GenerateIdeaPreviewsDto,
   GenerateNextNodeCandidatesDto,
   GenerateNodeImageDto,
@@ -17,6 +20,7 @@ import {
   SelectNextNodeCandidateDto,
   UpdateScriptPlanChapterDto,
   UpdateCreationNodeDto,
+  UpdateCreationSessionDto,
 } from './dto';
 
 @UseGuards(JwtAuthGuard)
@@ -31,6 +35,20 @@ export class CreationController {
     @Body() dto: BootstrapCreationProjectDto,
   ) {
     return this.creationService.bootstrapByProject(userId, projectId, dto);
+  }
+
+  @Get('projects/:projectId/sessions')
+  listSessionsByProject(@CurrentUser() userId: string, @Param('projectId') projectId: string) {
+    return this.creationService.listSessionsByProject(userId, projectId);
+  }
+
+  @Post('projects/:projectId/sessions')
+  createSessionByProject(
+    @CurrentUser() userId: string,
+    @Param('projectId') projectId: string,
+    @Body() dto: CreateCreationSessionDto,
+  ) {
+    return this.creationService.createSessionByProject(userId, projectId, dto);
   }
 
   @Post('videos/:videoId/project/bootstrap')
@@ -56,9 +74,32 @@ export class CreationController {
     return this.creationService.appendConversationMessageByProject(userId, projectId, dto);
   }
 
+  @Post('projects/:flowProjectId/conversation/confirm')
+  confirmConversationWorkflow(
+    @CurrentUser() userId: string,
+    @Param('flowProjectId') flowProjectId: string,
+    @Body() dto: ConfirmConversationWorkflowDto,
+  ) {
+    return this.creationService.confirmConversationWorkflow(userId, flowProjectId, dto);
+  }
+
   @Post('projects/:flowProjectId/reset')
   resetProject(@CurrentUser() userId: string, @Param('flowProjectId') flowProjectId: string) {
     return this.creationService.resetProject(userId, flowProjectId);
+  }
+
+  @Patch('projects/:flowProjectId/session')
+  updateSession(
+    @CurrentUser() userId: string,
+    @Param('flowProjectId') flowProjectId: string,
+    @Body() dto: UpdateCreationSessionDto,
+  ) {
+    return this.creationService.updateSession(userId, flowProjectId, dto);
+  }
+
+  @Delete('projects/:flowProjectId/session')
+  deleteSession(@CurrentUser() userId: string, @Param('flowProjectId') flowProjectId: string) {
+    return this.creationService.deleteSession(userId, flowProjectId);
   }
 
   @Post('projects/:projectId/idea-previews')
@@ -142,6 +183,24 @@ export class CreationController {
     @Body() dto: CreateChapterNodesDto,
   ) {
     return this.creationService.createChapterNodes(userId, flowProjectId, dto);
+  }
+
+  @Post('projects/:flowProjectId/drafts/adjust')
+  adjustDraft(
+    @CurrentUser() userId: string,
+    @Param('flowProjectId') flowProjectId: string,
+    @Body() dto: AdjustCreationDraftDto,
+  ) {
+    return this.creationService.adjustDraft(userId, flowProjectId, dto);
+  }
+
+  @Post('projects/:flowProjectId/segments/:segmentId/confirm')
+  confirmSegmentPreview(
+    @CurrentUser() userId: string,
+    @Param('flowProjectId') flowProjectId: string,
+    @Param('segmentId') segmentId: string,
+  ) {
+    return this.creationService.confirmSegmentPreview(userId, flowProjectId, segmentId);
   }
 
   @Post('projects/:flowProjectId/nodes/merge')

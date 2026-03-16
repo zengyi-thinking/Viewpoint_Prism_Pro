@@ -183,6 +183,44 @@
 
 ---
 
+## 3.1 连续短剧工作流专项对照
+
+这一组条目专门对应用户最终想要的能力，而不是泛化的“能生成视频”。
+
+- [ ] 对话窗口做到“尽量简单”，用户只需持续对话，最后按一次确认就能自动触发完整工作流
+说明：
+当前左侧对话入口已经替换完成，但仍然需要用户手动点击“故事方向 / 章节结构 / 生成生产包 / 进入生产”等多个按钮，尚未收敛成“一次确认后自动串行执行”的单按钮导演流程。
+
+- [ ] 导演 Agent 具备真正的导演视角，会分析想法、给设想和建议，再自然推进对话
+说明：
+当前 [story-conversation.agent.ts](D:/DevProject/Viewpoint_Prism_Pro/server/src/modules/prism-creation/services/story-conversation.agent.ts) 已加强导演口吻与建议式回复，但还没有做专门的真实对话回归测试来验证“长期多轮都保持专家感”，因此不能划掉。
+
+- [ ] 对话内容可以持续驱动“下一个片段”的创作，而不是只停留在前期剧本规划
+说明：
+当前工程已支持 `conversation -> script -> chapter -> production package -> node`，但“用户继续聊一句，Agent 就帮你往后推一个新片段节点”这条实时续写链路还没有打通。现有的下一节点推进主要仍依赖右侧节点上的 `next-candidates` 机制，而不是左侧对话持续驱动。
+
+- [ ] Agent 能根据持续对话自动绘制后续节点，并把它们接到已有短剧链路中
+说明：
+当前只能基于章节创建一批节点，或基于选中节点推演下一节点；还没有实现“从聊天上下文直接增量追加下一个剧情节点到时间线上”的自动编排。
+
+- [ ] 对每个待生成片段自动产出九宫格参考图，供用户在生成视频前预览
+说明：
+当前 [storyboard-segment.agent.ts](D:/DevProject/Viewpoint_Prism_Pro/server/src/modules/prism-creation/services/storyboard-segment.agent.ts) 已能产出 `shotList(3-9 条)`，也有 `storyboardImageUrl` 字段与分镜图生成链路，但工程里还没有真正落地“九宫格图拼版生成 + 前端预览”这一整段，所以不能算完成。
+
+- [ ] 保持角色一致性达到“可连续观看的小短剧”标准
+说明：
+当前已实现人物锚点、连续性锁定、上一节点提示词继承、节点合并后的连续性继承，相关能力见 [prompt-director.agent.ts](D:/DevProject/Viewpoint_Prism_Pro/server/src/modules/prism-creation/services/prompt-director.agent.ts) 与 [CreationCanvas.tsx](D:/DevProject/Viewpoint_Prism_Pro/client/src/components/prisms/creation/CreationCanvas.tsx)。这说明基础设施已具备，但还没有做“多段真实新生成视频连续观看”的强验证，因此现阶段只能算“已具备基础能力，未达到最终验收标准”。
+
+- [ ] 多片段视频能够以真实新生成素材完成前后拼接，形成可观看的小短剧
+说明：
+当前 Phase 4 的导出链路已打通，且 `multisegment` 联调已验证拼接能力；但最近一次多片段联调是复用已有短片样片回填来验证工程链路，而不是重新生成多个全新片段，所以不能把这条需求视为最终完成。
+
+- [ ] 用户在对话结束后可以直接看到“故事方向 + 九宫格预览 + 下一片段长什么样”的统一预览界面
+说明：
+当前左侧已有故事方向卡片、章节细节弹窗、AI 调整入口，但“故事方向 + 九宫格 + 待拼接视频预览”还没有合成到一个统一预览弹窗中。
+
+---
+
 ## 4. 架构重构清单
 
 ## 4.1 Provider 与设置系统
@@ -380,3 +418,5 @@
 8. 2026-03-14 已完成失败重试真实联调：`npm run test:creation:retry:e2e --workspace=server` 已验证故意破坏成片导出输入后，任务失败并可通过 `/tasks/:taskId/retry` 成功重试。结果文件为 [__creation_retry_e2e_result.json](D:/DevProject/Viewpoint_Prism_Pro/__creation_retry_e2e_result.json)。
 9. 2026-03-14 已完成多片段拼接真实联调：`npm run test:creation:multisegment:e2e --workspace=server` 已验证同一工程下至少两个片段可被识别并完成成片导出。当前由于中转商余额不足以继续提交新的 `video_gen`，该联调使用 Phase 3 已验证通过的短片样片回填到第二节点，用于验证“多片段独立片段进入成片拼接链路”的工程能力。结果文件为 [__creation_multisegment_e2e_result.json](D:/DevProject/Viewpoint_Prism_Pro/__creation_multisegment_e2e_result.json)。
 10. 2026-03-14 已完成 Phase 5 高级编辑回挂：前端已支持高级编辑模式切换、局部修改 prompt 并保存、对单节点局部重生图片/视频、失败任务重试，以及多选节点合并。核心文件为 [CreationCanvas.tsx](D:/DevProject/Viewpoint_Prism_Pro/client/src/components/prisms/creation/CreationCanvas.tsx)、[FlowNodeCard.tsx](D:/DevProject/Viewpoint_Prism_Pro/client/src/components/prisms/creation/FlowNodeCard.tsx)、[creation.service.ts](D:/DevProject/Viewpoint_Prism_Pro/server/src/modules/prism-creation/creation.service.ts)。
+11. 2026-03-14 已补上“连续短剧导演流”第一版实现，但尚未做完整联调验收：当前新增了左侧“一次确认”入口、`conversation/confirm` 自动串行执行（故事方向 + 章节 + production package + 最多 9 张分镜预览图）、`segments/:segmentId/confirm` 片段确认生成，以及节点与分镜片段的 `sourceSegmentId` 映射。核心文件为 [CreationCanvas.tsx](D:/DevProject/Viewpoint_Prism_Pro/client/src/components/prisms/creation/CreationCanvas.tsx)、[CreationChatPanel.tsx](D:/DevProject/Viewpoint_Prism_Pro/client/src/components/prisms/creation/CreationChatPanel.tsx)、[creation.service.ts](D:/DevProject/Viewpoint_Prism_Pro/server/src/modules/prism-creation/creation.service.ts)、[creation.controller.ts](D:/DevProject/Viewpoint_Prism_Pro/server/src/modules/prism-creation/creation.controller.ts)。
+12. 2026-03-14 已完成“创作工程创建与历史切换”第一版实现与联调：同一顶层 `Project` 下已支持多个 `PrismFlowProject` 会话，左侧新增创作会话列表与“新建创作工程”，进入创作棱镜时会优先打开最近一次会话；已支持新建、切换、重命名、删除，以及 `appendConversationMessage / generateIdeaPreviews / generateScriptPlan` 基于 `flowProjectId` 的会话隔离。验证命令为 `npm run test:creation:sessions:e2e --workspace=server`，结果文件为 [__creation_sessions_e2e_result.json](D:/DevProject/Viewpoint_Prism_Pro/__creation_sessions_e2e_result.json)。

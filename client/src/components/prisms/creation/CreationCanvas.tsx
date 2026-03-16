@@ -12,6 +12,7 @@ import {
   CreationGraphNode,
   CreationGraphResponse,
   CreationNextCandidate,
+  CreationSessionSummary,
   creationApi,
 } from '@/services/creation.api';
 import { FlowNodeCard, FlowNodeData } from './FlowNodeCard';
@@ -109,18 +110,37 @@ function SectionCard({
   title,
   description,
   children,
+  collapsible = false,
+  collapsed = false,
+  onToggle,
 }: {
   title: string;
   description?: string;
   children: React.ReactNode;
+  collapsible?: boolean;
+  collapsed?: boolean;
+  onToggle?: () => void;
 }) {
   return (
     <section className="rounded-[20px] border border-border-subtle bg-bg-panel px-4 py-4">
-      <div className="mb-3">
-        <h3 className="text-sm font-semibold text-text-primary">{title}</h3>
-        {description ? <p className="mt-1 text-xs leading-5 text-text-tertiary">{description}</p> : null}
+      <div className={collapsed ? 'mb-0' : 'mb-3'}>
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h3 className="text-sm font-semibold text-text-primary">{title}</h3>
+            {description ? <p className="mt-1 text-xs leading-5 text-text-tertiary">{description}</p> : null}
+          </div>
+          {collapsible ? (
+            <button
+              type="button"
+              onClick={onToggle}
+              className="rounded-lg border border-border-subtle px-2 py-1 text-[11px] text-text-secondary"
+            >
+              {collapsed ? '展开' : '收起'}
+            </button>
+          ) : null}
+        </div>
       </div>
-      {children}
+      {collapsed ? null : children}
     </section>
   );
 }
@@ -152,6 +172,25 @@ export function CreationCanvas({ projectId }: { projectId?: string }) {
   const [mergeTitle, setMergeTitle] = useState('');
   const [mergeInstructions, setMergeInstructions] = useState('');
   const [retryingTaskId, setRetryingTaskId] = useState<string | null>(null);
+  const [leftPanelWidth, setLeftPanelWidth] = useState(430);
+  const [isResizingPanels, setIsResizingPanels] = useState(false);
+  const [sessions, setSessions] = useState<CreationSessionSummary[]>([]);
+  const [currentFlowProjectId, setCurrentFlowProjectId] = useState<string | null>(null);
+  const [sessionActionLoading, setSessionActionLoading] = useState<'creating' | string | null>(null);
+  const [collapsedPanels, setCollapsedPanels] = useState<Record<string, boolean>>({
+    sessions: false,
+    advanced: false,
+    nodeDirector: false,
+    stage: false,
+    tasks: false,
+  });
+
+  const togglePanel = useCallback((key: string) => {
+    setCollapsedPanels((prev) => ({
+      ...prev,
+      [key]: !prev[key],
+    }));
+  }, []);
 
   const loadGraph = useCallback(
     async (flowProjectId: string) => {
@@ -160,8 +199,13 @@ export function CreationCanvas({ projectId }: { projectId?: string }) {
       try {
         const result = await creationApi.getGraph(flowProjectId);
         setGraph(normalizeGraph(result));
+        setCurrentFlowProjectId(result.project.id);
         setMode(result.project.mode || 'idea');
-        setSelectedNodeId((prev) => prev || result.nodes[0]?.id || null);
+        setSelectedNodeId(result.nodes[0]?.id || null);
+        setSelectedNodeIds(result.nodes[0]?.id ? [result.nodes[0].id] : []);
+        setNextCandidates([]);
+        setNextIntent('');
+        setConversationInput('');
       } catch (err) {
         setError(err instanceof Error ? err.message : '加载创作工程失败');
       } finally {
@@ -171,25 +215,86 @@ export function CreationCanvas({ projectId }: { projectId?: string }) {
     [],
   );
 
+  const refreshSessions = useCallback(async () => {
+    if (!projectId) return [];
+    const result = await creationApi.listSessions(projectId);
+    setSessions(result);
+    return result;
+  }, [projectId]);
+
+  const createNewSession = useCallback(async () => {
+    if (!projectId) return null;
+    const result = await creationApi.createSession(projectId, {
+      backgroundVideoId: currentVideo?.id,
+    });
+    const normalized = normalizeGraph(result);
+    setGraph(normalized);
+    setCurrentFlowProjectId(result.project.id);
+    setMode(result.project.mode || 'idea');
+    setSelectedNodeId(result.nodes[0]?.id || null);
+    setSelectedNodeIds(result.nodes[0]?.id ? [result.nodes[0].id] : []);
+    setNextCandidates([]);
+    setNextIntent('');
+    setConversationInput('');
+    setScriptText('');
+    setIdeaForm({
+      idea: '',
+      conflict: '',
+      setting: '',
+      visualGoal: '',
+      constraints: '',
+    });
+    const listed = await refreshSessions();
+    return listed.find((item) => item.id === result.project.id) || null;
+  }, [currentVideo?.id, projectId, refreshSessions]);
+
   const bootstrap = useCallback(async () => {
     if (!projectId) return;
     setLoading(true);
     setError(null);
     try {
-      const result = await creationApi.bootstrap(projectId, currentVideo?.id);
-      setGraph(normalizeGraph(result));
-      setMode(result.project.mode || 'idea');
-      setSelectedNodeId(result.nodes[0]?.id || null);
+      const listed = await creationApi.listSessions(projectId);
+      setSessions(listed);
+      if (listed.length > 0) {
+        const latest = listed[0];
+        const result = await creationApi.bootstrap(projectId, currentVideo?.id, latest.id);
+        const normalized = normalizeGraph(result);
+        setGraph(normalized);
+        setCurrentFlowProjectId(result.project.id);
+        setMode(result.project.mode || 'idea');
+        setSelectedNodeId(result.nodes[0]?.id || null);
+        setSelectedNodeIds(result.nodes[0]?.id ? [result.nodes[0].id] : []);
+      } else {
+        await createNewSession();
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : '初始化创作工程失败');
     } finally {
       setLoading(false);
     }
-  }, [currentVideo?.id, projectId]);
+  }, [createNewSession, currentVideo?.id, projectId]);
 
   useEffect(() => {
     void bootstrap();
   }, [bootstrap]);
+
+  useEffect(() => {
+    if (!isResizingPanels) return;
+
+    const handleMove = (event: MouseEvent) => {
+      const next = Math.min(720, Math.max(360, event.clientX - 20));
+      setLeftPanelWidth(next);
+    };
+
+    const handleUp = () => setIsResizingPanels(false);
+
+    window.addEventListener('mousemove', handleMove);
+    window.addEventListener('mouseup', handleUp);
+    return () => {
+      window.removeEventListener('mousemove', handleMove);
+      window.removeEventListener('mouseup', handleUp);
+    };
+  }, [isResizingPanels]);
 
   useWebSocket({
     projectId,
@@ -274,6 +379,7 @@ export function CreationCanvas({ projectId }: { projectId?: string }) {
   );
   const flowEdges = useMemo(() => toFlowEdges(graph?.nodes || []), [graph?.nodes]);
   const conversationState = graph?.project.meta.conversationState;
+  const hasProductionNodes = Boolean(graph?.nodes.length);
   const conversationSummary = useMemo(() => {
     const combined = (conversationState?.messages || [])
       .map((message) => message.content.trim())
@@ -369,12 +475,27 @@ export function CreationCanvas({ projectId }: { projectId?: string }) {
     [],
   );
 
+  const handleSelectionChange = useCallback(({ nodes }: { nodes: Node[] }) => {
+    const ids = nodes.map((item) => item.id);
+    setSelectedNodeIds((prev) => {
+      // 只有当选中的节点 ID 列表真的变化时才更新
+      if (prev.length === ids.length && prev.every((id, i) => id === ids[i])) {
+        return prev;
+      }
+      return ids;
+    });
+    if (ids.length === 1) {
+      setSelectedNodeId(ids[0]);
+    }
+  }, []);
+
   const handleGenerateIdeaPreviews = async () => {
     if (!projectId || !ideaForm.idea.trim()) return;
     setBusyText('正在生成故事方向');
     setError(null);
     try {
       const result = await creationApi.generateIdeaPreviews(projectId, {
+        flowProjectId: currentFlowProjectId || undefined,
         ...ideaForm,
         count: 3,
         backgroundVideoId: currentVideo?.id,
@@ -389,17 +510,19 @@ export function CreationCanvas({ projectId }: { projectId?: string }) {
 
   const handleResetIdeaStory = async () => {
     if (!graph?.project.id) return;
-    const confirmed = window.confirm('确认开始一个新的故事吗？当前创作棱镜中的节点、预览和章节规划会被清空。');
+    const confirmed = window.confirm('确认清空当前创作会话吗？这不会删除历史会话，只会清空当前会话中的节点、预览和章节规划。');
     if (!confirmed) return;
 
-    setBusyText('正在清空当前故事');
+    setBusyText('正在清空当前创作会话');
     setError(null);
     try {
       const result = await creationApi.resetProject(graph.project.id);
       const normalized = normalizeGraph(result);
       setGraph(normalized);
+      setCurrentFlowProjectId(result.project.id);
       setMode('idea');
       setSelectedNodeId(null);
+      setSelectedNodeIds([]);
       setNextCandidates([]);
       setNextIntent('');
       setScriptText('');
@@ -410,9 +533,82 @@ export function CreationCanvas({ projectId }: { projectId?: string }) {
         visualGoal: '',
         constraints: '',
       });
+      await refreshSessions();
     } catch (err) {
       setError(err instanceof Error ? err.message : '重置创作工程失败');
     } finally {
+      setBusyText('');
+    }
+  };
+
+  const handleCreateSession = async () => {
+    setSessionActionLoading('creating');
+    setBusyText('正在创建新的创作工程');
+    setError(null);
+    try {
+      await createNewSession();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '创建创作工程失败');
+    } finally {
+      setSessionActionLoading(null);
+      setBusyText('');
+    }
+  };
+
+  const handleSwitchSession = async (flowProjectId: string) => {
+    if (flowProjectId === currentFlowProjectId) return;
+    setSessionActionLoading(flowProjectId);
+    setBusyText('正在切换创作工程');
+    setError(null);
+    try {
+      await loadGraph(flowProjectId);
+      await refreshSessions();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '切换创作工程失败');
+    } finally {
+      setSessionActionLoading(null);
+      setBusyText('');
+    }
+  };
+
+  const handleRenameSession = async (session: CreationSessionSummary) => {
+    const nextName = window.prompt('请输入新的创作工程名称', session.name);
+    if (!nextName || nextName.trim() === session.name) return;
+    setSessionActionLoading(session.id);
+    setBusyText('正在重命名创作工程');
+    setError(null);
+    try {
+      const result = await creationApi.renameSession(session.id, { name: nextName.trim() });
+      setGraph((prev) => (prev?.project.id === result.project.id ? normalizeGraph(result) : prev));
+      await refreshSessions();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '重命名创作工程失败');
+    } finally {
+      setSessionActionLoading(null);
+      setBusyText('');
+    }
+  };
+
+  const handleDeleteSession = async (session: CreationSessionSummary) => {
+    const confirmed = window.confirm(`确认删除“${session.name}”吗？该会话下的节点和渲染记录会一起移除。`);
+    if (!confirmed) return;
+    setSessionActionLoading(session.id);
+    setBusyText('正在删除创作工程');
+    setError(null);
+    try {
+      const result = await creationApi.deleteSession(session.id);
+      setSessions(result.sessions);
+      if (currentFlowProjectId === session.id) {
+        if (result.sessions[0]) {
+          await loadGraph(result.sessions[0].id);
+        } else {
+          await createNewSession();
+        }
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '删除创作工程失败');
+    } finally {
+      setSessionActionLoading(null);
       setBusyText('');
     }
   };
@@ -438,6 +634,7 @@ export function CreationCanvas({ projectId }: { projectId?: string }) {
     setError(null);
     try {
       const result = await creationApi.generateScriptPlan(projectId, {
+        flowProjectId: currentFlowProjectId || undefined,
         scriptText,
         chaptersHint: 4,
         backgroundVideoId: currentVideo?.id,
@@ -659,6 +856,7 @@ export function CreationCanvas({ projectId }: { projectId?: string }) {
       .appendConversationMessage(projectId!, {
         content: trimmed,
         backgroundVideoId: currentVideo?.id,
+        flowProjectId: currentFlowProjectId || undefined,
       })
       .then((result) => {
         setGraph(normalizeGraph(result));
@@ -698,6 +896,7 @@ export function CreationCanvas({ projectId }: { projectId?: string }) {
     setError(null);
     try {
       const result = await creationApi.generateIdeaPreviews(projectId, {
+        flowProjectId: currentFlowProjectId || undefined,
         ...ideaForm,
         idea: storyIntent,
         visualGoal: visualStyle,
@@ -734,6 +933,7 @@ export function CreationCanvas({ projectId }: { projectId?: string }) {
     setError(null);
     try {
       const result = await creationApi.generateScriptPlan(projectId, {
+        flowProjectId: currentFlowProjectId || undefined,
         scriptText: combined,
         chaptersHint: conversationState?.chaptersHint || 4,
         backgroundVideoId: currentVideo?.id,
@@ -765,6 +965,22 @@ export function CreationCanvas({ projectId }: { projectId?: string }) {
     return null;
   };
 
+  const handleConfirmWorkflow = async () => {
+    if (!graph?.project.id) return;
+    setBusyText('正在按导演对话生成故事方向、章节与九宫格预览');
+    setError(null);
+    try {
+      const result = await creationApi.confirmConversationWorkflow(graph.project.id, {
+        previewImageCount: 9,
+      });
+      setGraph(normalizeGraph(result));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '确认工作流失败');
+    } finally {
+      setBusyText('');
+    }
+  };
+
   const handleEnterProduction = async () => {
     const latestGraph =
       !graph?.project.meta.storyboardSegments?.length && graph?.project.meta.scriptPlan?.chapters?.length
@@ -773,6 +989,43 @@ export function CreationCanvas({ projectId }: { projectId?: string }) {
     const firstChapter = latestGraph?.project.meta.scriptPlan?.chapters?.[0];
     if (!firstChapter) return;
     await handleCreateChapterNodes(firstChapter.index);
+  };
+
+  const handleConfirmSegmentPreview = async (segmentId: string) => {
+    if (!graph?.project.id) return;
+    setBusyText('正在生成下一片段并接入短剧链路');
+    setError(null);
+    try {
+      const result = await creationApi.confirmSegmentPreview(graph.project.id, segmentId);
+      setGraph(normalizeGraph(result.graph));
+      if (result.nodeId) {
+        setSelectedNodeId(result.nodeId);
+        setSelectedNodeIds([result.nodeId]);
+        setVideoLoadingNodeId(result.nodeId);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '生成下一片段失败');
+    } finally {
+      setTimeout(() => setBusyText(''), 1200);
+    }
+  };
+
+  const handleAdjustDraft = async (payload: {
+    targetType: 'preview' | 'chapter';
+    targetId: string;
+    instruction: string;
+  }) => {
+    if (!graph?.project.id) return;
+    setBusyText('导演正在调整方案');
+    setError(null);
+    try {
+      const result = await creationApi.adjustDraft(graph.project.id, payload);
+      setGraph(normalizeGraph(result));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'AI 调整失败');
+    } finally {
+      setBusyText('');
+    }
   };
 
   if (!projectId) {
@@ -785,7 +1038,12 @@ export function CreationCanvas({ projectId }: { projectId?: string }) {
 
   return (
     <div className="isolate flex h-full min-h-0 w-full overflow-hidden rounded-[16px] bg-bg-panel-secondary">
-      <aside className="relative z-20 flex w-[430px] shrink-0 flex-col border-r border-border-subtle bg-bg-panel pointer-events-auto" onPointerDownCapture={(e) => e.stopPropagation()} onMouseDownCapture={(e) => e.stopPropagation()}> 
+      <aside
+        style={{ width: leftPanelWidth }}
+        className="relative z-20 flex shrink-0 flex-col border-r border-border-subtle bg-bg-panel pointer-events-auto"
+        onPointerDownCapture={(e) => e.stopPropagation()}
+        onMouseDownCapture={(e) => e.stopPropagation()}
+      >
         <div className="border-b border-border-subtle px-5 py-4">
           <div className="flex items-start justify-between gap-3">
             <div>
@@ -800,11 +1058,94 @@ export function CreationCanvas({ projectId }: { projectId?: string }) {
             </button>
           </div>
           <p className="mt-3 text-xs leading-6 text-text-tertiary">
-            左侧已切成对话式导演台。先通过持续对话归纳故事、风格和拆分偏好，再把结果送入故事方向、章节规划和后续视频生产链路。
+            左侧现在支持多个创作会话。你可以保留历史短剧工程，再新建一个全新的会话继续创作新的视频。
           </p>
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
+          <SectionCard
+            title="创作工程"
+            description="同一项目下可保留多次创作记录。新建后会进入一个全新的导演对话与节点画布。"
+            collapsible
+            collapsed={collapsedPanels.sessions}
+            onToggle={() => togglePanel('sessions')}
+          >
+            <div className="space-y-3">
+              <button
+                onClick={() => void handleCreateSession()}
+                disabled={sessionActionLoading === 'creating'}
+                className="flex w-full items-center justify-center rounded-[14px] bg-[#E91E8C] px-4 py-2.5 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {sessionActionLoading === 'creating' ? '正在创建...' : '新建创作工程'}
+              </button>
+              <div className="space-y-2">
+                {sessions.length ? (
+                  sessions.map((session) => {
+                    const active = session.id === currentFlowProjectId;
+                    const loadingThis = sessionActionLoading === session.id;
+                    return (
+                      <div
+                        key={session.id}
+                        className={`rounded-[16px] border px-3 py-3 transition ${
+                          active
+                            ? 'border-[#E91E8C]/60 bg-[#E91E8C]/8'
+                            : 'border-border-subtle bg-bg-panel-secondary'
+                        }`}
+                      >
+                        <button
+                          onClick={() => void handleSwitchSession(session.id)}
+                          disabled={loadingThis}
+                          className="w-full text-left"
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <div className="truncate text-sm font-medium text-text-primary">{session.name}</div>
+                              <div className="mt-1 text-[11px] text-text-tertiary">
+                                {session.hasNodes ? '已有节点' : '空白会话'} · {new Date(session.updatedAt).toLocaleString('zh-CN')}
+                              </div>
+                              {session.lastSummary ? (
+                                <p className="mt-2 line-clamp-2 text-xs leading-5 text-text-secondary">{session.lastSummary}</p>
+                              ) : null}
+                            </div>
+                            <span
+                              className={`shrink-0 rounded-full px-2 py-1 text-[10px] ${
+                                active ? 'bg-[#E91E8C] text-white' : 'bg-bg-panel text-text-tertiary'
+                              }`}
+                            >
+                              {active ? '当前' : '切换'}
+                            </span>
+                          </div>
+                        </button>
+                        <div className="mt-3 flex gap-2">
+                          <button
+                            onClick={() => void handleRenameSession(session)}
+                            disabled={loadingThis}
+                            className="rounded-lg border border-border-subtle px-2.5 py-1 text-[11px] text-text-secondary disabled:opacity-60"
+                          >
+                            重命名
+                          </button>
+                          <button
+                            onClick={() => void handleDeleteSession(session)}
+                            disabled={loadingThis}
+                            className="rounded-lg border border-border-subtle px-2.5 py-1 text-[11px] text-[#ff8ca8] disabled:opacity-60"
+                          >
+                            删除
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })
+                ) : (
+                  <div className="rounded-[14px] border border-dashed border-border-subtle px-3 py-4 text-xs leading-6 text-text-tertiary">
+                    当前还没有创作会话，首次进入会自动创建一条新的创作工程。
+                  </div>
+                )}
+              </div>
+            </div>
+          </SectionCard>
+
+          <div className="h-4" />
+
           <CreationChatPanel
             messages={conversationState?.messages || []}
             input={conversationInput}
@@ -818,23 +1159,23 @@ export function CreationCanvas({ projectId }: { projectId?: string }) {
             sceneAssets={graph?.project.meta.sceneAssets || []}
             storyboardSegments={graph?.project.meta.storyboardSegments || []}
             voiceCasting={graph?.project.meta.voiceCasting || []}
+            confirmedSegmentIds={(graph?.nodes || []).map((node) => node.sourceSegmentId).filter(Boolean) as string[]}
             busyText={busyText}
             onInputChange={setConversationInput}
             onSend={handleSendConversation}
             onReset={() => void handleResetIdeaStory()}
-            onGenerateStory={() => void handleGenerateFromConversation()}
-            onGenerateChapters={() => void handleGenerateScriptFromConversation()}
-            onSelectPreview={(previewId) => void handleSelectPreview(previewId)}
-            onCreateChapterNodes={(chapterIndex) => void handleCreateChapterNodes(chapterIndex)}
-            onUpdateChapter={(chapterIndex, payload) => void handleUpdateChapter(chapterIndex, payload)}
-            onGenerateProductionPackage={() => void handleGenerateProductionPackage()}
-            onEnterProduction={() => void handleEnterProduction()}
+            onConfirmWorkflow={() => void handleConfirmWorkflow()}
+            onConfirmSegmentPreview={(segmentId) => void handleConfirmSegmentPreview(segmentId)}
+            onAdjustDraft={handleAdjustDraft}
           />
 
           {editorMode === 'advanced' ? (
             <SectionCard
               title="高级编辑模式"
               description="支持任务重试、合并节点、局部重生和直接拖拽编辑。框选两个以上节点后，可以创建一个新的合并节点。"
+              collapsible
+              collapsed={collapsedPanels.advanced}
+              onToggle={() => togglePanel('advanced')}
             >
               <div className="space-y-3">
                 <div className="rounded-[16px] border border-border-subtle bg-bg-panel-secondary p-3 text-xs leading-6 text-text-secondary">
@@ -867,11 +1208,15 @@ export function CreationCanvas({ projectId }: { projectId?: string }) {
             </SectionCard>
           ) : null}
 
-          <SectionCard
-            title="节点导演台"
-            description="当前选中的节点会在这里做细化。你可以改文案、改中文分镜说明、改模型提示词，再出图或出视频。"
-          >
-            {selectedNode ? (
+          {hasProductionNodes || editorMode === 'advanced' ? (
+            <SectionCard
+              title="节点导演台"
+              description="进入镜头生产后，这里才会展开节点级编辑。你可以改文案、改中文分镜说明、改模型提示词，再出图或出视频。"
+              collapsible
+              collapsed={collapsedPanels.nodeDirector}
+              onToggle={() => togglePanel('nodeDirector')}
+            >
+              {selectedNode ? (
               <div className="space-y-3">
                 <input
                   value={selectedNode.title}
@@ -1075,12 +1420,28 @@ export function CreationCanvas({ projectId }: { projectId?: string }) {
                 先在右侧画布中选中一个节点，导演台才会展开。
               </div>
             )}
-          </SectionCard>
+            </SectionCard>
+          ) : (
+            <SectionCard
+              title="当前阶段"
+              description="你现在还在导演对话阶段。先通过聊天归纳故事和章节，再进入镜头级编辑。"
+              collapsible
+              collapsed={collapsedPanels.stage}
+              onToggle={() => togglePanel('stage')}
+            >
+              <div className="rounded-[16px] border border-dashed border-border-subtle px-4 py-6 text-sm leading-6 text-text-tertiary">
+                当前左侧主入口已经切到对话式创作。右侧节点导演台会在你生成章节节点或进入高级编辑后再显示。
+              </div>
+            </SectionCard>
+          )}
 
           {editorMode === 'advanced' ? (
             <SectionCard
               title="任务与导出"
               description="这里会显示当前工程的渲染任务和成片状态。失败任务可以直接重试。"
+              collapsible
+              collapsed={collapsedPanels.tasks}
+              onToggle={() => togglePanel('tasks')}
             >
               <div className="space-y-3">
                 {graph?.project.meta.finalVideo ? (
@@ -1152,6 +1513,15 @@ export function CreationCanvas({ projectId }: { projectId?: string }) {
         </div>
       </aside>
 
+      <div
+        onMouseDown={() => setIsResizingPanels(true)}
+        className={`relative z-20 w-2 shrink-0 cursor-col-resize bg-transparent transition hover:bg-[#E91E8C]/20 ${
+          isResizingPanels ? 'bg-[#E91E8C]/30' : ''
+        }`}
+      >
+        <div className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-border-subtle" />
+      </div>
+
       <main className="relative z-0 flex min-w-0 flex-1 flex-col overflow-hidden">
         <div className="flex items-center justify-between border-b border-border-subtle px-5 py-4">
           <div>
@@ -1198,13 +1568,7 @@ export function CreationCanvas({ projectId }: { projectId?: string }) {
               fitView
               defaultViewport={{ x: 0, y: 0, zoom: 0.78 }}
               onNodeDragStop={handleNodeDragStop}
-              onSelectionChange={({ nodes }) => {
-                const ids = nodes.map((item) => item.id);
-                setSelectedNodeIds(ids);
-                if (ids.length === 1) {
-                  setSelectedNodeId(ids[0]);
-                }
-              }}
+              onSelectionChange={handleSelectionChange}
             >
               <MiniMap pannable zoomable nodeColor="#E91E8C" />
               <Controls />
@@ -1224,4 +1588,3 @@ export function CreationCanvas({ projectId }: { projectId?: string }) {
     </div>
   );
 }
-

@@ -1,354 +1,257 @@
+import Link from 'next/link';
+import { MetricChip, PageHero, SectionHeader, StatusPill, SurfaceCard } from '@/components/system';
+
+const prismCards = [
+  {
+    title: '知识棱镜',
+    subtitle: '把视频拆成知识脉络，而不是零散笔记。',
+    description: '实时抓取关键帧、生成知识板、沉淀闪卡与大纲，适合课程、分享、访谈和长视频学习。',
+    accent: 'var(--prism-amber)',
+    points: ['实时看板', '关键帧洞察', '思维导图', '学习卡片'],
+  },
+  {
+    title: '创作棱镜',
+    subtitle: '把灵感推进成分镜工程，而不是一次性生成。',
+    description: '导演对话、章节推演、节点画布和渲染任务都在同一条创作链里，支持分支与回滚。',
+    accent: 'var(--prism-pink)',
+    points: ['导演对话', '节点画布', '人物锚点', '成片导出'],
+  },
+  {
+    title: '翻译棱镜',
+    subtitle: '把译制流程压缩为一条可控流水线。',
+    description: '字幕、音色、修复、导出四步串联，保留任务状态和编辑能力，而不是多个工具来回切换。',
+    accent: 'var(--prism-cyan)',
+    points: ['字幕对齐', '音色克隆', '视频修复', '多格式导出'],
+  },
+  {
+    title: '衍射棱镜',
+    subtitle: '把一条视频裂变成多平台资产包。',
+    description: '按平台语境生成图文与分发素材，素材挑选、草稿预览和导出动作在同一界面完成。',
+    accent: 'var(--prism-indigo)',
+    points: ['平台策略', '素材篮', '文案草稿', '批量导出'],
+  },
+];
+
+const workflow = [
+  {
+    step: '01',
+    title: '导入一条视频',
+    description: '从本地上传或粘贴链接开始，系统围绕同一份视频上下文建立后续所有工作。',
+  },
+  {
+    step: '02',
+    title: '切换不同棱镜',
+    description: '不用换系统，只需要切换右侧 Prism Studio，就能在学习、创作、译制、分发之间流转。',
+  },
+  {
+    step: '03',
+    title: '沉淀并导出资产',
+    description: '产出笔记、视频、译制片、图文包，并保留项目状态，方便继续迭代。',
+  },
+];
+
 export default function LandingPage() {
   return (
-    <div
-      className="min-h-screen w-full bg-[#0a0a0f] text-[#e8e8ed]"
-      style={{
-        writingMode: 'horizontal-tb',
-        textOrientation: 'mixed',
-        minWidth: '100vw',
-      }}
-    >
-      {/* ====== Navbar ====== */}
-      <nav className="fixed top-0 left-0 right-0 z-50 border-b border-white/5 bg-[#0a0a0f]/80 backdrop-blur-xl">
-        <div className="mx-auto flex h-16 w-full max-w-7xl items-center justify-between px-6">
-          <div className="flex items-center gap-2">
-            <PrismLogo />
-            <span className="text-lg font-semibold tracking-tight">Viewpoint Prism</span>
-          </div>
-          <div className="hidden items-center gap-8 text-sm text-white/50 md:flex">
-            <a href="#features" className="transition hover:text-white/90">功能</a>
-            <a href="#workflow" className="transition hover:text-white/90">工作流</a>
-            <a href="#byok" className="transition hover:text-white/90">开放架构</a>
-          </div>
+    <div className="min-h-screen text-text-primary">
+      <header className="sticky top-0 z-40 border-b border-stroke-default bg-[color:color-mix(in_srgb,var(--bg-base)_82%,transparent)] backdrop-blur-xl">
+        <div className="page-width flex h-18 items-center justify-between gap-4 py-4">
+          <Link href="/" className="flex items-center gap-3 text-lg font-semibold">
+            <PrismMark />
+            <span>Viewpoint Prism</span>
+          </Link>
+          <nav className="hidden items-center gap-7 text-sm text-text-secondary md:flex">
+            <a href="#prisms" className="hover:text-text-primary">四大棱镜</a>
+            <a href="#workflow" className="hover:text-text-primary">工作流</a>
+            <a href="#workspace" className="hover:text-text-primary">工作台</a>
+            <a href="#byok" className="hover:text-text-primary">开放架构</a>
+          </nav>
           <div className="flex items-center gap-3">
-            <a href="/login" className="rounded-lg px-4 py-2 text-sm text-white/60 transition hover:text-white hover:bg-white/5">
-              登录
-            </a>
-            <a href="/register" className="prism-btn-primary !rounded-lg !px-5 !py-2 !text-sm">
-              开始使用
-            </a>
+            <Link href="/login" className="prism-btn-secondary px-4 py-2 text-sm">登录</Link>
+            <Link href="/register" className="prism-btn-primary px-5 py-2 text-sm">开始使用</Link>
           </div>
         </div>
-      </nav>
+      </header>
 
-      {/* ====== Hero Section ====== */}
-      <section className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden px-6 pt-16">
-        {/* 背景光晕 */}
-        <div className="hero-glow hero-glow-orange" />
-        <div className="hero-glow hero-glow-pink" />
-        <div className="hero-glow hero-glow-indigo" />
-
-        {/* 棱镜装饰 */}
-        <div className="absolute top-1/3 left-1/2 -translate-x-1/2 -translate-y-1/2">
-          <PrismDecoration />
-        </div>
-
-        <div className="relative z-10 mx-auto w-full max-w-[56rem] text-center">
-          <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-1.5 text-sm text-white/60">
-            <span className="inline-block h-2 w-2 rounded-full bg-green-400" />
-            BYOK 架构 · 自带模型密钥
+      <PageHero
+        eyebrow="Narrative Workspace for Video"
+        title={<><span>一束视频，</span><br /><span className="prism-gradient-text">折射四条产线</span></>}
+        description={<>一个工作台，把同一条视频并行处理为学习资产、创作分镜、多语种译制和多平台图文，不切换工具，不拆散上下文。</>}
+        actions={
+          <>
+            <Link href="/register" className="prism-btn-primary">免费开始</Link>
+            <Link href="/projects" className="prism-btn-secondary">进入项目中枢</Link>
+          </>
+        }
+        meta={
+          <div className="grid gap-3 sm:grid-cols-3">
+            <MetricChip label="棱镜产线" value="4" hint="学习、创作、翻译、衍射统一挂载到同一工作台。" />
+            <MetricChip label="工作入口" value="1" hint="视频导入、分析、编辑、导出全部在同一产品内完成。" />
+            <MetricChip label="模型策略" value="BYOK" hint="模型供应商可替换，工作流保持一致。" />
           </div>
+        }
+        visual={<HeroVisual />}
+      />
 
-          <h1 className="mb-6 text-5xl font-bold leading-tight tracking-tight break-normal md:text-7xl">
-            <span className="block">一束视频，</span>
-            <span className="block prism-gradient-text">四道光谱</span>
-          </h1>
-
-          <p className="mx-auto mb-10 max-w-[42rem] text-lg leading-relaxed text-white/50 break-normal md:text-xl">
-            同一条视频通过四大棱镜，折射为学习笔记、二创视频、多语种译制、多平台图文。
-            不切换工具，不重复劳动，一个工作台完成全部内容生产。
-          </p>
-
-          <div className="flex flex-col items-center justify-center gap-4 sm:flex-row">
-            <a href="/register" className="prism-btn-primary">
-              免费开始
-            </a>
-            <button className="prism-btn-secondary" disabled>
-              查看演示
-            </button>
-          </div>
-        </div>
-
-        {/* 底部渐隐 */}
-        <div className="absolute bottom-0 left-0 right-0 h-32 bg-gradient-to-t from-[#0a0a0f] to-transparent" />
-      </section>
-
-{/* PLACEHOLDER_FEATURES */}
-
-      {/* ====== Features: 四大棱镜 ====== */}
-      <section id="features" className="relative px-6 py-32">
-        <div className="mx-auto max-w-7xl">
-          <div className="mb-16 text-center">
-            <p className="mb-3 text-sm font-medium uppercase tracking-widest text-prism-pink">Core Prisms</p>
-            <h2 className="mb-4 text-3xl font-bold md:text-5xl">四大棱镜，四条产线</h2>
-            <p className="mx-auto max-w-[36rem] text-white/40">
-              不切换系统，切换棱镜即切换产线。每个棱镜都输出可导出的高价值资产。
-            </p>
-          </div>
-
-          <div className="grid gap-6 md:grid-cols-2">
-            {/* 知识棱镜 */}
-            <div className="prism-card group p-8">
-              <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-amber-500/20 to-orange-500/20">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#F59E0B" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" />
-                  <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" />
-                </svg>
-              </div>
-              <h3 className="mb-2 text-xl font-semibold">知识棱镜</h3>
-              <p className="mb-4 text-sm leading-relaxed text-white/40">
-                视频播放中实时抓取 PPT、白板、图表关键帧，自动生成结构化大纲。
-                对话框提问即时注入笔记时间轴，一键导出 Markdown + 闪卡 + Notion 同步。
-              </p>
-              <div className="flex flex-wrap gap-2">
-                <Tag>实时逐字稿</Tag>
-                <Tag>关键帧捕获</Tag>
-                <Tag>记忆闪卡</Tag>
-                <Tag>Notion 同步</Tag>
-              </div>
-            </div>
-
-            {/* 创作棱镜 */}
-            <div className="prism-card group p-8">
-              <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-pink-500/20 to-rose-500/20">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#E91E8C" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <circle cx="12" cy="12" r="10" />
-                  <path d="M8 12h8" /><path d="M12 8v8" />
-                </svg>
-              </div>
-              <h3 className="mb-2 text-xl font-semibold">创作棱镜 · PrismFlow</h3>
-              <p className="mb-4 text-sm leading-relaxed text-white/40">
-                类 Git 节点化视频工程。文案自动拆解分镜，每个节点独立控制首尾帧与动态补全，
-                不满意就拉分支重渲染，最终一键串联导出成片。
-              </p>
-              <div className="flex flex-wrap gap-2">
-                <Tag>节点画布</Tag>
-                <Tag>Branch / Merge</Tag>
-                <Tag>首尾帧锚定</Tag>
-                <Tag>风格预设</Tag>
-              </div>
-            </div>
-
-            {/* 译制棱镜 */}
-            <div className="prism-card group p-8">
-              <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-cyan-500/20 to-teal-500/20">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#06B6D4" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M5 8l6 6" /><path d="M4 14l6-6 2-3" /><path d="M2 5h12" /><path d="M7 2h1" />
-                  <path d="M22 22l-5-10-5 10" /><path d="M14 18h6" />
-                </svg>
-              </div>
-              <h3 className="mb-2 text-xl font-semibold">译制棱镜</h3>
-              <p className="mb-4 text-sm leading-relaxed text-white/40">
-                双语字幕精准对照，画面硬字幕智能擦除重贴，
-                克隆原作者音色生成外语配音。一条视频，多语种同步产出。
-              </p>
-              <div className="flex flex-wrap gap-2">
-                <Tag>双语字幕</Tag>
-                <Tag>文字擦除</Tag>
-                <Tag>音色克隆</Tag>
-                <Tag>口型同步</Tag>
-              </div>
-            </div>
-
-            {/* 衍射棱镜 */}
-            <div className="prism-card group p-8">
-              <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500/20 to-violet-500/20">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#4F46E5" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M4 12h8" /><path d="M4 18V6" />
-                  <path d="M16 6l4 6-4 6" /><path d="M12 6l4 6-4 6" />
-                </svg>
-              </div>
-              <h3 className="mb-2 text-xl font-semibold">衍射棱镜</h3>
-              <p className="mb-4 text-sm leading-relaxed text-white/40">
-                视频内容降维裂变为多平台图文。小红书种草文、Twitter Thread、公众号长文，
-                AI 自动适配平台语境与排版，一键批量导出。
-              </p>
-              <div className="flex flex-wrap gap-2">
-                <Tag>小红书</Tag>
-                <Tag>Twitter/X</Tag>
-                <Tag>公众号</Tag>
-                <Tag>LinkedIn</Tag>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-{/* PLACEHOLDER_WORKFLOW */}
-
-      {/* ====== How It Works ====== */}
-      <section id="workflow" className="relative px-6 py-32">
-        <div className="mx-auto max-w-5xl">
-          <div className="mb-16 text-center">
-            <p className="mb-3 text-sm font-medium uppercase tracking-widest text-prism-orange">Workflow</p>
-            <h2 className="mb-4 text-3xl font-bold md:text-5xl">三步，从视频到资产</h2>
-          </div>
-
-          <div className="flex flex-col items-center gap-8 md:flex-row md:justify-center md:gap-0">
-            {/* Step 1 */}
-            <div className="flex flex-col items-center text-center md:w-64">
-              <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-2xl font-bold prism-gradient-text">
-                1
-              </div>
-              <h3 className="mb-2 text-lg font-semibold">导入视频</h3>
-              <p className="text-sm text-white/40">上传本地文件或粘贴 YouTube / B站链接，视频自动入库</p>
-            </div>
-
-            <div className="step-connector hidden md:block" />
-
-            {/* Step 2 */}
-            <div className="flex flex-col items-center text-center md:w-64">
-              <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-2xl font-bold prism-gradient-text">
-                2
-              </div>
-              <h3 className="mb-2 text-lg font-semibold">选择棱镜</h3>
-              <p className="text-sm text-white/40">点击右侧棱镜图标，面板展开为专用控制台，AI 自动开始工作</p>
-            </div>
-
-            <div className="step-connector hidden md:block" />
-
-            {/* Step 3 */}
-            <div className="flex flex-col items-center text-center md:w-64">
-              <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-2xl font-bold prism-gradient-text">
-                3
-              </div>
-              <h3 className="mb-2 text-lg font-semibold">获得资产</h3>
-              <p className="text-sm text-white/40">笔记、视频、译制片、图文包——可导出、可同步、可复用</p>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* ====== BYOK Section ====== */}
-      <section id="byok" className="relative px-6 py-32">
-        <div className="mx-auto max-w-5xl">
-          <div className="prism-card overflow-hidden p-10 md:p-16">
-            <div className="flex flex-col gap-10 md:flex-row md:items-center">
-              <div className="flex-1">
-                <p className="mb-3 text-sm font-medium uppercase tracking-widest text-prism-indigo">Open Architecture</p>
-                <h2 className="mb-4 text-3xl font-bold md:text-4xl">BYOK · 自带密钥</h2>
-                <p className="mb-6 leading-relaxed text-white/40">
-                  不绑定任何单一模型供应商。你在 Setting 中填入自己的 API Key，
-                  系统按任务类型智能路由——ASR 用 Whisper，推理用 GPT-4o，
-                  生图用 Midjourney，生视频用 Seedance。丰俭由人，完全掌控。
-                </p>
-                <div className="flex flex-wrap gap-3">
-                  <ModelBadge name="OpenAI" />
-                  <ModelBadge name="Gemini" />
-                  <ModelBadge name="Whisper" />
-                  <ModelBadge name="Midjourney" />
-                  <ModelBadge name="Seedance" />
-                  <ModelBadge name="ElevenLabs" />
+      <section id="prisms" className="page-shell page-section">
+        <div className="page-width">
+          <SectionHeader
+            eyebrow="Four Prisms"
+            title="不是四个孤立页面，而是四条连续产线"
+            description="每个棱镜都有自己的语义和辅色，但整体保持同一套空间、层级和交互语言。"
+            align="center"
+            className="items-center"
+          />
+          <div className="mt-10 grid gap-5 lg:grid-cols-2">
+            {prismCards.map((card) => (
+              <SurfaceCard key={card.title} className="p-6 md:p-7">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <div className="text-[11px] uppercase tracking-[0.24em] text-text-muted">Prism Module</div>
+                    <h3 className="mt-3 text-2xl font-semibold text-text-primary">{card.title}</h3>
+                    <p className="mt-2 text-sm font-medium" style={{ color: card.accent }}>{card.subtitle}</p>
+                    <p className="mt-4 text-sm leading-7 text-text-secondary">{card.description}</p>
+                  </div>
+                  <span className="mt-1 h-3 w-3 rounded-full" style={{ background: card.accent, boxShadow: `0 0 0 8px color-mix(in srgb, ${card.accent} 16%, transparent)` }} />
                 </div>
-              </div>
-              <div className="flex-shrink-0">
-                <EngineStatusDemo />
-              </div>
-            </div>
+                <div className="mt-6 flex flex-wrap gap-2">
+                  {card.points.map((point) => (
+                    <StatusPill key={point}>{point}</StatusPill>
+                  ))}
+                </div>
+              </SurfaceCard>
+            ))}
           </div>
         </div>
       </section>
 
-      {/* ====== Footer ====== */}
-      <footer className="border-t border-white/5 px-6 py-12">
-        <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-4 md:flex-row">
-          <div className="flex items-center gap-2">
-            <PrismLogo />
-            <span className="text-sm font-medium text-white/40">Viewpoint Prism Pro</span>
+      <section id="workflow" className="page-shell page-section">
+        <div className="page-width">
+          <SectionHeader
+            eyebrow="Workflow"
+            title="从视频到资产，流程是连续的"
+            description="首页不是单纯列功能，而是直接说明产品的时间顺序和工作方式。"
+          />
+          <div className="mt-10 grid gap-5 lg:grid-cols-3">
+            {workflow.map((item) => (
+              <SurfaceCard key={item.step} className="p-6">
+                <div className="text-sm font-semibold text-[var(--accent-primary)]">{item.step}</div>
+                <h3 className="mt-4 text-xl font-semibold text-text-primary">{item.title}</h3>
+                <p className="mt-3 text-sm leading-7 text-text-secondary">{item.description}</p>
+              </SurfaceCard>
+            ))}
           </div>
-          <p className="text-sm text-white/30">
-            一个工作台，四种生产模式
-          </p>
         </div>
-      </footer>
-    </div>
-  );
-}
+      </section>
 
-/* ====== 内联组件 ====== */
-
-function PrismLogo() {
-  return (
-    <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
-      <defs>
-        <linearGradient id="prism-grad" x1="0" y1="0" x2="28" y2="28">
-          <stop offset="0%" stopColor="#FF6B35" />
-          <stop offset="50%" stopColor="#E91E8C" />
-          <stop offset="100%" stopColor="#4F46E5" />
-        </linearGradient>
-      </defs>
-      <path d="M14 2L26 24H2L14 2Z" stroke="url(#prism-grad)" strokeWidth="2" fill="none" />
-      <path d="M14 8L20 20H8L14 8Z" fill="url(#prism-grad)" opacity="0.2" />
-    </svg>
-  );
-}
-
-function PrismDecoration() {
-  return (
-    <svg width="500" height="400" viewBox="0 0 500 400" fill="none" className="opacity-20">
-      <line x1="0" y1="200" x2="200" y2="200" stroke="white" strokeWidth="1.5" opacity="0.4" />
-      <path d="M200 120L300 280H100L200 120Z" stroke="url(#deco-grad)" strokeWidth="1.5" fill="none" />
-      <line x1="270" y1="170" x2="500" y2="80" stroke="#FF6B35" strokeWidth="1.5" opacity="0.6" />
-      <line x1="280" y1="190" x2="500" y2="150" stroke="#F59E0B" strokeWidth="1.5" opacity="0.5" />
-      <line x1="285" y1="210" x2="500" y2="210" stroke="#10B981" strokeWidth="1.5" opacity="0.5" />
-      <line x1="280" y1="230" x2="500" y2="270" stroke="#06B6D4" strokeWidth="1.5" opacity="0.5" />
-      <line x1="270" y1="250" x2="500" y2="340" stroke="#4F46E5" strokeWidth="1.5" opacity="0.6" />
-      <defs>
-        <linearGradient id="deco-grad" x1="100" y1="280" x2="300" y2="120">
-          <stop offset="0%" stopColor="#FF6B35" />
-          <stop offset="50%" stopColor="#E91E8C" />
-          <stop offset="100%" stopColor="#4F46E5" />
-        </linearGradient>
-      </defs>
-    </svg>
-  );
-}
-
-function Tag({ children }: { children: React.ReactNode }) {
-  return (
-    <span className="rounded-md border border-white/10 bg-white/5 px-2.5 py-1 text-xs text-white/50">
-      {children}
-    </span>
-  );
-}
-
-function ModelBadge({ name }: { name: string }) {
-  return (
-    <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium text-white/60">
-      {name}
-    </span>
-  );
-}
-
-function EngineStatusDemo() {
-  const engines = [
-    { name: "ASR 引擎", provider: "Whisper v3", status: "green" },
-    { name: "语言模型", provider: "GPT-4o", status: "green" },
-    { name: "生图引擎", provider: "Midjourney", status: "green" },
-    { name: "生视频", provider: "Seedance 2.0", status: "yellow" },
-    { name: "TTS", provider: "ElevenLabs", status: "green" },
-  ];
-
-  const statusColor: Record<string, string> = {
-    green: "bg-green-400",
-    yellow: "bg-yellow-400",
-    red: "bg-red-400",
-  };
-
-  return (
-    <div className="w-64 rounded-xl border border-white/10 bg-white/5 p-4">
-      <p className="mb-3 text-xs font-medium uppercase tracking-wider text-white/30">引擎状态</p>
-      <div className="flex flex-col gap-2.5">
-        {engines.map((e) => (
-          <div key={e.name} className="flex items-center justify-between">
-            <div>
-              <p className="text-xs font-medium text-white/70">{e.name}</p>
-              <p className="text-[10px] text-white/30">{e.provider}</p>
+      <section id="workspace" className="page-shell page-section">
+        <div className="page-width grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
+          <SurfaceCard className="p-7">
+            <SectionHeader
+              eyebrow="Workspace"
+              title="工作台不是黑盒，而是可导航的生产界面"
+              description="左侧管理视频源，中间处理播放与对话，右侧挂载 Prism Studio。不同棱镜共享同一骨架，降低切换成本。"
+            />
+            <div className="mt-6 flex flex-wrap gap-2">
+              <StatusPill tone="warning">三栏工作台</StatusPill>
+              <StatusPill tone="info">Prism Studio</StatusPill>
+              <StatusPill>统一状态条</StatusPill>
             </div>
-            <span className={`h-2 w-2 rounded-full ${statusColor[e.status]}`} />
-          </div>
-        ))}
-      </div>
+          </SurfaceCard>
+          <SurfaceCard className="overflow-hidden p-3">
+            <img src="/showcase/workbench-overview.png" alt="Viewpoint Prism 工作台概览" className="rounded-[22px] border border-stroke-default" />
+          </SurfaceCard>
+        </div>
+      </section>
+
+      <section className="page-shell page-section">
+        <div className="page-width grid gap-6 xl:grid-cols-2">
+          <SurfaceCard className="overflow-hidden p-3">
+            <img src="/showcase/creation-prism.png" alt="创作棱镜界面" className="rounded-[22px] border border-stroke-default" />
+          </SurfaceCard>
+          <SurfaceCard className="overflow-hidden p-3">
+            <img src="/showcase/knowledge-prism.png" alt="知识棱镜界面" className="rounded-[22px] border border-stroke-default" />
+          </SurfaceCard>
+        </div>
+      </section>
+
+      <section id="byok" className="page-shell page-section pb-20">
+        <div className="page-width">
+          <SurfaceCard className="grid gap-6 p-7 xl:grid-cols-[1fr_420px] xl:items-center">
+            <div>
+              <SectionHeader
+                eyebrow="Open Architecture"
+                title="BYOK 不是口号，而是产品结构的一部分"
+                description="模型只负责能力，Viewpoint Prism 负责状态、流程和编辑权。你可以切换套餐，也可以在设置工作区里覆盖自己的 API Key。"
+              />
+              <div className="mt-6 flex flex-wrap gap-2">
+                {['OpenAI', 'Gemini', 'Whisper', 'Midjourney', 'Seedance', 'ElevenLabs'].map((item) => (
+                  <StatusPill key={item}>{item}</StatusPill>
+                ))}
+              </div>
+            </div>
+            <SurfaceCard className="p-5" tone="muted">
+              <p className="text-[11px] uppercase tracking-[0.22em] text-text-muted">Engine Status</p>
+              <div className="mt-5 space-y-4">
+                {[
+                  ['ASR', 'Whisper / Seedance', 'success'],
+                  ['LLM', 'OpenAI / Gemini', 'success'],
+                  ['Image', 'OpenAI / Midjourney', 'warning'],
+                  ['Video', 'Seedance', 'warning'],
+                ].map(([label, provider, tone]) => (
+                  <div key={label} className="flex items-center justify-between rounded-[18px] border border-stroke-default bg-bg-panel-secondary/75 px-4 py-3">
+                    <div>
+                      <div className="text-sm font-medium text-text-primary">{label}</div>
+                      <div className="mt-1 text-xs text-text-secondary">{provider}</div>
+                    </div>
+                    <StatusPill tone={tone as 'success' | 'warning'}>{tone === 'success' ? 'Ready' : 'Hybrid'}</StatusPill>
+                  </div>
+                ))}
+              </div>
+            </SurfaceCard>
+          </SurfaceCard>
+        </div>
+      </section>
     </div>
+  );
+}
+
+function PrismMark() {
+  return (
+    <svg width="26" height="26" viewBox="0 0 28 28" fill="none" aria-hidden="true">
+      <path d="M14 2L26 24H2L14 2Z" stroke="url(#mark-gradient)" strokeWidth="2" />
+      <path d="M14 8L20 19H8L14 8Z" fill="url(#mark-gradient)" opacity="0.2" />
+      <defs>
+        <linearGradient id="mark-gradient" x1="2" y1="2" x2="26" y2="24">
+          <stop offset="0%" stopColor="var(--prism-orange)" />
+          <stop offset="52%" stopColor="var(--prism-pink)" />
+          <stop offset="100%" stopColor="var(--prism-indigo)" />
+        </linearGradient>
+      </defs>
+    </svg>
+  );
+}
+
+function HeroVisual() {
+  return (
+    <SurfaceCard className="overflow-hidden p-4 md:p-5">
+      <div className="relative rounded-[28px] border border-stroke-default bg-[radial-gradient(circle_at_top_left,color-mix(in_srgb,var(--accent-strong)_18%,transparent),transparent_38%),radial-gradient(circle_at_right,color-mix(in_srgb,var(--accent-primary)_18%,transparent),transparent_35%),var(--bg-surface-alt)] p-6">
+        <div className="absolute inset-x-6 top-6 h-px bg-[linear-gradient(90deg,transparent,color-mix(in_srgb,var(--text-secondary)_40%,transparent),transparent)]" />
+        <div className="mx-auto mt-8 flex max-w-[430px] flex-col items-center text-center">
+          <StatusPill tone="success">BYOK 架构 · 统一工作流</StatusPill>
+          <div className="mt-8 text-4xl font-semibold leading-[1.05] text-text-primary md:text-5xl">
+            从输入视频，到<span className="prism-gradient-text">四种产出</span>
+          </div>
+          <p className="mt-4 text-sm leading-7 text-text-secondary">首屏保留品牌记忆点，但优先说明产品价值和工作逻辑。</p>
+        </div>
+        <div className="mt-10 grid gap-3 sm:grid-cols-2">
+          {['视频理解', '创作工程', '多语译制', '图文分发'].map((item, index) => (
+            <div key={item} className="rounded-[20px] border border-stroke-default bg-bg-panel/65 px-4 py-4 text-sm text-text-secondary">
+              <div className="text-[11px] uppercase tracking-[0.18em] text-text-muted">0{index + 1}</div>
+              <div className="mt-2 font-medium text-text-primary">{item}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </SurfaceCard>
   );
 }

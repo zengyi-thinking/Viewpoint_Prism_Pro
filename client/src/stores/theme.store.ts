@@ -1,61 +1,58 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { Theme, getThemeById, themeToCSSVariables } from '@/types/theme';
+import { DEFAULT_THEME_ID, type ThemeDefinition, type ThemeId, getThemeById, themeToCSSVariables } from '@/types/theme';
 
 interface ThemeStore {
-  currentThemeId: string;
-  currentTheme: Theme;
-  setTheme: (themeId: string) => void;
+  currentThemeId: ThemeId;
+  currentTheme: ThemeDefinition;
+  themeMode: ThemeDefinition['mode'];
+  setTheme: (themeId: ThemeId) => void;
+  toggleTheme: () => void;
 }
 
-/**
- * 主题状态管理 Store
- * 持久化到 localStorage，确保刷新后保持用户选择的主题
- */
+function applyTheme(themeId: ThemeId) {
+  if (typeof document === 'undefined') return;
+  const theme = getThemeById(themeId);
+  const root = document.documentElement;
+
+  root.setAttribute('data-theme', theme.id);
+  Object.entries(themeToCSSVariables(theme)).forEach(([key, value]) => {
+    root.style.setProperty(key, value);
+  });
+}
+
 export const useThemeStore = create<ThemeStore>()(
   persist(
     (set, get) => ({
-      currentThemeId: 'vsm-dark', // 默认主题
-      currentTheme: getThemeById('vsm-dark'),
-
-      setTheme: (themeId: string) => {
-        const theme = getThemeById(themeId);
-        set({ currentThemeId: themeId, currentTheme: theme });
-
-        // 应用 CSS 变量到 document.documentElement
-        const root = document.documentElement;
-        const cssVars = themeToCSSVariables(theme);
-
-        // 设置 data-theme 属性
-        root.setAttribute('data-theme', themeId);
-
-        // 应用 CSS 变量
-        Object.entries(cssVars).forEach(([key, value]) => {
-          root.style.setProperty(key, value);
+      currentThemeId: DEFAULT_THEME_ID,
+      currentTheme: getThemeById(DEFAULT_THEME_ID),
+      themeMode: getThemeById(DEFAULT_THEME_ID).mode,
+      setTheme: (themeId) => {
+        const nextTheme = getThemeById(themeId);
+        set({
+          currentThemeId: nextTheme.id,
+          currentTheme: nextTheme,
+          themeMode: nextTheme.mode,
         });
+        applyTheme(nextTheme.id);
+      },
+      toggleTheme: () => {
+        const nextThemeId: ThemeId = get().currentThemeId === 'prism-dark' ? 'prism-light' : 'prism-dark';
+        get().setTheme(nextThemeId);
       },
     }),
     {
-      name: 'vpp-theme-storage', // localStorage key
+      name: 'vpp-theme-storage',
       partialize: (state) => ({ currentThemeId: state.currentThemeId }),
-      // 恢复时重新初始化主题
       onRehydrateStorage: () => (state) => {
-        if (state) {
-          state.setTheme(state.currentThemeId);
-        }
+        const restoredThemeId = state?.currentThemeId || DEFAULT_THEME_ID;
+        state?.setTheme(restoredThemeId);
       },
-    }
-  )
+    },
+  ),
 );
 
-/**
- * 初始化主题（在应用启动时调用）
- * 确保服务端渲染时也能正确应用主题
- */
-export function initTheme(themeId?: string) {
+export function initTheme(themeId?: ThemeId) {
   if (typeof window === 'undefined') return;
-
-  const store = useThemeStore.getState();
-  const idToApply = themeId || store.currentThemeId;
-  store.setTheme(idToApply);
+  applyTheme(themeId || useThemeStore.getState().currentThemeId || DEFAULT_THEME_ID);
 }

@@ -18,6 +18,7 @@ import { TranslationModule } from './modules/prism-translation/translation.modul
 import { DiffractionModule } from './modules/prism-diffraction/diffraction.module';
 import { CreationModule } from './modules/prism-creation/creation.module';
 import { SettingsModule } from './modules/settings/settings.module';
+import { HealthModule } from './modules/health/health.module';
 
 @Module({
   imports: [
@@ -37,6 +38,7 @@ import { SettingsModule } from './modules/settings/settings.module';
     VideoModule,
     VideoBehaviorModule,
     ChatModule,
+    HealthModule,
     SettingsModule,
     // Prism modules
     KnowledgeModule,

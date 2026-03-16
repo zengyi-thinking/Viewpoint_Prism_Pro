@@ -9,9 +9,17 @@ export class BootstrapCreationProjectDto {
   @IsOptional()
   @IsString()
   backgroundVideoId?: string;
+
+  @IsOptional()
+  @IsString()
+  flowProjectId?: string;
 }
 
 export class GenerateIdeaPreviewsDto {
+  @IsOptional()
+  @IsString()
+  flowProjectId?: string;
+
   @IsString()
   @IsNotEmpty()
   idea!: string;
@@ -51,6 +59,10 @@ export class SelectIdeaPreviewDto {
 }
 
 export class GenerateScriptPlanDto {
+  @IsOptional()
+  @IsString()
+  flowProjectId?: string;
+
   @IsString()
   @IsNotEmpty()
   scriptText!: string;
@@ -181,6 +193,10 @@ export class GenerateNodeImageDto {
 }
 
 export class AppendConversationMessageDto {
+  @IsOptional()
+  @IsString()
+  flowProjectId?: string;
+
   @IsString()
   @IsNotEmpty()
   content!: string;
@@ -223,4 +239,61 @@ export class MergeCreationNodesDto {
   @IsOptional()
   @IsString()
   instructions?: string;
+}
+
+export class AdjustCreationDraftDto {
+  @IsString()
+  @IsNotEmpty()
+  targetType!: 'preview' | 'chapter';
+
+  @IsString()
+  @IsNotEmpty()
+  targetId!: string;
+
+  @IsString()
+  @IsNotEmpty()
+  instruction!: string;
+}
+
+export class CreateCreationSessionDto {
+  @IsOptional()
+  @IsString()
+  name?: string;
+
+  @IsOptional()
+  @IsString()
+  backgroundVideoId?: string;
+}
+
+export class UpdateCreationSessionDto {
+  @IsOptional()
+  @IsString()
+  name?: string;
+}
+
+export interface CreationSessionSummaryDto {
+  id: string;
+  name: string;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+  videoId: string | null;
+  hasNodes: boolean;
+  lastSummary: string;
+}
+
+export class ConfirmConversationWorkflowDto {
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(12)
+  previewChapterIndex?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(9)
+  previewImageCount?: number;
 }

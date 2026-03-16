@@ -21,8 +21,12 @@ import {
 } from './services/story-conversation.agent';
 import {
   AppendConversationMessageDto,
+  AdjustCreationDraftDto,
   BootstrapCreationProjectDto,
+  ConfirmConversationWorkflowDto,
   CreateChapterNodesDto,
+  CreateCreationSessionDto,
+  CreationSessionSummaryDto,
   GenerateIdeaPreviewsDto,
   GenerateNextNodeCandidatesDto,
   GenerateNodeImageDto,
@@ -34,7 +38,9 @@ import {
   SelectNextNodeCandidateDto,
   UpdateScriptPlanChapterDto,
   UpdateCreationNodeDto,
+  UpdateCreationSessionDto,
 } from './dto';
+import { CreationLlmService } from './services/creation-llm.service';
 
 interface CreationNodeMeta {
   displayPromptCn?: string;
@@ -45,6 +51,7 @@ interface CreationNodeMeta {
   characterAnchor?: CharacterAnchor;
   continuityLocked?: boolean;
   mergedFromNodeIds?: string[];
+  sourceSegmentId?: string;
 }
 
 interface CreationProjectMeta {
@@ -100,6 +107,7 @@ export class CreationService {
     private readonly renderService: CreationRenderService,
     private readonly segmentVideoRenderService: SegmentVideoRenderService,
     private readonly finalVideoComposeService: FinalVideoComposeService,
+    private readonly llm: CreationLlmService,
   ) {}
 
   async bootstrapByProject(userId: string, projectId: string, dto: BootstrapCreationProjectDto) {
@@ -114,25 +122,19 @@ export class CreationService {
       backgroundVideoId = video.id;
     }
 
-    let flowProject = await this.prisma.prismFlowProject.findFirst({
-      where: { projectId },
-    });
+    let flowProject = dto.flowProjectId
+      ? await this.prisma.prismFlowProject.findFirst({
+          where: { id: dto.flowProjectId, projectId },
+        })
+      : await this.prisma.prismFlowProject.findFirst({
+          where: { projectId },
+          orderBy: { updatedAt: 'desc' },
+        });
 
     if (!flowProject) {
-      flowProject = await this.prisma.prismFlowProject.create({
-        data: {
-          projectId,
-          videoId: backgroundVideoId,
-          name: dto.name?.trim() || `${project.name} · 创作工程`,
-          stylePreset: {
-            version: 'v2',
-            mode: 'idea',
-            backgroundVideoId,
-            conversationState: this.createEmptyConversationState(),
-            nodesMeta: {},
-          } as any,
-          status: 'PENDING',
-        },
+      flowProject = await this.createFlowProject(projectId, project.name, {
+        name: dto.name,
+        backgroundVideoId,
       });
     } else if (backgroundVideoId && flowProject.videoId !== backgroundVideoId) {
       const meta = this.getProjectMeta(flowProject.stylePreset);
@@ -200,6 +202,70 @@ export class CreationService {
     return this.getGraph(userId, flowProject.id);
   }
 
+  async listSessionsByProject(userId: string, projectId: string): Promise<CreationSessionSummaryDto[]> {
+    await this.assertProjectOwnership(userId, projectId);
+    const sessions = await this.prisma.prismFlowProject.findMany({
+      where: { projectId },
+      orderBy: { updatedAt: 'desc' },
+      include: {
+        nodes: {
+          select: { id: true },
+          take: 1,
+        },
+      },
+    });
+
+    return sessions.map((session) => this.toSessionSummary(session));
+  }
+
+  async createSessionByProject(userId: string, projectId: string, dto: CreateCreationSessionDto = {}) {
+    const project = await this.assertProjectOwnership(userId, projectId);
+    let backgroundVideoId: string | null = null;
+    if (dto.backgroundVideoId) {
+      const video = await this.assertVideoAccess(userId, dto.backgroundVideoId);
+      if (video.projectId !== projectId) {
+        throw new ForbiddenException('背景视频不属于当前工程');
+      }
+      backgroundVideoId = video.id;
+    }
+
+    const flowProject = await this.createFlowProject(projectId, project.name, {
+      name: dto.name,
+      backgroundVideoId,
+    });
+    return this.getGraph(userId, flowProject.id);
+  }
+
+  async updateSession(userId: string, flowProjectId: string, dto: UpdateCreationSessionDto) {
+    const flowProject = await this.assertProjectAccess(userId, flowProjectId);
+    const nextName = String(dto.name || '').trim();
+    if (!nextName) {
+      throw new NotFoundException('会话名称不能为空');
+    }
+
+    await this.prisma.prismFlowProject.update({
+      where: { id: flowProject.id },
+      data: { name: nextName },
+    });
+
+    return this.getGraph(userId, flowProject.id);
+  }
+
+  async deleteSession(userId: string, flowProjectId: string) {
+    const flowProject = await this.assertProjectAccess(userId, flowProjectId);
+    const projectId = flowProject.projectId || flowProject.video?.projectId;
+    await this.prisma.prismFlowProject.delete({
+      where: { id: flowProject.id },
+    });
+
+    if (!projectId) {
+      return { deleted: true, sessions: [] };
+    }
+
+    const sessions = await this.listSessionsByProject(userId, projectId);
+    return { deleted: true, sessions };
+  }
+
   async getGraph(userId: string, flowProjectId: string) {
     const flowProject = await this.assertProjectAccess(userId, flowProjectId);
     const meta = this.getProjectMeta(flowProject.stylePreset);
@@ -256,6 +322,7 @@ export class CreationService {
   async generateIdeaPreviewsByProject(userId: string, projectId: string, dto: GenerateIdeaPreviewsDto) {
     const bootstrapped = await this.bootstrapByProject(userId, projectId, {
       backgroundVideoId: dto.backgroundVideoId,
+      flowProjectId: dto.flowProjectId,
     });
     const flowProjectId = bootstrapped.project.id;
     const flowProject = await this.assertProjectAccess(userId, flowProjectId);
@@ -304,6 +371,7 @@ export class CreationService {
   ) {
     const bootstrapped = await this.bootstrapByProject(userId, projectId, {
       backgroundVideoId: dto.backgroundVideoId,
+      flowProjectId: dto.flowProjectId,
     });
     const flowProject = await this.assertProjectAccess(userId, bootstrapped.project.id);
     const meta = this.getProjectMeta(flowProject.stylePreset);
@@ -349,6 +417,72 @@ export class CreationService {
     });
 
     return this.getGraph(userId, flowProject.id);
+  }
+
+  async confirmConversationWorkflow(
+    userId: string,
+    flowProjectId: string,
+    dto: ConfirmConversationWorkflowDto = {},
+  ) {
+    const flowProject = await this.assertProjectAccess(userId, flowProjectId);
+    const meta = this.getProjectMeta(flowProject.stylePreset);
+    const conversation = meta.conversationState || this.createEmptyConversationState();
+    const storyIntent = String(conversation.summary.storyIntent || conversation.scriptDraft || flowProject.scriptText || '').trim();
+    if (!storyIntent) {
+      throw new NotFoundException('当前还没有足够的对话内容，请先完成导演对话');
+    }
+
+    const projectId = flowProject.projectId || flowProject.video?.projectId;
+    if (!projectId) {
+      throw new NotFoundException('创作工程缺少 projectId');
+    }
+
+    await this.generateIdeaPreviewsByProject(userId, projectId, {
+      flowProjectId,
+      idea: storyIntent,
+      visualGoal: String(conversation.summary.visualStyle || '').trim() || undefined,
+      constraints: String(conversation.summary.splitPreference || '').trim() || undefined,
+      count: 3,
+      backgroundVideoId: meta.backgroundVideoId || flowProject.videoId || undefined,
+    });
+
+    const latestAfterPreviews = await this.assertProjectAccess(userId, flowProjectId);
+    const latestMeta = this.getProjectMeta(latestAfterPreviews.stylePreset);
+    const scriptText = String(
+      latestMeta.conversationState?.scriptDraft || latestAfterPreviews.scriptText || storyIntent,
+    ).trim();
+
+    await this.generateScriptPlanByProject(userId, projectId, {
+      flowProjectId,
+      scriptText,
+      chaptersHint: latestMeta.conversationState?.chaptersHint || 4,
+      backgroundVideoId: latestMeta.backgroundVideoId || latestAfterPreviews.videoId || undefined,
+    });
+
+    await this.generateProductionPackage(userId, flowProjectId, {
+      artStyle: latestMeta.conversationState?.summary.visualStyle || undefined,
+    });
+
+    const refreshed = await this.assertProjectAccess(userId, flowProjectId);
+    const refreshedMeta = this.getProjectMeta(refreshed.stylePreset);
+    const previewChapterIndex =
+      dto.previewChapterIndex ||
+      refreshedMeta.scriptPlan?.chapters?.[0]?.index ||
+      refreshedMeta.storyboardSegments?.[0]?.chapterIndex;
+    const previewImageCount = Math.max(1, Math.min(9, Number(dto.previewImageCount || 9)));
+
+    if (previewChapterIndex) {
+      const segments = (refreshedMeta.storyboardSegments || [])
+        .filter((item) => item.chapterIndex === previewChapterIndex)
+        .slice(0, previewImageCount);
+
+      for (const segment of segments) {
+        if (segment.storyboardImageUrl) continue;
+        await this.generateProductionAssetImage(userId, flowProjectId, 'segment', segment.id);
+      }
+    }
+
+    return this.getGraph(userId, flowProjectId);
   }
 
   async generateIdeaPreviews(userId: string, videoId: string, dto: GenerateIdeaPreviewsDto) {
@@ -409,6 +543,7 @@ export class CreationService {
   async generateScriptPlanByProject(userId: string, projectId: string, dto: GenerateScriptPlanDto) {
     const bootstrapped = await this.bootstrapByProject(userId, projectId, {
       backgroundVideoId: dto.backgroundVideoId,
+      flowProjectId: dto.flowProjectId,
     });
     const flowProject = await this.assertProjectAccess(userId, bootstrapped.project.id);
     const meta = this.getProjectMeta(flowProject.stylePreset);
@@ -680,7 +815,11 @@ export class CreationService {
           });
 
     const existingCount = await this.prisma.flowNode.count({ where: { flowProjectId } });
-    let prevNodeId: string | null = null;
+    const lastExistingNode = await this.prisma.flowNode.findFirst({
+      where: { flowProjectId },
+      orderBy: { orderIndex: 'desc' },
+    });
+    let prevNodeId: string | null = lastExistingNode?.id || null;
 
     meta.nodesMeta = meta.nodesMeta || {};
     const precomputedMap = new Map(precomputedSegments.map((item) => [item.id, item]));
@@ -725,6 +864,7 @@ export class CreationService {
         continuityNotes: promptBundle.continuityNotes,
         characterAnchor: promptBundle.characterAnchor,
         continuityLocked: false,
+        sourceSegmentId: productionSegment?.id,
       };
 
       prevNodeId = created.id;
@@ -736,6 +876,152 @@ export class CreationService {
     });
 
     return this.getGraph(userId, flowProjectId);
+  }
+
+  async confirmSegmentPreview(userId: string, flowProjectId: string, segmentId: string) {
+    const flowProject = await this.assertProjectAccess(userId, flowProjectId);
+    const meta = this.getProjectMeta(flowProject.stylePreset);
+    const targetSegment = (meta.storyboardSegments || []).find((item) => item.id === segmentId);
+    if (!targetSegment) {
+      throw new NotFoundException('未找到对应的预览分镜片段');
+    }
+
+    let existingNode = await this.findNodeBySourceSegmentId(flowProjectId, segmentId);
+    if (!existingNode) {
+      await this.createChapterNodes(userId, flowProjectId, { chapterIndex: targetSegment.chapterIndex });
+      existingNode = await this.findNodeBySourceSegmentId(flowProjectId, segmentId);
+    }
+
+    if (!existingNode) {
+      throw new NotFoundException('无法将分镜片段接入短剧节点链路');
+    }
+
+    const refreshedNode = await this.prisma.flowNode.findUniqueOrThrow({ where: { id: existingNode.id } });
+    if (!refreshedNode.lastFrameUrl && !refreshedNode.firstFrameUrl) {
+      await this.generateNodeImage(userId, refreshedNode.id, {});
+    }
+
+    const renderTask = await this.renderNodeVideo(userId, refreshedNode.id);
+    return {
+      nodeId: refreshedNode.id,
+      segmentId,
+      renderTask,
+      graph: await this.getGraph(userId, flowProjectId),
+    };
+  }
+
+  async adjustDraft(userId: string, flowProjectId: string, dto: AdjustCreationDraftDto) {
+    const flowProject = await this.assertProjectAccess(userId, flowProjectId);
+    const meta = this.getProjectMeta(flowProject.stylePreset);
+    const targetType = String(dto.targetType || '').trim();
+    const instruction = String(dto.instruction || '').trim();
+    if (!instruction) {
+      throw new NotFoundException('调整意见不能为空');
+    }
+
+    if (targetType === 'preview') {
+      const previews = meta.previews || [];
+      const target = previews.find((item) => item.id === dto.targetId);
+      if (!target) {
+        throw new NotFoundException('未找到对应故事方向');
+      }
+
+      const system = [
+        '你是专业电影导演兼编剧顾问。',
+        '请根据用户的调整意见，优化一个视频故事方向草案。',
+        '你需要保留原方向的核心吸引力，但从导演视角增强人物关系、冲突、悬念、视觉亮点和可拍性。',
+        '输出必须是 JSON，且字段完整。',
+        '字段：{"title":"","openingScene":"","conflict":"","progression":"","whyItWorks":"","firstNodeScript":""}',
+      ].join('\n');
+
+      const adjusted = await this.llm.generateJson<IdeaPreviewOption>(
+        userId,
+        system,
+        [
+          `原故事方向：${JSON.stringify(target)}`,
+          `当前剧本草稿：${String(meta.conversationState?.scriptDraft || flowProject.scriptText || '').trim()}`,
+          `用户调整意见：${instruction}`,
+        ].join('\n'),
+        1800,
+      );
+
+      meta.previews = previews.map((item) =>
+        item.id === dto.targetId
+          ? {
+              ...item,
+              title: String(adjusted.title || item.title).trim(),
+              openingScene: String(adjusted.openingScene || item.openingScene).trim(),
+              conflict: String(adjusted.conflict || item.conflict).trim(),
+              progression: String(adjusted.progression || item.progression).trim(),
+              whyItWorks: String(adjusted.whyItWorks || item.whyItWorks).trim(),
+              firstNodeScript: String(adjusted.firstNodeScript || item.firstNodeScript).trim(),
+            }
+          : item,
+      );
+    } else if (targetType === 'chapter') {
+      const plan = meta.scriptPlan;
+      if (!plan?.chapters?.length) {
+        throw new NotFoundException('当前工程还没有章节结构');
+      }
+      const chapterIndex = Number(dto.targetId);
+      const target = plan.chapters.find((item) => item.index === chapterIndex);
+      if (!target) {
+        throw new NotFoundException('未找到对应章节');
+      }
+
+      const system = [
+        '你是专业电影导演兼剧本医生。',
+        '请根据用户的调整意见，优化一个章节设计。',
+        '从导演视角增强章节目标、戏剧张力、信息释放节奏、镜头可拆分性。',
+        '输出必须是 JSON，字段：{"title":"","summary":"","goal":"","storyboardCount":4}',
+        'storyboardCount 必须是 2 到 6 的整数。',
+      ].join('\n');
+
+      const adjusted = await this.llm.generateJson<{
+        title?: string;
+        summary?: string;
+        goal?: string;
+        storyboardCount?: number;
+      }>(
+        userId,
+        system,
+        [
+          `原章节：${JSON.stringify(target)}`,
+          `总剧情摘要：${String(plan.summary || meta.conversationState?.scriptDraft || '').trim()}`,
+          `用户调整意见：${instruction}`,
+        ].join('\n'),
+        1400,
+      );
+
+      meta.scriptPlan = {
+        ...plan,
+        chapters: plan.chapters.map((item) =>
+          item.index === chapterIndex
+            ? {
+                ...item,
+                title: String(adjusted.title || item.title).trim(),
+                summary: String(adjusted.summary || item.summary).trim(),
+                goal: String(adjusted.goal || item.goal).trim(),
+                storyboardCount: Math.max(2, Math.min(6, Number(adjusted.storyboardCount || item.storyboardCount))),
+              }
+            : item,
+        ),
+      };
+    } else {
+      throw new NotFoundException('不支持的调整目标');
+    }
+
+    meta.conversationState = {
+      ...(meta.conversationState || this.createEmptyConversationState()),
+      lastUpdatedAt: new Date().toISOString(),
+    };
+
+    await this.prisma.prismFlowProject.update({
+      where: { id: flowProject.id },
+      data: { stylePreset: meta as any },
+    });
+
+    return this.getGraph(userId, flowProject.id);
   }
 
   async mergeNodes(userId: string, flowProjectId: string, dto: MergeCreationNodesDto) {
@@ -1265,6 +1551,7 @@ export class CreationService {
         characterAnchor: this.normalizeCharacterAnchor(undefined),
         continuityLocked: false,
         mergedFromNodeIds: [],
+        sourceSegmentId: '',
       };
     }
 
@@ -1280,7 +1567,20 @@ export class CreationService {
       mergedFromNodeIds: Array.isArray(nodeMeta.mergedFromNodeIds)
         ? nodeMeta.mergedFromNodeIds.map((item) => String(item || '').trim()).filter(Boolean)
         : [],
+      sourceSegmentId: String(nodeMeta.sourceSegmentId || '').trim(),
     };
+  }
+
+  private async findNodeBySourceSegmentId(flowProjectId: string, segmentId: string) {
+    const flowProject = await this.prisma.prismFlowProject.findUnique({
+      where: { id: flowProjectId },
+      select: { stylePreset: true },
+    });
+    if (!flowProject) return null;
+    const meta = this.getProjectMeta(flowProject.stylePreset);
+    const nodeId = Object.entries(meta.nodesMeta || {}).find(([, nodeMeta]) => nodeMeta.sourceSegmentId === segmentId)?.[0];
+    if (!nodeId) return null;
+    return this.prisma.flowNode.findUnique({ where: { id: nodeId } });
   }
 
   private normalizeCharacterAnchor(input: unknown): CharacterAnchor {
@@ -1406,6 +1706,60 @@ export class CreationService {
       String(meta.scriptPackage?.overallSummary || '').trim() ||
       String(scriptText || '').trim().slice(0, 220)
     );
+  }
+
+  private async createFlowProject(
+    projectId: string,
+    projectName: string,
+    options: { name?: string; backgroundVideoId?: string | null } = {},
+  ) {
+    const count = await this.prisma.prismFlowProject.count({ where: { projectId } });
+    return this.prisma.prismFlowProject.create({
+      data: {
+        projectId,
+        videoId: options.backgroundVideoId || null,
+        name: options.name?.trim() || `${projectName} · 创作工程 ${count + 1}`,
+        stylePreset: {
+          version: 'v2',
+          mode: 'idea',
+          backgroundVideoId: options.backgroundVideoId || null,
+          conversationState: this.createEmptyConversationState(),
+          nodesMeta: {},
+        } as any,
+        status: 'PENDING',
+      },
+    });
+  }
+
+  private toSessionSummary(
+    session: {
+      id: string;
+      name: string;
+      status: string;
+      createdAt: Date;
+      updatedAt: Date;
+      videoId: string | null;
+      stylePreset: unknown;
+      scriptText: string | null;
+      nodes?: Array<{ id: string }>;
+    },
+  ): CreationSessionSummaryDto {
+    const meta = this.getProjectMeta(session.stylePreset);
+    const summary =
+      String(meta.conversationState?.summary.storyIntent || '').trim() ||
+      String(meta.scriptPackage?.overallSummary || '').trim() ||
+      String(session.scriptText || '').trim().slice(0, 80) ||
+      '尚未开始创作';
+    return {
+      id: session.id,
+      name: session.name,
+      status: session.status,
+      createdAt: session.createdAt.toISOString(),
+      updatedAt: session.updatedAt.toISOString(),
+      videoId: session.videoId || null,
+      hasNodes: Boolean(session.nodes?.length),
+      lastSummary: summary,
+    };
   }
 
   private async assertProjectOwnership(userId: string, projectId: string) {

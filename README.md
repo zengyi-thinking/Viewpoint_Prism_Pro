@@ -91,6 +91,34 @@ npm --prefix client run build
 python app.py
 ```
 
+## Docker 部署
+
+面向常规服务器部署时，推荐直接使用 Docker Compose 启动完整服务栈：
+
+```bash
+docker compose up -d --build
+```
+
+启动后默认入口：
+
+- 前端：http://localhost:7860
+- 后端：http://localhost:7861
+- 后端健康检查：http://localhost:7861/api/health
+
+当前 Compose 会自动拉起：
+
+- `client`：Next.js 前端
+- `server`：NestJS + Prisma 后端
+- `postgres`：PostgreSQL 数据库
+- `redis`：队列 / 缓存
+- `minio`：对象存储
+
+说明：
+
+- `postgres`、`redis`、`minio` 默认仅在 Docker 内部网络开放，不对宿主机映射端口。
+- 首次启动时，后端容器会自动执行 `prisma db push` 初始化数据库表结构。
+- 如需启用视频转码等依赖系统 `ffmpeg` 的能力，请在服务器镜像环境中额外补装 `ffmpeg`。
+
 ## 额外说明
 
 如果你的创空间环境没有准备这些基础设施，原始完整版功能仍会受限：

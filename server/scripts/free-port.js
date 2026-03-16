@@ -1,5 +1,11 @@
 /* eslint-disable no-console */
 const { execSync } = require('node:child_process');
+const path = require('node:path');
+const dotenv = require('dotenv');
+
+dotenv.config({ path: path.resolve(__dirname, '../../.env') });
+dotenv.config({ path: path.resolve(__dirname, '../../.env'), override: true });
+dotenv.config({ path: path.resolve(__dirname, '../.env'), override: false });
 
 function safeExec(command) {
   try {
@@ -105,7 +111,7 @@ function freePort(port) {
   }
 }
 
-const port = Number(process.argv[2] || process.env.PORT || 3001);
+const port = Number(process.argv[2] || process.env.PORT || 7871);
 if (!Number.isFinite(port) || port <= 0) {
   console.error(`[free-port] Invalid port: ${process.argv[2] || process.env.PORT}`);
   process.exit(1);

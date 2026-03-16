@@ -7,6 +7,7 @@ import { CrystalCardViewer } from './CrystalCardViewer';
 import { OutlinePanel } from './OutlinePanel';
 import { FlashcardsPanel } from './FlashcardsPanel';
 import { RealtimeKnowledgeBoard } from './RealtimeKnowledgeBoard';
+import { StatusPill } from '@/components/system';
 import { knowledgeApi } from '@/services/knowledge.api';
 import type { MindmapResult } from '@/types/mindmap';
 import { Loader2 } from 'lucide-react';
@@ -176,9 +177,9 @@ export function KnowledgeBoard({ videoId, onTimeClick }: KnowledgeBoardProps) {
       await knowledgeApi.analyze(videoId, { includeDeepAnalysis: true });
       await Promise.all([loadBoardSnapshot(), loadDeepAnalysis(), loadBackgroundFacts()]);
       setSettleHint('当前视频分析完成，可继续生成结算产物。');
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('分析当前视频失败:', error);
-      setSettleHint(`分析失败：${error?.message || 'unknown error'}`);
+      setSettleHint(`分析失败：${error instanceof Error ? error.message : 'unknown error'}`);
     } finally {
       setIsAnalyzingCurrent(false);
     }
@@ -191,9 +192,9 @@ export function KnowledgeBoard({ videoId, onTimeClick }: KnowledgeBoardProps) {
       await knowledgeApi.regenerateDeepAnalysis(videoId, {});
       await Promise.all([loadBoardSnapshot(), loadDeepAnalysis(), loadBackgroundFacts(), loadMindmap()]);
       setSettleHint('深度分析完成，思维导图和学习资产可基于新理解继续生成。');
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('深度分析失败:', error);
-      setSettleHint(`深度分析失败：${error?.message || 'unknown error'}`);
+      setSettleHint(`深度分析失败：${error instanceof Error ? error.message : 'unknown error'}`);
     } finally {
       setIsDeepAnalyzing(false);
     }
@@ -227,9 +228,25 @@ export function KnowledgeBoard({ videoId, onTimeClick }: KnowledgeBoardProps) {
 
   return (
     <div className="flex flex-col h-full">
-      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)} className="flex flex-col h-full">
-        <div className="border-b">
+      <Tabs
+        value={activeTab}
+        onValueChange={(value) =>
+          setActiveTab(value as 'realtime' | 'mindmap' | 'crystal-cards' | 'outline' | 'flashcards')
+        }
+        className="flex flex-col h-full"
+      >
+        <div className="border-b border-border-subtle bg-bg-panel-secondary/45">
           <div className="px-3 pt-3">
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <div className="text-[11px] uppercase tracking-[0.22em] text-text-tertiary">Knowledge Workspace</div>
+                <div className="mt-1 text-base font-semibold text-text-primary">实时看板优先</div>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <StatusPill tone={boardSnapshot?.state === 'ready' ? 'success' : 'warning'}>Board {boardSnapshot?.state ?? 'idle'}</StatusPill>
+                <StatusPill tone={deepAnalysis ? 'info' : 'default'}>{deepAnalysis ? `Deep v${deepAnalysis.version}` : 'Deep pending'}</StatusPill>
+              </div>
+            </div>
             <div className="overflow-x-auto pb-2" style={{ scrollbarWidth: 'none' }}>
               <TabsList className="h-auto min-w-max justify-start rounded-xl border-border px-1 py-1">
                 <TabsTrigger value="realtime" className="min-h-9 px-3.5 text-[12px] data-[state=active]:bg-background">
@@ -250,11 +267,11 @@ export function KnowledgeBoard({ videoId, onTimeClick }: KnowledgeBoardProps) {
               </TabsList>
             </div>
 
-            <div className="flex flex-wrap items-center gap-1.5 pb-3">
+            <div className="flex flex-wrap items-center gap-2 pb-3">
               <button
                 onClick={() => void handleSettle()}
                 disabled={isSettling || isSyncingTarget !== null || isAnalyzingCurrent}
-                className="rounded-md border border-amber-500/30 bg-amber-500/10 px-2.5 py-1.5 text-[11px] text-amber-300 transition hover:bg-amber-500/20 disabled:opacity-50"
+                className="rounded-full border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[11px] text-amber-300 transition hover:bg-amber-500/20 disabled:opacity-50"
                 title="一键结算（生成三大产物）"
               >
                 {isSettling ? '结算中...' : '一键结算'}
@@ -262,7 +279,7 @@ export function KnowledgeBoard({ videoId, onTimeClick }: KnowledgeBoardProps) {
               <button
                 onClick={() => void handleAnalyzeCurrent()}
                 disabled={isSettling || isSyncingTarget !== null || isAnalyzingCurrent}
-                className="rounded-md border border-border-subtle px-2.5 py-1.5 text-[11px] text-text-tertiary transition hover:text-text-secondary disabled:opacity-50"
+                className="rounded-full border border-border-subtle px-3 py-2 text-[11px] text-text-tertiary transition hover:text-text-secondary disabled:opacity-50"
                 title="分析当前视频"
               >
                 {isAnalyzingCurrent ? '分析中...' : '分析当前视频'}
@@ -275,7 +292,7 @@ export function KnowledgeBoard({ videoId, onTimeClick }: KnowledgeBoardProps) {
                   isAnalyzingCurrent ||
                   isDeepAnalyzing
                 }
-                className="rounded-md border border-sky-500/30 bg-sky-500/10 px-2.5 py-1.5 text-[11px] text-sky-300 transition hover:bg-sky-500/20 disabled:opacity-50"
+                className="rounded-full border border-sky-500/30 bg-sky-500/10 px-3 py-2 text-[11px] text-sky-300 transition hover:bg-sky-500/20 disabled:opacity-50"
                 title="生成二次理解层"
               >
                 {isDeepAnalyzing ? '深度分析中...' : '深度分析'}
@@ -283,7 +300,7 @@ export function KnowledgeBoard({ videoId, onTimeClick }: KnowledgeBoardProps) {
               <button
                 onClick={() => void handleSync('notion')}
                 disabled={isSyncingTarget !== null || isSettling}
-                className="rounded-md border border-border-subtle px-2.5 py-1.5 text-[11px] text-text-tertiary transition hover:text-text-secondary disabled:opacity-50"
+                className="rounded-full border border-border-subtle px-3 py-2 text-[11px] text-text-tertiary transition hover:text-text-secondary disabled:opacity-50"
                 title="Sync to Notion"
               >
                 {isSyncingTarget === 'notion' ? 'Syncing...' : 'Sync to Notion'}
@@ -291,7 +308,7 @@ export function KnowledgeBoard({ videoId, onTimeClick }: KnowledgeBoardProps) {
               <button
                 onClick={() => void handleSync('feishu')}
                 disabled={isSyncingTarget !== null || isSettling}
-                className="rounded-md border border-border-subtle px-2.5 py-1.5 text-[11px] text-text-tertiary transition hover:text-text-secondary disabled:opacity-50"
+                className="rounded-full border border-border-subtle px-3 py-2 text-[11px] text-text-tertiary transition hover:text-text-secondary disabled:opacity-50"
                 title="Sync to 飞书"
               >
                 {isSyncingTarget === 'feishu' ? 'Syncing...' : 'Sync to 飞书'}
