@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { Prisma } from '../../../generated/prisma/client';
 import { AiRouterService } from '../../infrastructure/ai-router/ai-router.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { UpdateSettingsDto } from './dto';
@@ -29,14 +30,16 @@ export class SettingsService {
   }
 
   async updateSettings(userId: string, dto: UpdateSettingsDto) {
+    const data = this.normalizeUpdateDto(dto);
+
     const updated = await this.prisma.userSettings.upsert({
       where: { userId },
       create: {
         userId,
-        ...dto,
+        ...data,
       },
       update: {
-        ...dto,
+        ...data,
       },
     });
 
@@ -51,6 +54,14 @@ export class SettingsService {
       providers: this.aiRouter.getProviderKeyPoolStats(),
       generatedAt: new Date().toISOString(),
     };
+  }
+
+  private normalizeUpdateDto(dto: UpdateSettingsDto) {
+    const data: Record<string, unknown> = { ...dto };
+    if (dto.providerConfigs !== undefined) {
+      data.providerConfigs = dto.providerConfigs as Prisma.InputJsonValue;
+    }
+    return data;
   }
 
   private toSafeSettings(settings: any) {
@@ -70,6 +81,7 @@ export class SettingsService {
       hasNotionToken: Boolean(settings.notionToken),
       hasFeishuAppId: Boolean(settings.feishuAppId),
       hasFeishuAppSecret: Boolean(settings.feishuAppSecret),
+      providerConfigs: settings.providerConfigs ?? null,
       updatedAt: settings.updatedAt,
     };
   }

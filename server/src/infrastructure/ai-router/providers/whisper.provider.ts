@@ -21,11 +21,7 @@ export class WhisperProvider extends BaseProvider {
 
     const openai = new OpenAI({
       apiKey,
-      baseURL:
-        this.configService.get<string>('CREATION_AI_BASE_URL') ||
-        this.configService.get<string>('OPENAI_BASE_URL') ||
-        this.configService.get<string>('SILICONFLOW_BASE_URL') ||
-        undefined,
+      baseURL: this.resolveBaseUrl(payload?.baseUrl),
     });
 
     try {
@@ -34,6 +30,7 @@ export class WhisperProvider extends BaseProvider {
         language = 'auto',
         format = 'mp3',
         model =
+          payload?.model ||
           this.configService.get<string>('CREATION_AI_ASR_MODEL') ||
           this.configService.get<string>('OPENAI_MODEL_WHISPER') ||
           this.configService.get<string>('SILICONFLOW_MODEL_ASR') ||
@@ -77,11 +74,7 @@ export class WhisperProvider extends BaseProvider {
     try {
       const openai = new OpenAI({
         apiKey,
-        baseURL:
-          this.configService.get<string>('CREATION_AI_BASE_URL') ||
-          this.configService.get<string>('OPENAI_BASE_URL') ||
-          this.configService.get<string>('SILICONFLOW_BASE_URL') ||
-          undefined,
+        baseURL: this.resolveBaseUrl(),
       });
       // Try a minimal API call
       await openai.models.list();
@@ -89,5 +82,15 @@ export class WhisperProvider extends BaseProvider {
     } catch {
       return false;
     }
+  }
+
+  private resolveBaseUrl(override?: string) {
+    return (
+      (typeof override === 'string' ? override.trim() : '') ||
+      this.configService.get<string>('CREATION_AI_BASE_URL') ||
+      this.configService.get<string>('OPENAI_BASE_URL') ||
+      this.configService.get<string>('SILICONFLOW_BASE_URL') ||
+      undefined
+    );
   }
 }

@@ -6,6 +6,7 @@ export interface SafeUserSettings {
   preferredImageGen?: string | null;
   preferredVideoGen?: string | null;
   preferredTts?: string | null;
+  providerConfigs?: Record<string, unknown> | null;
   hasOpenaiKey?: boolean;
   hasGeminiKey?: boolean;
   hasVolcengineKey?: boolean;
@@ -40,6 +41,7 @@ export interface UpdateSettingsPayload {
   preferredImageGen?: string;
   preferredVideoGen?: string;
   preferredTts?: string;
+  providerConfigs?: Record<string, unknown>;
 }
 
 export const settingsApi = {
@@ -50,4 +52,3 @@ export const settingsApi = {
       body: JSON.stringify(payload),
     }),
 };
-

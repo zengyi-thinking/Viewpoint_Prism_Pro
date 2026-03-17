@@ -43,6 +43,7 @@ model UserSettings {
   notionToken     String?
   feishuAppId     String?
   feishuAppSecret String?
+  providerConfigs Json?
 
   // 优先使用硅基流动（Seedance），其他 Provider 为后续高端服务预留
   preferredAsr      String? @default("seedance")

@@ -52,7 +52,7 @@ export class SeedanceProvider extends BaseProvider {
   }
 
   private async executeChat(taskType: AITaskType, payload: any, apiKey: string): Promise<any> {
-    const baseUrl = this.resolveBaseUrl();
+    const baseUrl = this.resolveBaseUrl(payload?.baseUrl);
     const defaultModel =
       taskType === AITaskType.MULTIMODAL
         ? this.configService.get<string>('SILICONFLOW_MODEL_VLM')
@@ -148,7 +148,7 @@ export class SeedanceProvider extends BaseProvider {
   }
 
   private async executeImageGen(payload: any, apiKey: string): Promise<any> {
-    const baseUrl = this.resolveBaseUrl();
+    const baseUrl = this.resolveBaseUrl(payload?.baseUrl);
     const model =
       payload?.model ||
       this.configService.get<string>('SILICONFLOW_MODEL_IMAGE') ||
@@ -192,7 +192,7 @@ export class SeedanceProvider extends BaseProvider {
   }
 
   private async executeVideoGen(payload: any, apiKey: string): Promise<any> {
-    const baseUrl = this.resolveBaseUrl();
+    const baseUrl = this.resolveBaseUrl(payload?.baseUrl);
     const image = await this.resolveInputImage(payload);
     const modelCandidates = this.resolveVideoModelCandidates(payload, Boolean(image));
 
@@ -306,7 +306,7 @@ export class SeedanceProvider extends BaseProvider {
    * 端点: /v1/audio/transcriptions
    */
   private async executeASR(payload: any, apiKey: string): Promise<any> {
-    const baseUrl = this.resolveBaseUrl();
+    const baseUrl = this.resolveBaseUrl(payload?.baseUrl);
     const model =
       payload?.model ||
       this.configService.get<string>('SILICONFLOW_MODEL_ASR') ||
@@ -382,7 +382,7 @@ export class SeedanceProvider extends BaseProvider {
    * 注意: 此 API 返回二进制音频数据，不是 JSON
    */
   private async executeTTS(payload: any, apiKey: string): Promise<any> {
-    const baseUrl = this.resolveBaseUrl();
+    const baseUrl = this.resolveBaseUrl(payload?.baseUrl);
 
     this.logger.log('Calling SiliconFlow TTS API, text=' + String((payload?.text || '').substring(0, 50)) + '...');
 
@@ -445,7 +445,7 @@ export class SeedanceProvider extends BaseProvider {
    * 端点: POST /v1/audio/voice/upload
    */
   private async executeVoiceClone(payload: any, apiKey: string): Promise<any> {
-    const baseUrl = this.resolveBaseUrl();
+    const baseUrl = this.resolveBaseUrl(payload?.baseUrl);
 
     this.logger.log('Calling SiliconFlow Voice Clone API');
 
@@ -508,8 +508,9 @@ export class SeedanceProvider extends BaseProvider {
     }
   }
 
-  private resolveBaseUrl(): string {
+  private resolveBaseUrl(override?: string): string {
     const raw =
+      (typeof override === 'string' ? override.trim() : '') ||
       this.configService.get<string>('SEEDANCE_BASE_URL') ||
       this.configService.get<string>('SILICONFLOW_BASE_URL') ||
       'https://api.siliconflow.cn/v1';

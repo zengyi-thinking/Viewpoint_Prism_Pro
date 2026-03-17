@@ -23,12 +23,7 @@ export class OpenAIProvider extends BaseProvider {
   async execute(taskType: AITaskType, payload: any, apiKey: string): Promise<any> {
     const openai = new OpenAI({
       apiKey,
-      baseURL:
-        this.configService.get<string>('CREATION_AI_BASE_URL') ||
-        this.configService.get<string>('OPENAI_BASE_URL') ||
-        this.configService.get<string>('SILICONFLOW_BASE_URL') ||
-        this.configService.get<string>('OPENAI_PREMIUM_BASE_URL') ||
-        undefined,
+      baseURL: this.resolveBaseUrl(payload?.baseUrl),
     });
 
     try {
@@ -56,12 +51,7 @@ export class OpenAIProvider extends BaseProvider {
     try {
       const openai = new OpenAI({
         apiKey,
-        baseURL:
-          this.configService.get<string>('CREATION_AI_BASE_URL') ||
-          this.configService.get<string>('OPENAI_BASE_URL') ||
-          this.configService.get<string>('SILICONFLOW_BASE_URL') ||
-          this.configService.get<string>('OPENAI_PREMIUM_BASE_URL') ||
-          undefined,
+        baseURL: this.resolveBaseUrl(),
       });
       const response = await openai.models.list();
       return response.data.length > 0;
@@ -202,7 +192,7 @@ export class OpenAIProvider extends BaseProvider {
   }
 
   private async generateVideo(payload: any, apiKey: string) {
-    const baseUrl = this.resolveBaseUrl();
+    const baseUrl = this.resolveBaseUrl(payload?.baseUrl);
     const model =
       payload?.model ||
       this.configService.get<string>('CREATION_AI_VIDEO_MODEL') ||
@@ -318,8 +308,9 @@ export class OpenAIProvider extends BaseProvider {
     };
   }
 
-  private resolveBaseUrl() {
+  private resolveBaseUrl(override?: string) {
     const raw =
+      (typeof override === 'string' ? override.trim() : '') ||
       this.configService.get<string>('CREATION_AI_BASE_URL') ||
       this.configService.get<string>('OPENAI_BASE_URL') ||
       this.configService.get<string>('SILICONFLOW_BASE_URL') ||

@@ -410,15 +410,14 @@ export class KnowledgeService {
     const results: Array<{
       videoId: string;
       status: 'completed' | 'failed';
-      result?: any;
       error?: string;
     }> = [];
 
     // 按用户要求逐个分析，确保视频与音频流分析过程稳定可追踪。
     for (const videoId of dto.videoIds) {
       try {
-        const result = await this.analyze(userId, videoId, options);
-        results.push({ videoId, status: 'completed', result });
+        await this.analyze(userId, videoId, options);
+        results.push({ videoId, status: 'completed' });
       } catch (error: any) {
         const message = error?.message || 'Unknown error';
         this.logger.error(

@@ -24,7 +24,7 @@ export class GeminiProvider extends BaseProvider {
   async execute(taskType: AITaskType, payload: any, apiKey: string): Promise<any> {
     const client = new OpenAI({
       apiKey,
-      baseURL: this.resolveBaseUrl(),
+      baseURL: this.resolveBaseUrl(payload?.baseUrl),
     });
 
     try {
@@ -70,7 +70,7 @@ export class GeminiProvider extends BaseProvider {
       prompt,
       temperature = 0.4,
       maxTokens = 1600,
-      model = this.configService.get<string>('GEMINI_MODEL_CHAT') || 'gemini-2.5-flash',
+      model = payload?.model || this.configService.get<string>('GEMINI_MODEL_CHAT') || 'gemini-2.5-flash',
     } = payload || {};
 
     const response = await client.chat.completions.create({
@@ -98,6 +98,7 @@ export class GeminiProvider extends BaseProvider {
     const targetLang = String(payload?.targetLang || 'zh-CN');
     const text = String(payload?.text || payload?.content || '');
     const model =
+      payload?.model ||
       this.configService.get<string>('GEMINI_MODEL_TRANSLATION') ||
       this.configService.get<string>('GEMINI_MODEL_CHAT') ||
       'gemini-2.5-flash';
@@ -132,6 +133,7 @@ export class GeminiProvider extends BaseProvider {
     const prompt = String(payload?.prompt || '请分析这张图片');
     const image = payload?.image || payload?.imageUrl;
     const model =
+      payload?.model ||
       this.configService.get<string>('GEMINI_MODEL_VISION') ||
       this.configService.get<string>('GEMINI_MODEL_CHAT') ||
       'gemini-2.5-flash';
@@ -169,6 +171,7 @@ export class GeminiProvider extends BaseProvider {
 
   private async asr(payload: any, apiKey: string) {
     const model =
+      payload?.model ||
       this.configService.get<string>('GEMINI_MODEL_ASR') ||
       this.configService.get<string>('GEMINI_MODEL_CHAT') ||
       'gemini-2.5-flash';
@@ -233,6 +236,7 @@ export class GeminiProvider extends BaseProvider {
 
   private async imageGen(payload: any, apiKey: string) {
     const model =
+      payload?.model ||
       this.configService.get<string>('GEMINI_MODEL_IMAGE') ||
       'gemini-2.5-flash-image';
     const prompt = String(payload?.prompt || 'Generate an image');
@@ -257,7 +261,7 @@ export class GeminiProvider extends BaseProvider {
       },
     };
 
-    const data = await this.postNativeGenerateContent(model, requestBody, apiKey);
+    const data = await this.postNativeGenerateContent(model, requestBody, apiKey, payload?.baseUrl);
     const generatedImage = this.extractInlineImageFromNativeResponse(data);
     if (!generatedImage) {
       const textFallback = this.extractTextFromNativeResponse(data);
@@ -275,6 +279,7 @@ export class GeminiProvider extends BaseProvider {
 
   private async tts(payload: any, apiKey: string) {
     const model =
+      payload?.model ||
       this.configService.get<string>('GEMINI_MODEL_TTS') ||
       'gemini-2.5-flash-preview-tts';
     const text = String(payload?.text || payload?.input || '').trim();
@@ -297,7 +302,7 @@ export class GeminiProvider extends BaseProvider {
       },
     };
 
-    const data = await this.postNativeGenerateContent(model, requestBody, apiKey);
+    const data = await this.postNativeGenerateContent(model, requestBody, apiKey, payload?.baseUrl);
     const audio = this.extractInlineAudioFromNativeResponse(data);
     if (!audio) {
       throw new Error('Gemini TTS returned no audio data');
@@ -316,15 +321,16 @@ export class GeminiProvider extends BaseProvider {
     };
   }
 
-  private resolveBaseUrl() {
+  private resolveBaseUrl(override?: string) {
     const raw =
+      (typeof override === 'string' ? override.trim() : '') ||
       this.configService.get<string>('GEMINI_BASE_URL') ||
       'https://generativelanguage.googleapis.com/v1beta/openai';
     return raw.replace(/\/+$/, '');
   }
 
-  private resolveNativeBaseUrl() {
-    const fromOpenAICompat = this.resolveBaseUrl().replace(/\/openai\/?$/, '');
+  private resolveNativeBaseUrl(override?: string) {
+    const fromOpenAICompat = this.resolveBaseUrl(override).replace(/\/openai\/?$/, '');
     const direct = this.configService.get<string>('GEMINI_NATIVE_BASE_URL');
     if (direct && direct.trim()) {
       return direct.trim().replace(/\/+$/, '');
@@ -452,8 +458,9 @@ export class GeminiProvider extends BaseProvider {
     model: string,
     body: Record<string, unknown>,
     apiKey: string,
+    baseUrlOverride?: string,
   ) {
-    const base = this.resolveNativeBaseUrl();
+    const base = this.resolveNativeBaseUrl(baseUrlOverride);
     const url = `${base}/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
     const res = await fetch(url, {
       method: 'POST',

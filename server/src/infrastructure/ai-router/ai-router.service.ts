@@ -114,7 +114,13 @@ export class AiRouterService {
                 );
               }
 
-              const result = await provider.execute(taskType, payload, apiKey);
+              const runtimePayload = this.applyUserProviderConfig(
+                provider.name,
+                taskType,
+                payload,
+                userSettings,
+              );
+              const result = await provider.execute(taskType, runtimePayload, apiKey);
 
               this.advanceKeyCursor(provider.name, apiKeys, apiKey);
               this.recordKeyResult(provider.name, apiKey, true, null);
@@ -389,6 +395,83 @@ export class AiRouterService {
         );
       default:
         return [];
+    }
+  }
+
+  private applyUserProviderConfig(
+    providerName: string,
+    taskType: AITaskType,
+    payload: any,
+    userSettings: any,
+  ) {
+    const providerConfig = this.getProviderRuntimeConfig(providerName, userSettings?.providerConfigs);
+    if (!providerConfig) {
+      return payload;
+    }
+
+    const modelKey = this.getModelSlotForTask(taskType);
+    const overrideModel =
+      modelKey && providerConfig.models && typeof providerConfig.models[modelKey] === 'string'
+        ? String(providerConfig.models[modelKey]).trim()
+        : '';
+    const overrideBaseUrl =
+      typeof providerConfig.baseUrl === 'string' ? providerConfig.baseUrl.trim() : '';
+
+    return {
+      ...payload,
+      ...(overrideBaseUrl && !payload?.baseUrl ? { baseUrl: overrideBaseUrl } : {}),
+      ...(overrideModel && !payload?.model ? { model: overrideModel } : {}),
+    };
+  }
+
+  private getProviderRuntimeConfig(providerName: string, rawConfigs: unknown) {
+    if (!rawConfigs || typeof rawConfigs !== 'object') {
+      return null;
+    }
+
+    const configs = rawConfigs as Record<string, any>;
+    const direct = configs[providerName];
+    if (direct && typeof direct === 'object') {
+      return direct as { baseUrl?: string; models?: Record<string, string> };
+    }
+
+    if (providerName === 'whisper') {
+      const openaiConfig = configs.openai;
+      if (openaiConfig && typeof openaiConfig === 'object') {
+        return openaiConfig as { baseUrl?: string; models?: Record<string, string> };
+      }
+    }
+
+    return null;
+  }
+
+  private getModelSlotForTask(taskType: AITaskType):
+    | 'asr'
+    | 'chat'
+    | 'multimodal'
+    | 'image'
+    | 'video'
+    | 'tts'
+    | 'translation'
+    | null {
+    switch (taskType) {
+      case AITaskType.ASR:
+        return 'asr';
+      case AITaskType.LLM_CHAT:
+        return 'chat';
+      case AITaskType.MULTIMODAL:
+        return 'multimodal';
+      case AITaskType.IMAGE_GEN:
+        return 'image';
+      case AITaskType.VIDEO_GEN:
+        return 'video';
+      case AITaskType.TTS:
+      case AITaskType.VOICE_CLONE:
+        return 'tts';
+      case AITaskType.TRANSLATION:
+        return 'translation';
+      default:
+        return null;
     }
   }
 

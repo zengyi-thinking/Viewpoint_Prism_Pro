@@ -1,8 +1,22 @@
 import { apiFetch, getToken } from './api';
 
-const API_BASE =
-  process.env.NEXT_PUBLIC_API_URL ||
-  (typeof window !== 'undefined' ? window.location.origin : 'http://127.0.0.1:7860');
+function normalizeBaseUrl(base: string): string {
+  return base.endsWith('/') ? base.slice(0, -1) : base;
+}
+
+function resolveDirectApiBase(): string {
+  const envBase = (process.env.NEXT_PUBLIC_API_URL || '').trim();
+  if (envBase) {
+    return normalizeBaseUrl(envBase);
+  }
+
+  if (typeof window !== 'undefined') {
+    const { protocol, hostname } = window.location;
+    return `${protocol}//${hostname}:7871`;
+  }
+
+  return 'http://127.0.0.1:7871';
+}
 
 export type VideoSourceType = 'LOCAL_UPLOAD' | 'URL_IMPORT' | 'YOUTUBE' | 'BILIBILI';
 
@@ -45,6 +59,7 @@ export const videoApi = {
 
   // Upload file directly to backend (bypasses Next.js proxy for FormData)
   upload: async (projectId: string, file: File, onProgress?: (progress: number) => void): Promise<VideoSource> => {
+    const directApiBase = resolveDirectApiBase();
     const token = getToken();
     const formData = new FormData();
     formData.append('file', file);
@@ -86,7 +101,7 @@ export const videoApi = {
       xhr.addEventListener('abort', () => reject(new Error('Upload cancelled')));
 
       // Open and send request
-      xhr.open('POST', `${API_BASE}/api/videos/upload?projectId=${projectId}`);
+      xhr.open('POST', `${directApiBase}/api/videos/upload?projectId=${projectId}`);
       if (token) {
         xhr.setRequestHeader('Authorization', `Bearer ${token}`);
       }

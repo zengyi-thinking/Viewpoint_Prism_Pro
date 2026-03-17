@@ -1,4 +1,4 @@
-import { IsOptional, IsString } from 'class-validator';
+import { IsObject, IsOptional, IsString } from 'class-validator';
 
 export class UpdateSettingsDto {
   @IsOptional()
@@ -60,4 +60,8 @@ export class UpdateSettingsDto {
   @IsOptional()
   @IsString()
   preferredTts?: string;
+
+  @IsOptional()
+  @IsObject()
+  providerConfigs?: Record<string, unknown>;
 }

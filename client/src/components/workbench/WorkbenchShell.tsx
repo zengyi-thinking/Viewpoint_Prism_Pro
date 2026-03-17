@@ -31,14 +31,9 @@ export function WorkbenchShell({ projectName, projectId }: { projectName?: strin
   const [titleDraft, setTitleDraft] = useState(projectName || '工作台');
   const [isSavingTitle, setIsSavingTitle] = useState(false);
 
-  const isKnowledgeMode = activePrism === 'knowledge';
-  const isCreationMode = activePrism === 'creation';
-  const effectiveLeftCollapsed = leftCollapsed || isKnowledgeMode || isCreationMode;
-  const rightPanelWidth = !rightCollapsed && isKnowledgeMode
-    ? 'clamp(540px, 44vw, 780px)'
-    : !rightCollapsed && isCreationMode
-      ? 'clamp(780px, 62vw, 1260px)'
-      : `${rightWidth}px`;
+  const isStudioMode = Boolean(activePrism);
+  const effectiveLeftCollapsed = leftCollapsed || isStudioMode;
+  const rightPanelWidth = `${rightWidth}px`;
 
   useEffect(() => {
     const applyResponsiveCollapse = () => {
@@ -181,7 +176,7 @@ export function WorkbenchShell({ projectName, projectId }: { projectName?: strin
 
       <div className="wb-main-gap flex min-h-0 flex-1">
         <div ref={containerRef} className="flex min-h-0 flex-1 gap-0 overflow-hidden">
-          {isCreationMode ? (
+          {isStudioMode ? (
             <div className="flex min-w-0 flex-1 overflow-hidden rounded-[24px] border border-stroke-default bg-bg-panel shadow-[var(--shadow-card)]">
               <PrismSwitcher collapsed={false} onToggle={() => setRightCollapsed((prev) => !prev)} onTimeClick={requestSeekTo} projectId={projectId} />
             </div>
