@@ -23,9 +23,6 @@ const customJwtExtractor = (request: Request) => {
   // - Referer headers to third-party sites
   const token = request.query?.token as string;
   if (token) {
-    // Log warning for audit purposes
-    logger.warn(`Token extracted from query parameter for: ${request.path}`);
-
     // Only allow query param tokens for specific public resource endpoints
     const allowedPaths = ['/api/videos/', '/api/stream/'];
     const isAllowedPath = allowedPaths.some(path => request.path.startsWith(path));
@@ -34,6 +31,8 @@ const customJwtExtractor = (request: Request) => {
       logger.error(`REJECTED: Query parameter token not allowed for path: ${request.path}`);
       return null;
     }
+
+    logger.debug(`Token extracted from query parameter for allowed path: ${request.path}`);
 
     return token;
   }

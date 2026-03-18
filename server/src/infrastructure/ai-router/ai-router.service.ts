@@ -333,12 +333,9 @@ export class AiRouterService {
    * Get user settings from database
    */
   private async getUserSettings(userId: string) {
-    const user = await this.prisma.user.findUnique({
-      where: { id: userId },
-      include: { settings: true },
+    return this.prisma.userSettings.findUnique({
+      where: { userId },
     });
-
-    return user?.settings || null;
   }
 
   private getEnvFallbackKeys(providerName: string): string[] {

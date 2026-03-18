@@ -673,11 +673,11 @@ model VideoBehaviorEvent {
   userId     String
   videoId    String
   video      VideoSource        @relation(fields: [videoId], references: [id], onDelete: Cascade)
-  session    VideoSession?     @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  session    VideoSession?      @relation(fields: [sessionId], references: [sessionId], onDelete: Cascade)
 
   eventType      VideoEventType
   context        VideoActionContext @default(NORMAL)
-  sessionId      String? @unique
+  sessionId      String?
 
   // Event-specific data
   previousTime   Float?

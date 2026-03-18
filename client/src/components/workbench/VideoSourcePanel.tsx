@@ -70,6 +70,39 @@ export function VideoSourcePanel({
     [videos, search],
   );
 
+  const formatAnalyzeSummary = (
+    results: Array<{ videoId: string; status: 'completed' | 'failed'; error?: string }>,
+  ) => {
+    const completed = results.filter((item) => item.status === 'completed').length;
+    const failedItems = results.filter((item) => item.status === 'failed');
+    const failedDetails = failedItems
+      .map((item) => `- ${item.videoId}: ${item.error || '未知错误'}`)
+      .join('\n');
+
+    return failedItems.length > 0
+      ? `分析完成：成功 ${completed} 个，失败 ${failedItems.length} 个。\n\n失败详情：\n${failedDetails}`
+      : `分析完成：成功 ${completed} 个，失败 0 个。`;
+  };
+
+  const runSequentialAnalyzeFallback = async () => {
+    const results: Array<{ videoId: string; status: 'completed' | 'failed'; error?: string }> = [];
+
+    for (const videoId of selectedVideoIds) {
+      try {
+        await knowledgeApi.analyze(videoId, {
+          regenerateTranscript: false,
+          regenerateKeyframes: false,
+        });
+        results.push({ videoId, status: 'completed' });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : '分析失败';
+        results.push({ videoId, status: 'failed', error: message });
+      }
+    }
+
+    return results;
+  };
+
   const handleUploadSuccess = (uploadedVideo?: VideoSource) => {
     if (uploadedVideo && projectId) {
       queryClient.setQueryData<VideoSource[]>(['videos', projectId], (existing = []) => {
@@ -103,11 +136,19 @@ export function VideoSourcePanel({
 
     setIsAnalyzing(true);
     try {
-      const batchResult = await knowledgeApi.analyzeBatch({
-        videoIds: selectedVideoIds,
-        regenerateTranscript: false,
-        regenerateKeyframes: false,
-      });
+      let results: Array<{ videoId: string; status: 'completed' | 'failed'; error?: string }> = [];
+
+      try {
+        const batchResult = await knowledgeApi.analyzeBatch({
+          videoIds: selectedVideoIds,
+          regenerateTranscript: false,
+          regenerateKeyframes: false,
+        });
+        results = batchResult.results;
+      } catch (batchError) {
+        console.warn('Batch analyze failed, falling back to sequential analysis:', batchError);
+        results = await runSequentialAnalyzeFallback();
+      }
 
       await queryClient.invalidateQueries({ queryKey: ['videos', projectId] });
 
@@ -115,16 +156,7 @@ export function VideoSourcePanel({
         setCurrentVideo(firstSelectedVideo);
       }
 
-      const failedDetails = batchResult.results
-        .filter((item) => item.status === 'failed')
-        .map((item) => `- ${item.videoId}: ${item.error || '未知错误'}`)
-        .join('\n');
-
-      alert(
-        batchResult.failed > 0
-          ? `分析完成：成功 ${batchResult.completed} 个，失败 ${batchResult.failed} 个。\n\n失败详情：\n${failedDetails}`
-          : `分析完成：成功 ${batchResult.completed} 个，失败 ${batchResult.failed} 个。`,
-      );
+      alert(formatAnalyzeSummary(results));
       clearVideoSelection();
     } catch (error) {
       console.error('Failed to analyze videos:', error);

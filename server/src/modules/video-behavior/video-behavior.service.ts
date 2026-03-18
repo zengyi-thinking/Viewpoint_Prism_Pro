@@ -33,21 +33,23 @@ export class VideoBehaviorService {
   /**
    * Track a single video behavior event
    */
-  async trackEvent(userId: string, dto: TrackEventDto) {
+  async trackEvent(userId: string, dto: TrackEventDto, skipVideoValidation = false) {
     const { videoId, sessionId, eventType, previousTime, currentTime, context } = dto;
 
-    // Verify video access
-    const video = await this.prisma.videoSource.findUnique({
-      where: { id: videoId },
-      include: { project: true },
-    });
+    // Verify video access (can be skipped when called from bulk for performance)
+    if (!skipVideoValidation) {
+      const video = await this.prisma.videoSource.findUnique({
+        where: { id: videoId },
+        include: { project: true },
+      });
 
-    if (!video) {
-      throw new NotFoundException('Video not found');
-    }
+      if (!video) {
+        throw new NotFoundException('Video not found');
+      }
 
-    if (video.project.userId !== userId) {
-      throw new ForbiddenException('You do not have access to this video');
+      if (video.project.userId !== userId) {
+        throw new ForbiddenException('You do not have access to this video');
+      }
     }
 
     // Get or create session
@@ -94,12 +96,61 @@ export class VideoBehaviorService {
    * Track multiple events in bulk (more efficient)
    */
   async trackBulkEvents(userId: string, dto: BulkTrackEventsDto) {
+    // 批量模式下，先验证一次视频访问权限，避免每个事件都重复查询
+    const videoId = dto.events[0]?.videoId;
+    if (!videoId) {
+      this.logger.error('Bulk track failed: No videoId provided');
+      return {
+        total: dto.events.length,
+        successful: 0,
+        failed: dto.events.length,
+      };
+    }
+
+    const video = await this.prisma.videoSource.findUnique({
+      where: { id: videoId },
+      include: { project: true },
+    });
+
+    if (!video) {
+      this.logger.error(`Bulk track failed: Video not found: ${videoId}`);
+      return {
+        total: dto.events.length,
+        successful: 0,
+        failed: dto.events.length,
+      };
+    }
+
+    if (video.project.userId !== userId) {
+      this.logger.error(`Bulk track failed: Access denied for video ${videoId}, user ${userId} vs video owner ${video.project.userId}`);
+      return {
+        total: dto.events.length,
+        successful: 0,
+        failed: dto.events.length,
+      };
+    }
+
+    // 确保 session 存在
+    const activeSessionId = await this.getOrCreateActiveSession(userId, videoId, VideoActionContext.NORMAL);
+
     const results = await Promise.allSettled(
-      dto.events.map((event) => this.trackEvent(userId, event))
+      dto.events.map((event) => this.trackEvent(userId, { ...event, sessionId: activeSessionId }, true))
     );
 
     const successful = results.filter((r) => r.status === 'fulfilled').length;
     const failed = results.filter((r) => r.status === 'rejected').length;
+
+    // 记录详细的失败信息用于诊断
+    results.forEach((r, index) => {
+      if (r.status === 'rejected') {
+        const reason = r.reason;
+        const event = dto.events[index];
+        this.logger.error(
+          `Bulk track failed for event ${index}: videoId=${event?.videoId}, eventType=${event?.eventType}, error=${reason?.message || reason}`,
+          reason?.stack,
+        );
+      }
+    });
 
     this.logger.log(`Bulk tracking: ${successful} successful, ${failed} failed`);
 
