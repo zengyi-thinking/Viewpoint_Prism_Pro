@@ -1,14 +1,3 @@
----
-# 详细文档见 https://modelscope.cn/docs/创空间卡片
-domain:
-tags:
-  - video-workbench
-  - nextjs
-  - nestjs
-  - prisma
-license: Apache License 2.0
----
-
 # Viewpoint Prism Pro
 
 Viewpoint Prism Pro 是一个“视频内容工作台”。同一条视频在一个统一界面中被并行处理为四种资产流：学习、二创、译制、分发。
@@ -18,58 +7,17 @@ Viewpoint Prism Pro 是一个“视频内容工作台”。同一条视频在一
 - `译制棱镜`：视频 -> 多语种本地化版本
 - `衍射棱镜`：视频 -> 多平台图文分发内容
 
-## 当前魔搭适配方式
-
-本项目原始技术栈为：
+## 技术栈
 
 - 前端：Next.js
 - 后端：NestJS
 - 数据层：Prisma
 - 实时通信：Socket.IO
+- 队列：Redis / Bull
+- 对象存储：MinIO / S3 兼容接口
+- 视频处理：FFmpeg
 
-当前仓库已经改成 **Docker SDK 创空间可部署版本**。
-
-核心文件：
-
-- `Dockerfile`
-- `app.py`
-
-运行方式：
-
-- Docker 镜像内安装 Node.js、Python、ffmpeg
-- 构建镜像时完成 Next.js / NestJS 编译
-- 容器启动时由 `app.py` 同时拉起前后端，并在 `0.0.0.0:7870` 对外提供统一入口
-
-## 关键环境变量
-
-推荐在创空间中至少配置：
-
-- `HOST=0.0.0.0`
-- `PORT=7870`
-- `DATABASE_URL`
-- `REDIS_URL`
-- `MINIO_ENDPOINT`
-- `MINIO_PORT`
-- `MINIO_ACCESS_KEY`
-- `MINIO_SECRET_KEY`
-- `JWT_SECRET`
-
-在魔搭创空间界面中的设置步骤：
-
-1. 点击右上角 `设置`
-2. 点击 `环境变量管理`
-3. 点击 `新增`
-4. 填写变量名和值后点击 `保存`
-5. 返回 `设置` 页面点击 `上线`
-6. 在弹窗中点击 `确认`
-
-说明：
-
-- 没有使用到某项 AI 能力时，对应的 `*_KEY` 可以不设置
-- 推荐统一使用 `XXX_KEY` 形式
-- 更完整的环境变量清单见 [README_MODELSCOPE.md](./README_MODELSCOPE.md)
-
-## API KEY 约定
+## API Key 约定
 
 项目已支持两套命名：
 
@@ -86,9 +34,19 @@ Viewpoint Prism Pro 是一个“视频内容工作台”。同一条视频在一
 ## 本地运行
 
 ```bash
-npm --prefix server run build
-npm --prefix client run build
-python app.py
+npm run dev:server
+npm run dev:client
+```
+
+默认访问地址：
+
+- 前端：http://localhost:7870
+- 后端：http://localhost:7871
+
+如果需要完整基础设施：
+
+```bash
+docker compose up -d postgres redis minio
 ```
 
 ## Docker 部署
@@ -138,15 +96,17 @@ Zeabur 不直接使用当前仓库里的 `docker-compose.yml`，建议拆成两�
 5. 为 `client` 配置：
    - `INTERNAL_API_URL=http://server:7871`
    - `NEXT_PUBLIC_API_URL=`
-   - `NEXT_PUBLIC_WS_URL=` 留空时优先走同源
+   - `NEXT_PUBLIC_WS_URL=https://你的后端公网域名`
 
 后端服务至少需要这些环境变量：
 
 - `HOST=0.0.0.0`
 - `PORT=7871`
 - `DATABASE_URL`
-- `REDIS_URL`
+- `REDIS_HOST`
+- `REDIS_PORT`
 - `JWT_SECRET`
+- `BYOK_ENCRYPTION_KEY`
 - `MINIO_ENDPOINT`
 - `MINIO_PORT`
 - `MINIO_ACCESS_KEY`
@@ -156,15 +116,31 @@ Zeabur 不直接使用当前仓库里的 `docker-compose.yml`，建议拆成两�
 说明：
 
 - `Dockerfile.client` 已支持读取平台注入的 `PORT`，当前默认前端端口为 `7870`，便于与本地环境保持一致。
-- 如果前端与后端都部署在 Zeabur，浏览器侧建议继续使用同源 `/api`，这样不需要额外处理 CORS 和公网回源地址。
+- HTTP API 可以通过 Next rewrite 走同源 `/api`。
+- WebSocket 不走 Next rewrite，建议给后端单独分配一个公网域名并配置到 `NEXT_PUBLIC_WS_URL`。
 
-## 额外说明
+## 基础环境变量
 
-如果你的创空间环境没有准备这些基础设施，原始完整版功能仍会受限：
+可从 [`.env.example`](/d:/DevProject/Viewpoint_Prism_Pro/.env.example) 复制并按环境裁剪。核心变量如下：
 
 - PostgreSQL
+  - `DATABASE_URL`
 - Redis
+  - `REDIS_HOST`
+  - `REDIS_PORT`
+  - `REDIS_URL`
 - MinIO / S3
+  - `MINIO_ENDPOINT`
+  - `MINIO_PORT`
+  - `MINIO_ACCESS_KEY`
+  - `MINIO_SECRET_KEY`
+  - `MINIO_BUCKET`
+  - `MINIO_USE_SSL`
 - FFmpeg
-
-部署细节见：[README_MODELSCOPE.md](./README_MODELSCOPE.md)
+  - `FFMPEG_PATH`
+- Auth
+  - `JWT_SECRET`
+  - `JWT_EXPIRES_IN`
+  - `NEXTAUTH_SECRET`
+  - `NEXTAUTH_URL`
+  - `BYOK_ENCRYPTION_KEY`
