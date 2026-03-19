@@ -119,6 +119,45 @@ docker compose up -d --build
 - 首次启动时，后端容器会自动执行 `prisma db push` 初始化数据库表结构。
 - 如需启用视频转码等依赖系统 `ffmpeg` 的能力，请在服务器镜像环境中额外补装 `ffmpeg`。
 
+## Zeabur 部署
+
+Zeabur 不直接使用当前仓库里的 `docker-compose.yml`，建议拆成两个服务部署：
+
+- 前端服务：使用根目录 `Dockerfile.client`
+- 后端服务：使用根目录 `Dockerfile.server`
+- 数据库：在 Zeabur 添加 PostgreSQL
+- Redis：在 Zeabur 添加 Redis
+- 对象存储：建议接入 S3 兼容存储；如果继续使用 MinIO，需要单独部署 MinIO 服务
+
+推荐在 Zeabur 中这样配置：
+
+1. 将 GitHub 仓库导入 Zeabur
+2. 新建 `server` 服务，Dockerfile 选择 `Dockerfile.server`
+3. 新建 `client` 服务，Dockerfile 选择 `Dockerfile.client`
+4. 为 `server` 绑定 PostgreSQL / Redis，并补齐对象存储与 AI 相关环境变量
+5. 为 `client` 配置：
+   - `INTERNAL_API_URL=http://server:7861`
+   - `NEXT_PUBLIC_API_URL=`
+   - `NEXT_PUBLIC_WS_URL=` 留空时优先走同源
+
+后端服务至少需要这些环境变量：
+
+- `HOST=0.0.0.0`
+- `PORT=7861`
+- `DATABASE_URL`
+- `REDIS_URL`
+- `JWT_SECRET`
+- `MINIO_ENDPOINT`
+- `MINIO_PORT`
+- `MINIO_ACCESS_KEY`
+- `MINIO_SECRET_KEY`
+- `MINIO_BUCKET`
+
+说明：
+
+- `Dockerfile.client` 已支持读取平台注入的 `PORT`，避免 Zeabur 动态端口场景下启动失败。
+- 如果前端与后端都部署在 Zeabur，浏览器侧建议继续使用同源 `/api`，这样不需要额外处理 CORS 和公网回源地址。
+
 ## 额外说明
 
 如果你的创空间环境没有准备这些基础设施，原始完整版功能仍会受限：
