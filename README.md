@@ -38,14 +38,14 @@ Viewpoint Prism Pro 是一个“视频内容工作台”。同一条视频在一
 
 - Docker 镜像内安装 Node.js、Python、ffmpeg
 - 构建镜像时完成 Next.js / NestJS 编译
-- 容器启动时由 `app.py` 同时拉起前后端，并在 `0.0.0.0:7860` 对外提供统一入口
+- 容器启动时由 `app.py` 同时拉起前后端，并在 `0.0.0.0:7870` 对外提供统一入口
 
 ## 关键环境变量
 
 推荐在创空间中至少配置：
 
 - `HOST=0.0.0.0`
-- `PORT=7860`
+- `PORT=7870`
 - `DATABASE_URL`
 - `REDIS_URL`
 - `MINIO_ENDPOINT`
@@ -101,9 +101,9 @@ docker compose up -d --build
 
 启动后默认入口：
 
-- 前端：http://localhost:7860
-- 后端：http://localhost:7861
-- 后端健康检查：http://localhost:7861/api/health
+- 前端：http://localhost:7870
+- 后端：http://localhost:7871
+- 后端健康检查：http://localhost:7871/api/health
 
 当前 Compose 会自动拉起：
 
@@ -136,14 +136,14 @@ Zeabur 不直接使用当前仓库里的 `docker-compose.yml`，建议拆成两�
 3. 新建 `client` 服务，Dockerfile 选择 `Dockerfile.client`
 4. 为 `server` 绑定 PostgreSQL / Redis，并补齐对象存储与 AI 相关环境变量
 5. 为 `client` 配置：
-   - `INTERNAL_API_URL=http://server:7861`
+   - `INTERNAL_API_URL=http://server:7871`
    - `NEXT_PUBLIC_API_URL=`
    - `NEXT_PUBLIC_WS_URL=` 留空时优先走同源
 
 后端服务至少需要这些环境变量：
 
 - `HOST=0.0.0.0`
-- `PORT=7861`
+- `PORT=7871`
 - `DATABASE_URL`
 - `REDIS_URL`
 - `JWT_SECRET`
@@ -155,7 +155,7 @@ Zeabur 不直接使用当前仓库里的 `docker-compose.yml`，建议拆成两�
 
 说明：
 
-- `Dockerfile.client` 已支持读取平台注入的 `PORT`，避免 Zeabur 动态端口场景下启动失败。
+- `Dockerfile.client` 已支持读取平台注入的 `PORT`，当前默认前端端口为 `7870`，便于与本地环境保持一致。
 - 如果前端与后端都部署在 Zeabur，浏览器侧建议继续使用同源 `/api`，这样不需要额外处理 CORS 和公网回源地址。
 
 ## 额外说明

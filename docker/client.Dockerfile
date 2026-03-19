@@ -12,9 +12,9 @@ FROM deps AS builder
 
 WORKDIR /app
 
-ARG INTERNAL_API_URL=http://server:7861
+ARG INTERNAL_API_URL=http://server:7871
 ARG NEXT_PUBLIC_API_URL=
-ARG NEXT_PUBLIC_WS_URL=http://localhost:7861
+ARG NEXT_PUBLIC_WS_URL=http://localhost:7871
 
 ENV INTERNAL_API_URL=$INTERNAL_API_URL
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
@@ -28,7 +28,7 @@ RUN npm run build --workspace=client
 FROM node:20-bookworm-slim AS runner
 
 ENV NODE_ENV=production
-ENV PORT=3000
+ENV PORT=7870
 ENV HOSTNAME=0.0.0.0
 
 WORKDIR /app/client
@@ -39,6 +39,6 @@ COPY --from=builder /app/client/public ./public
 COPY --from=builder /app/client/package.json ./package.json
 COPY --from=builder /app/client/next.config.ts ./next.config.ts
 
-EXPOSE 3000
+EXPOSE 7870
 
-CMD ["sh", "-c", "node /app/node_modules/next/dist/bin/next start --hostname 0.0.0.0 --port ${PORT:-3000}"]
+CMD ["sh", "-c", "node /app/node_modules/next/dist/bin/next start --hostname 0.0.0.0 --port ${PORT:-7870}"]

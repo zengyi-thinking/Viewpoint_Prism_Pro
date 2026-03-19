@@ -14,9 +14,9 @@ from aiohttp import ClientConnectionResetError, ClientSession, ClientTimeout, WS
 ROOT = Path(__file__).resolve().parent
 APP_GIT_SHA = os.getenv("APP_GIT_SHA", "unknown")
 PUBLIC_HOST = os.getenv("HOST", "0.0.0.0")
-PUBLIC_PORT = int(os.getenv("PORT", "7860"))
-BACKEND_PORT = int(os.getenv("BACKEND_PORT", "7861"))
-FRONTEND_PORT = int(os.getenv("FRONTEND_PORT", "7862"))
+PUBLIC_PORT = int(os.getenv("PORT", "7870"))
+BACKEND_PORT = int(os.getenv("BACKEND_PORT", "7871"))
+FRONTEND_PORT = int(os.getenv("FRONTEND_PORT", "7872"))
 AUTO_PRISMA_PUSH = os.getenv("AUTO_PRISMA_PUSH", "1") == "1"
 ALLOW_START_WITHOUT_DB = os.getenv("ALLOW_START_WITHOUT_DB", "1") == "1"
 DATA_ROOT = Path(os.getenv("APP_DATA_ROOT", "/home/user/data"))

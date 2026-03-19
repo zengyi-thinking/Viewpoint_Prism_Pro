@@ -22,7 +22,7 @@ FROM node:20-bookworm-slim AS runner
 
 ENV NODE_ENV=production
 ENV HOST=0.0.0.0
-ENV PORT=7861
+ENV PORT=7871
 
 WORKDIR /app
 
@@ -36,6 +36,6 @@ COPY docker/server-entrypoint.sh ./docker/server-entrypoint.sh
 
 RUN chmod +x ./docker/server-entrypoint.sh
 
-EXPOSE 7861
+EXPOSE 7871
 
 ENTRYPOINT ["./docker/server-entrypoint.sh"]

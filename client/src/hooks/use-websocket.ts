@@ -147,7 +147,7 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
     ? `${process.env.NEXT_PUBLIC_WS_URL.replace(/^http/, 'ws')}/ws`
     : typeof window !== 'undefined'
       ? `${window.location.origin.replace(/^http/, 'ws')}/ws`
-      : 'ws://127.0.0.1:7860/ws';
+      : 'ws://127.0.0.1:7870/ws';
 
   useEffect(() => {
     callbacksRef.current = {

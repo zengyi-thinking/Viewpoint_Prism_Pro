@@ -10,7 +10,7 @@ import { VideoEventType, VideoActionContext } from '@/types/video-behavior';
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_URL ||
-  (typeof window !== 'undefined' ? window.location.origin : 'http://127.0.0.1:7860');
+  (typeof window !== 'undefined' ? window.location.origin : 'http://127.0.0.1:7870');
 
 const MIN_PLAYER_HEIGHT = 220;
 

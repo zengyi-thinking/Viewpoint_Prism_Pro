@@ -71,8 +71,8 @@ services:
       MINIO_ACCESS_KEY: minioadmin
       MINIO_SECRET_KEY: minioadmin
       MINIO_BUCKET: viewpoint-prism
-      APP_PUBLIC_URL: ${APP_PUBLIC_URL:-http://localhost:7860}
-      NEXTAUTH_URL: ${NEXTAUTH_URL:-http://localhost:7860}
+      APP_PUBLIC_URL: ${APP_PUBLIC_URL:-http://localhost:7870}
+      NEXTAUTH_URL: ${NEXTAUTH_URL:-http://localhost:7870}
       FFMPEG_PATH: ffmpeg
     depends_on:
       postgres:
@@ -101,32 +101,32 @@ services:
       context: .
       dockerfile: docker/client.Dockerfile
       args:
-        INTERNAL_API_URL: http://server:7861
+        INTERNAL_API_URL: http://server:7871
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-}
-        NEXT_PUBLIC_WS_URL: ${NEXT_PUBLIC_WS_URL:-http://localhost:7861}
+        NEXT_PUBLIC_WS_URL: ${NEXT_PUBLIC_WS_URL:-http://localhost:7871}
     container_name: vpp-client
     restart: unless-stopped
     env_file:
       - .env
     environment:
       NODE_ENV: production
-      PORT: 3000
+      PORT: 7870
       HOSTNAME: 0.0.0.0
-      INTERNAL_API_URL: http://server:7861
+      INTERNAL_API_URL: http://server:7871
       NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-}
-      NEXT_PUBLIC_WS_URL: ${NEXT_PUBLIC_WS_URL:-http://localhost:7861}
+      NEXT_PUBLIC_WS_URL: ${NEXT_PUBLIC_WS_URL:-http://localhost:7871}
     depends_on:
       server:
         condition: service_healthy
     ports:
-      - "7860:3000"
+      - "7870:7870"
     healthcheck:
       test:
         [
           "CMD",
           "node",
           "-e",
-          "require('http').get('http://127.0.0.1:3000', (res) => process.exit(res.statusCode < 500 ? 0 : 1)).on('error', () => process.exit(1))",
+          "require('http').get('http://127.0.0.1:7870', (res) => process.exit(res.statusCode < 500 ? 0 : 1)).on('error', () => process.exit(1))",
         ]
       interval: 10s
       timeout: 5s
