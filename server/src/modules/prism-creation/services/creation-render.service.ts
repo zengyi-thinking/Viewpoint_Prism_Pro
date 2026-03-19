@@ -17,6 +17,7 @@ export class CreationRenderService {
     private readonly wsGateway: WsGateway,
     @InjectQueue(QUEUE_NAMES.RENDER) private readonly renderQueue: Queue,
     @InjectQueue(QUEUE_NAMES.EXPORT) private readonly exportQueue: Queue,
+    @InjectQueue(QUEUE_NAMES.PREVIEW) private readonly previewQueue: Queue,
   ) {}
 
   async generateNodeImage(params: {
@@ -233,5 +234,52 @@ export class CreationRenderService {
       message,
       timestamp: new Date().toISOString(),
     });
+  }
+
+  /**
+   * Enqueue a preview generation task for a node
+   */
+  async enqueueNodePreview(params: {
+    userId: string;
+    projectId: string;
+    flowProjectId: string;
+    nodeId: string;
+  }) {
+    const task = await this.prisma.taskRecord.create({
+      data: {
+        userId: params.userId,
+        type: 'creation_preview',
+        payload: { nodeId: params.nodeId, flowProjectId: params.flowProjectId },
+        status: 'PROCESSING',
+        progress: 0,
+        startedAt: new Date(),
+      },
+    });
+
+    await this.appendRenderTask(params.flowProjectId, {
+      taskId: task.id,
+      type: 'node_preview',
+      nodeId: params.nodeId,
+      status: 'PROCESSING',
+      createdAt: new Date().toISOString(),
+    });
+
+    const job = await this.previewQueue.add({ ...params, taskRecordId: task.id });
+    return { taskId: task.id, queueJobId: String(job.id) };
+  }
+
+  /**
+   * Get node preview data
+   */
+  async getNodePreview(nodeId: string) {
+    const node = await this.prisma.flowNode.findUnique({
+      where: { id: nodeId },
+      select: {
+        previewGridUrl: true,
+        previewStatus: true,
+        previewFrames: true,
+      },
+    });
+    return node;
   }
 }

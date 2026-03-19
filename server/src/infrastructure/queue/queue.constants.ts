@@ -4,4 +4,5 @@ export const QUEUE_NAMES = {
   RENDER: 'render',
   TRANSLATE: 'translate',
   EXPORT: 'export',
+  PREVIEW: 'preview',
 } as const;

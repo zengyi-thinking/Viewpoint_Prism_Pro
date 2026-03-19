@@ -1407,6 +1407,30 @@ export class CreationService {
     });
   }
 
+  async enqueueNodePreview(params: {
+    userId: string;
+    projectId: string;
+    flowProjectId: string;
+    nodeId: string;
+  }) {
+    const node = await this.assertNodeAccess(params.userId, params.nodeId);
+    if (!node.firstFrameUrl || !node.lastFrameUrl) {
+      throw new Error('当前节点还没有首帧或尾帧，请先生成节点图片');
+    }
+    return this.renderService.enqueueNodePreview(params);
+  }
+
+  async getNodePreview(nodeId: string) {
+    return this.renderService.getNodePreview(nodeId);
+  }
+
+  async getFlowNode(nodeId: string) {
+    return this.prisma.flowNode.findUnique({
+      where: { id: nodeId },
+      include: { flowProject: { include: { project: true, video: true } } },
+    });
+  }
+
   async stitchProject(userId: string, flowProjectId: string, dto: StitchProjectDto = {}) {
     const flowProject = await this.assertProjectAccess(userId, flowProjectId);
     const resolvedProjectId = flowProject.projectId || flowProject.video?.projectId;

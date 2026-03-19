@@ -415,6 +415,11 @@ model FlowNode {
   renderedVideoUrl String?
   renderStatus     TaskStatus @default(PENDING)
 
+  // 九宫格预览相关字段
+  previewGridUrl  String?
+  previewStatus   TaskStatus @default(PENDING)
+  previewFrames   String[]   @default([]) // 中间帧图片URL数组
+
   parentNodeId String?
   branchName   String?
   isMerged     Boolean @default(false)

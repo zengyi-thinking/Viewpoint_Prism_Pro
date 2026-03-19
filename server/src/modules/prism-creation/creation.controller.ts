@@ -263,6 +263,42 @@ export class CreationController {
     return this.creationService.renderNodeVideo(userId, nodeId);
   }
 
+  @Post('nodes/:nodeId/preview')
+  async generatePreview(
+    @CurrentUser() userId: string,
+    @Param('nodeId') nodeId: string,
+  ) {
+    const node = await this.creationService.getFlowNode(nodeId);
+    if (!node) {
+      return { error: 'Node not found' };
+    }
+    if (!node.firstFrameUrl || !node.lastFrameUrl) {
+      return { error: 'Node must have first and last frames before generating preview' };
+    }
+    return this.creationService.enqueueNodePreview({
+      userId,
+      projectId: node.flowProject.projectId || '',
+      flowProjectId: node.flowProjectId,
+      nodeId,
+    });
+  }
+
+  @Get('nodes/:nodeId/preview')
+  async getPreview(@Param('nodeId') nodeId: string) {
+    return this.creationService.getNodePreview(nodeId);
+  }
+
+  @Post('nodes/:nodeId/preview/confirm')
+  async confirmPreviewAndRender(@CurrentUser() userId: string, @Param('nodeId') nodeId: string) {
+    // First check if preview exists
+    const preview = await this.creationService.getNodePreview(nodeId);
+    if (!preview || !preview.previewGridUrl || preview.previewStatus !== 'COMPLETED') {
+      return { error: 'No completed preview found. Please generate preview first.' };
+    }
+    // If preview exists, proceed with video rendering
+    return this.creationService.renderNodeVideo(userId, nodeId);
+  }
+
   @Post('projects/:flowProjectId/stitch')
   stitchProject(
     @CurrentUser() userId: string,

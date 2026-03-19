@@ -4,6 +4,7 @@ import * as ffmpeg from 'fluent-ffmpeg';
 import * as path from 'path';
 import * as fs from 'fs/promises';
 import { spawn } from 'child_process';
+import * as sharp from 'sharp';
 
 // Use CommonJS-compatible resolution to avoid transpilation shape mismatches in Docker.
 // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -552,5 +553,75 @@ export class FfmpegService {
         reject(new Error(message));
       });
     });
+  }
+
+  /**
+   * Create a 3x3 grid preview from 9 images
+   * @param imagePaths - Array of 9 image paths
+   * @param outputPath - Output path for the grid image
+   * @param options - Optional configuration (width, height, gap, background)
+   * @returns Path to the created grid image
+   */
+  async createGridPreview(
+    imagePaths: string[],
+    outputPath: string,
+    options?: {
+      cellWidth?: number;
+      cellHeight?: number;
+      gap?: number;
+      background?: string;
+    },
+  ): Promise<string> {
+    await this.ensureTempDir();
+
+    const cellWidth = options?.cellWidth || 640;
+    const cellHeight = options?.cellHeight || 360;
+    const gap = options?.gap || 10;
+    const background = options?.background || '#000000';
+
+    if (imagePaths.length !== 9) {
+      throw new Error(`Expected 9 images, got ${imagePaths.length}`);
+    }
+
+    // Calculate grid dimensions
+    const gridWidth = cellWidth * 3 + gap * 2;
+    const gridHeight = cellHeight * 3 + gap * 2;
+
+    // Create composite operations for each cell
+    const composites: sharp.OverlayOptions[] = [];
+
+    for (let i = 0; i < 9; i++) {
+      const row = Math.floor(i / 3);
+      const col = i % 3;
+      const x = col * (cellWidth + gap);
+      const y = row * (cellHeight + gap);
+
+      // Resize and process each image
+      const resizedBuffer = await sharp(imagePaths[i])
+        .resize(cellWidth, cellHeight, { fit: 'cover' })
+        .toBuffer();
+
+      composites.push({
+        input: resizedBuffer,
+        left: x,
+        top: y,
+      });
+    }
+
+    // Create the final grid image
+    await sharp({
+      create: {
+        width: gridWidth,
+        height: gridHeight,
+        channels: 4,
+        background: background,
+      },
+    })
+      .composite(composites)
+      .jpeg({ quality: 90 })
+      .toFile(outputPath);
+
+    this.logger.log(`Created 3x3 grid preview at ${outputPath}`);
+    return outputPath;
   }
 }

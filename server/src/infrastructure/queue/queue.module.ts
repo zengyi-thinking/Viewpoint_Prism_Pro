@@ -6,6 +6,7 @@ import { KeyframeProcessor } from './processors/keyframe.processor';
 import { RenderProcessor } from './processors/render.processor';
 import { TranslateProcessor } from './processors/translate.processor';
 import { ExportProcessor } from './processors/export.processor';
+import { PreviewProcessor } from './processors/preview.processor';
 import { QUEUE_NAMES } from './queue.constants';
 import { MediaModule } from '../media/media.module';
 import { AiRouterModule } from '../ai-router/ai-router.module';
@@ -73,6 +74,16 @@ import { WsModule } from '../websocket/ws.module';
         }),
         inject: [ConfigService],
       },
+      {
+        name: QUEUE_NAMES.PREVIEW,
+        useFactory: (configService: ConfigService) => ({
+          redis: {
+            host: configService.get('REDIS_HOST', 'localhost'),
+            port: configService.get('REDIS_PORT', 6379),
+          },
+        }),
+        inject: [ConfigService],
+      },
     ),
   ],
   providers: [
@@ -82,6 +93,7 @@ import { WsModule } from '../websocket/ws.module';
     RenderProcessor,
     TranslateProcessor,
     ExportProcessor,
+    PreviewProcessor,
   ],
   exports: [
     // Export BullModule so other modules can register queues

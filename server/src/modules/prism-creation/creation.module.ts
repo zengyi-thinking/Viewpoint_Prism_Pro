@@ -7,6 +7,7 @@ import { ScriptPlannerAgent } from './services/script-planner.agent';
 import { StoryboardAgent } from './services/storyboard.agent';
 import { PromptDirectorAgent } from './services/prompt-director.agent';
 import { CreationRenderService } from './services/creation-render.service';
+import { CreationPreviewService } from './services/creation-preview.service';
 import { StoryConversationAgent } from './services/story-conversation.agent';
 import { ScenePlannerAgent } from './services/scene-planner.agent';
 import { CharacterAssetService } from './services/character-asset.service';
@@ -39,6 +40,7 @@ import { FinalVideoComposeService } from './services/final-video-compose.service
     PromptCompressionAgent,
     VideoPromptCompilerAgent,
     CreationRenderService,
+    CreationPreviewService,
     SegmentVideoRenderService,
     FinalVideoComposeService,
   ],
