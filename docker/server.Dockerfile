@@ -15,7 +15,8 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 COPY server server
 
-RUN npm run prisma:generate --workspace=server \
+RUN npm install --workspace=server --include=dev \
+  && npm run prisma:generate --workspace=server \
   && npm run build --workspace=server
 
 FROM node:20-bookworm-slim AS runner
