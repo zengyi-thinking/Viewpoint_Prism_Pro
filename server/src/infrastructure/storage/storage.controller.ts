@@ -13,6 +13,51 @@ import { StorageService } from './storage.service';
 export class StorageController {
   constructor(private readonly storageService: StorageService) {}
 
+  private parseSingleRange(rangeHeader: string | undefined, totalSize: number) {
+    if (!rangeHeader) return null;
+
+    const match = /^bytes=(\d*)-(\d*)$/i.exec(rangeHeader.trim());
+    if (!match) return 'invalid' as const;
+
+    const [, rawStart, rawEnd] = match;
+    let start: number;
+    let end: number;
+
+    if (!rawStart && !rawEnd) {
+      return 'invalid' as const;
+    }
+
+    if (!rawStart) {
+      const suffixLength = Number(rawEnd);
+      if (!Number.isFinite(suffixLength) || suffixLength <= 0) {
+        return 'invalid' as const;
+      }
+      start = Math.max(0, totalSize - suffixLength);
+      end = totalSize - 1;
+    } else {
+      start = Number(rawStart);
+      end = rawEnd ? Number(rawEnd) : totalSize - 1;
+    }
+
+    if (
+      !Number.isFinite(start) ||
+      !Number.isFinite(end) ||
+      start < 0 ||
+      end < start ||
+      start >= totalSize
+    ) {
+      return 'invalid' as const;
+    }
+
+    end = Math.min(end, totalSize - 1);
+
+    return {
+      start,
+      end,
+      length: end - start + 1,
+    };
+  }
+
   @Get(':bucket/*')
   async getObject(
     @Param('bucket') bucket: string,
@@ -41,13 +86,35 @@ export class StorageController {
       metaMap['Content-Type'] ||
       metaMap['x-amz-meta-content-type'] ||
       'application/octet-stream';
+    const totalSize = Number(meta?.size ?? 0);
+    const range = this.parseSingleRange(req.headers.range, totalSize);
+
+    if (range === 'invalid') {
+      res.status(416);
+      res.set('Content-Range', `bytes */${totalSize}`);
+      res.end();
+      return;
+    }
+
+    const outputStream =
+      range && totalSize > 0
+        ? await this.storageService.downloadStreamRange(objectKey, range.start, range.length)
+        : stream;
 
     res.set({
       'Content-Type': contentType,
       'Cache-Control': 'public, max-age=31536000, immutable',
+      'Accept-Ranges': 'bytes',
+      ...(totalSize > 0 ? { 'Content-Length': String(range ? range.length : totalSize) } : {}),
+      ...(range
+        ? { 'Content-Range': `bytes ${range.start}-${range.end}/${totalSize}` }
+        : {}),
     });
+    if (range) {
+      res.status(206);
+    }
 
-    (stream as NodeJS.ReadableStream).pipe(res);
+    (outputStream as NodeJS.ReadableStream).pipe(res);
   }
 
   private resolveObjectKey(req: Request, bucket: string): string {

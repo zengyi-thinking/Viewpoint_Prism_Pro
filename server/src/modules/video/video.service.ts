@@ -452,6 +452,8 @@ export class VideoService {
       stream,
       filename: `${video.title}.mp4`,
       contentType,
+      contentLength: Number(meta?.size ?? 0),
+      storagePath: video.storagePath,
     };
   }
 

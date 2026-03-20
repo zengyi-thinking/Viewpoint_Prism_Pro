@@ -232,6 +232,35 @@ export class StorageService implements OnModuleInit {
   }
 
   /**
+   * Get a partial download stream for a file.
+   * @param key - Storage key
+   * @param offset - Byte offset
+   * @param length - Byte length (0 means until EOF)
+   * @returns Readable stream
+   */
+  async downloadStreamRange(
+    key: string,
+    offset: number,
+    length = 0,
+  ): Promise<NodeJS.ReadableStream> {
+    this.assertMinioReady();
+    try {
+      return await (this.client.getPartialObject as any)(
+        this.bucketName,
+        key,
+        offset,
+        length,
+      );
+    } catch (error) {
+      this.logger.error(
+        `Failed to get partial stream for ${key} at ${offset}+${length}: ${error.message}`,
+        error.stack,
+      );
+      throw error;
+    }
+  }
+
+  /**
    * Generate a presigned URL for temporary access
    * @param key - Storage key
    * @param expiresIn - Expiry time in seconds (default: 24 hours)

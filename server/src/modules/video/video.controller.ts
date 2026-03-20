@@ -13,14 +13,15 @@ import {
   ParseFilePipeBuilder,
   HttpStatus,
   Res,
-  StreamableFile,
   BadRequestException,
+  Req,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { Response } from 'express';
+import { Request, Response } from 'express';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { VideoService } from './video.service';
+import { StorageService } from '../../infrastructure/storage/storage.service';
 import {
   ImportVideoDto,
   UpdateVideoDto,
@@ -35,7 +36,55 @@ import {
 @Controller('api/videos')
 @UseGuards(JwtAuthGuard)
 export class VideoController {
-  constructor(private readonly videoService: VideoService) {}
+  constructor(
+    private readonly videoService: VideoService,
+    private readonly storageService: StorageService,
+  ) {}
+
+  private parseSingleRange(rangeHeader: string | undefined, totalSize: number) {
+    if (!rangeHeader) return null;
+
+    const match = /^bytes=(\d*)-(\d*)$/i.exec(rangeHeader.trim());
+    if (!match) return 'invalid' as const;
+
+    const [, rawStart, rawEnd] = match;
+    let start: number;
+    let end: number;
+
+    if (!rawStart && !rawEnd) {
+      return 'invalid' as const;
+    }
+
+    if (!rawStart) {
+      const suffixLength = Number(rawEnd);
+      if (!Number.isFinite(suffixLength) || suffixLength <= 0) {
+        return 'invalid' as const;
+      }
+      start = Math.max(0, totalSize - suffixLength);
+      end = totalSize - 1;
+    } else {
+      start = Number(rawStart);
+      end = rawEnd ? Number(rawEnd) : totalSize - 1;
+    }
+
+    if (
+      !Number.isFinite(start) ||
+      !Number.isFinite(end) ||
+      start < 0 ||
+      end < start ||
+      start >= totalSize
+    ) {
+      return 'invalid' as const;
+    }
+
+    end = Math.min(end, totalSize - 1);
+
+    return {
+      start,
+      end,
+      length: end - start + 1,
+    };
+  }
 
   private isSupportedVideoFile(file: Express.Multer.File): boolean {
     const filename = (file.originalname || '').toLowerCase();
@@ -215,20 +264,41 @@ export class VideoController {
   async streamVideo(
     @Param('id') id: string,
     @CurrentUser() userId: string,
-    @Res({ passthrough: true }) res: Response,
+    @Req() req: Request,
+    @Res() res: Response,
   ) {
-    const { stream, filename, contentType } = await this.videoService.getVideoStream(id, userId);
+    const { stream, filename, contentType, contentLength, storagePath } =
+      await this.videoService.getVideoStream(id, userId);
+    const range = this.parseSingleRange(req.headers.range, contentLength);
+
+    if (range === 'invalid') {
+      res.status(416);
+      res.set('Content-Range', `bytes */${contentLength}`);
+      res.end();
+      return;
+    }
+
+    const outputStream =
+      range && contentLength > 0
+        ? await this.storageService.downloadStreamRange(storagePath, range.start, range.length)
+        : stream;
 
     res.set({
       'Content-Type': contentType,
       'Content-Disposition': `inline; filename="${filename}"`,
       'Accept-Ranges': 'bytes',
+      ...(contentLength > 0
+        ? { 'Content-Length': String(range ? range.length : contentLength) }
+        : {}),
+      ...(range
+        ? { 'Content-Range': `bytes ${range.start}-${range.end}/${contentLength}` }
+        : {}),
     });
+    if (range) {
+      res.status(206);
+    }
 
-    // Convert ReadableStream to Readable for StreamableFile
-    const { Readable } = require('stream');
-    const readableStream = new Readable().wrap(stream);
-    return new StreamableFile(readableStream);
+    (outputStream as NodeJS.ReadableStream).pipe(res);
   }
 
   /**
