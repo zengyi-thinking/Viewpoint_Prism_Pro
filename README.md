@@ -122,6 +122,7 @@ Zeabur 不直接使用当前仓库里的 `docker-compose.yml`，建议拆成两�
 - HTTP API 可以通过 Next rewrite 走同源 `/api`。
 - WebSocket 不走 Next rewrite，建议给后端单独分配一个公网域名并配置到 `NEXT_PUBLIC_WS_URL`。
 - 可直接复制 `zeabur/client.env.example` 与 `zeabur/server.env.example` 作为 Zeabur 环境变量模板。
+- `zeabur/` 目录下也已补充 `postgres`、`redis`、`minio` 的模板，以及可直接粘贴到 Zeabur 的 `*.raw.example` 文件。
 - 更完整的部署步骤见 `docs/zeabur-dual-deploy.md`。
 
 ## 基础环境变量

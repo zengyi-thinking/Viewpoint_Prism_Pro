@@ -36,6 +36,7 @@ Recommended settings:
 Environment variables template:
 
 - see `zeabur/client.env.example`
+- raw block: `zeabur/client.env.raw.example`
 
 Important notes:
 
@@ -55,6 +56,7 @@ Recommended settings:
 Environment variables template:
 
 - see `zeabur/server.env.example`
+- raw block: `zeabur/server.env.raw.example`
 
 Important notes:
 
@@ -67,6 +69,14 @@ Important notes:
 ## Why not Docker Compose
 
 Zeabur does not deploy directly from `docker-compose.yml`. The Compose file in this repository is for local development only.
+
+## Infrastructure service templates
+
+Use these files as copy sources when creating infrastructure services:
+
+- Postgres: `zeabur/postgres.env.example` or `zeabur/postgres.env.raw.example`
+- Redis: `zeabur/redis.env.example` or `zeabur/redis.env.raw.example`
+- MinIO: `zeabur/minio.env.example` or `zeabur/minio.env.raw.example`
 
 ## Post-deploy checks
 
