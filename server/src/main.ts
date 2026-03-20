@@ -1,5 +1,6 @@
 import * as path from 'node:path';
 import * as dotenv from 'dotenv';
+import * as bodyParser from 'body-parser';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { GlobalValidationPipe } from './common/pipes/validation.pipe';
@@ -13,6 +14,10 @@ dotenv.config({
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+  const bodyLimit = process.env.BODY_PARSER_LIMIT || '10mb';
+
+  app.use(bodyParser.json({ limit: bodyLimit }));
+  app.use(bodyParser.urlencoded({ extended: true, limit: bodyLimit }));
 
   app.enableCors({
     origin: true,
