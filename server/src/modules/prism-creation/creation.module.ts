@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { CreationController } from './creation.controller';
 import { CreationService } from './creation.service';
 import { CreationLlmService } from './services/creation-llm.service';
@@ -22,7 +22,7 @@ import { SegmentVideoRenderService } from './services/segment-video-render.servi
 import { FinalVideoComposeService } from './services/final-video-compose.service';
 
 @Module({
-  imports: [WsModule, QueueModule],
+  imports: [WsModule, forwardRef(() => QueueModule)],
   controllers: [CreationController],
   providers: [
     CreationService,
@@ -44,6 +44,6 @@ import { FinalVideoComposeService } from './services/final-video-compose.service
     SegmentVideoRenderService,
     FinalVideoComposeService,
   ],
-  exports: [CreationService],
+  exports: [CreationService, CreationPreviewService],
 })
 export class CreationModule {}
