@@ -165,29 +165,19 @@ export class VideoBehaviorService {
 
   private dedupeBulkEvents(events: TrackEventDto[]): TrackEventDto[] {
     const deduped: TrackEventDto[] = [];
+    const recentEventKeys = new Set<string>();
 
     for (const event of events) {
-      const previous = deduped[deduped.length - 1];
-      if (!previous) {
-        deduped.push(event);
-        continue;
-      }
-
-      const previousTs = this.extractEventTimestamp(previous);
       const currentTs = this.extractEventTimestamp(event);
-      const sameVideo = previous.videoId === event.videoId;
-      const sameType = previous.eventType === event.eventType;
-      const sameTime =
-        Math.abs(Number(previous.currentTime ?? 0) - Number(event.currentTime ?? 0)) < 0.05;
-      const closeInTime =
-        previousTs !== null &&
-        currentTs !== null &&
-        Math.abs(currentTs - previousTs) < 800;
+      const roundedTime = Math.round(Number(event.currentTime ?? 0) * 4) / 4;
+      const timeBucket = currentTs !== null ? Math.floor(currentTs / 1000) : -1;
+      const key = `${event.videoId}:${event.eventType}:${roundedTime}:${timeBucket}`;
 
-      if (sameVideo && sameType && sameTime && closeInTime) {
+      if (recentEventKeys.has(key)) {
         continue;
       }
 
+      recentEventKeys.add(key);
       deduped.push(event);
     }
 

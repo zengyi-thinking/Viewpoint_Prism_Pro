@@ -29,7 +29,6 @@ export function PlayerCenter({ videoRef: externalVideoRef }: PlayerCenterProps =
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const pendingSeekRef = useRef<number | null>(null);
-  const seekGestureActiveRef = useRef(false);
   const lastSeekCommitRef = useRef<{ at: number; time: number } | null>(null);
   const suppressPlaybackTrackUntilRef = useRef(0);
 
@@ -62,17 +61,22 @@ export function PlayerCenter({ videoRef: externalVideoRef }: PlayerCenterProps =
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
+  const clampToDuration = (time: number) =>
+    Math.max(0, Math.min(time, Number.isFinite(duration) && duration > 0 ? duration : time));
+
   const buildVideoCandidates = async (video: typeof currentVideo) => {
     if (!video) return [] as string[];
     const token = getToken();
     const urls: string[] = [];
+    const fallbackUrls: string[] = [];
 
-    if (video.sourceType === 'LOCAL_UPLOAD' && video.id) {
-      const base = API_BASE.endsWith('/') ? API_BASE.slice(0, -1) : API_BASE;
-      const qs = new URLSearchParams();
-      if (token) qs.set('token', token);
-      qs.set('_ts', video.updatedAt || video.createdAt || '');
-      urls.push(`${base}/api/videos/${video.id}/stream?${qs.toString()}`);
+    if (video.id) {
+      try {
+        const play = await videoApi.getPlayUrl(video.id);
+        if (play?.url) urls.push(play.url);
+      } catch {
+        console.warn('Failed to get signed play url, continue fallback candidates');
+      }
     }
 
     if (
@@ -97,16 +101,15 @@ export function PlayerCenter({ videoRef: externalVideoRef }: PlayerCenterProps =
       urls.push(`${baseUrl}${path}${separator}token=${encodeURIComponent(token || '')}`);
     }
 
-    if (video.id) {
-      try {
-        const play = await videoApi.getPlayUrl(video.id);
-        if (play?.url) urls.push(play.url);
-      } catch {
-        console.warn('Failed to get signed play url, continue fallback candidates');
-      }
+    if (video.sourceType === 'LOCAL_UPLOAD' && video.id) {
+      const base = API_BASE.endsWith('/') ? API_BASE.slice(0, -1) : API_BASE;
+      const qs = new URLSearchParams();
+      if (token) qs.set('token', token);
+      qs.set('_ts', video.updatedAt || video.createdAt || '');
+      fallbackUrls.push(`${base}/api/videos/${video.id}/stream?${qs.toString()}`);
     }
 
-    return Array.from(new Set(urls.filter(Boolean)));
+    return Array.from(new Set([...urls.filter(Boolean), ...fallbackUrls.filter(Boolean)]));
   };
 
   const loadVideoAt = (urls: string[], index: number) => {
@@ -119,11 +122,14 @@ export function PlayerCenter({ videoRef: externalVideoRef }: PlayerCenterProps =
 
   const commitSeek = (time: number) => {
     if (!videoRef.current) return;
-    const target = Math.max(
-      0,
-      Math.min(time, Number.isFinite(duration) && duration > 0 ? duration : time),
-    );
+    const target = clampToDuration(time);
     const previousTime = videoRef.current.currentTime;
+    if (Math.abs(previousTime - target) < 0.05) {
+      setCurrentTime(target);
+      setScrubTime(target);
+      setCurrentPlaybackTime(target);
+      return;
+    }
     videoRef.current.currentTime = target;
     setCurrentTime(target);
     setScrubTime(target);
@@ -284,61 +290,33 @@ export function PlayerCenter({ videoRef: externalVideoRef }: PlayerCenterProps =
     }
   };
 
-  const handleSeekInput = (e: React.FormEvent<HTMLInputElement>) => {
-    const next = parseFloat(e.currentTarget.value);
+  const handleSeekInput = (value: number) => {
+    const next = Number.isFinite(value) ? value : 0;
     setScrubTime(next);
-
-    // Keyboard interactions on range inputs don't have pointer lifecycle,
-    // so commit immediately when there is no active drag gesture.
-    if (!seekGestureActiveRef.current) {
-      handleSeekCommit(next);
-    }
-  };
-
-  const handleSeekStart = () => {
-    seekGestureActiveRef.current = true;
-    setIsScrubbing(true);
   };
 
   const handleSeekCommit = (value?: number) => {
-    const next = value ?? scrubTime;
+    const next = clampToDuration(value ?? scrubTime);
     const now = Date.now();
     const lastCommit = lastSeekCommitRef.current;
     const duplicateCommit =
       lastCommit &&
-      now - lastCommit.at < 500 &&
-      Math.abs(lastCommit.time - next) < 0.05;
+      now - lastCommit.at < 1200 &&
+      Math.abs(lastCommit.time - next) < 0.25;
 
     if (duplicateCommit) {
-      seekGestureActiveRef.current = false;
       setIsScrubbing(false);
       return;
     }
 
-    if (!seekGestureActiveRef.current && !isScrubbing && Math.abs(next - currentTime) < 0.05) {
+    if (!isScrubbing && Math.abs(next - currentTime) < 0.05) {
       return;
     }
 
     lastSeekCommitRef.current = { at: now, time: next };
-    seekGestureActiveRef.current = false;
     setIsScrubbing(false);
     commitSeek(next);
   };
-
-  useEffect(() => {
-    const handlePointerUp = () => {
-      if (!seekGestureActiveRef.current) return;
-      handleSeekCommit();
-    };
-
-    window.addEventListener('pointerup', handlePointerUp);
-    window.addEventListener('pointercancel', handlePointerUp);
-
-    return () => {
-      window.removeEventListener('pointerup', handlePointerUp);
-      window.removeEventListener('pointercancel', handlePointerUp);
-    };
-  }, [scrubTime, isScrubbing]);
 
   const handleVolumeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const next = parseFloat(e.target.value);
@@ -591,18 +569,33 @@ export function PlayerCenter({ videoRef: externalVideoRef }: PlayerCenterProps =
         <div className="min-w-0 flex-1">
           <input
             type="range"
-            min="0"
-            max={isFinite(duration) ? duration : 0}
-            step="0.1"
+            min={0}
+            max={Number.isFinite(duration) && duration > 0 ? duration : 0}
+            step="0.01"
             value={isScrubbing ? scrubTime : currentTime}
-            onInput={handleSeekInput}
-            onPointerDown={handleSeekStart}
-            onBlur={() => {
-              if (seekGestureActiveRef.current || isScrubbing) {
-                handleSeekCommit();
+            aria-label="视频进度"
+            onPointerDown={() => {
+              if (!Number.isFinite(duration) || duration <= 0) return;
+              setIsScrubbing(true);
+            }}
+            onChange={(event) => {
+              handleSeekInput(parseFloat(event.currentTarget.value));
+              if (!isScrubbing) {
+                setIsScrubbing(true);
               }
             }}
-            className="h-1 w-full cursor-pointer appearance-none rounded-lg bg-bg-panel-tertiary accent-accent-primary"
+            onPointerUp={(event) => {
+              handleSeekCommit(parseFloat(event.currentTarget.value));
+            }}
+            onKeyUp={(event) => {
+              handleSeekCommit(parseFloat(event.currentTarget.value));
+            }}
+            onBlur={(event) => {
+              if (isScrubbing) {
+                handleSeekCommit(parseFloat(event.currentTarget.value));
+              }
+            }}
+            className="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-bg-panel-tertiary accent-accent-primary"
           />
         </div>
 

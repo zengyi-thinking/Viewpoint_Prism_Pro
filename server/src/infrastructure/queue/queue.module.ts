@@ -15,8 +15,24 @@ import { PrismaModule } from '../../prisma/prisma.module';
 import { WsModule } from '../websocket/ws.module';
 import { CreationModule } from '../../modules/prism-creation/creation.module';
 
+function getFirstConfigValue(configService: ConfigService, keys: string[]): string {
+  for (const key of keys) {
+    const value = String(configService.get(key) || '').trim();
+    if (value) return value;
+  }
+
+  return '';
+}
+
 function buildRedisConfig(configService: ConfigService) {
-  const redisUrl = String(configService.get('REDIS_URL') || '').trim();
+  const redisUrl = getFirstConfigValue(configService, [
+    'REDIS_URL',
+    'REDIS_CONNECTION_STRING',
+    'REDIS_URI',
+    'VALKEY_URL',
+    'VALKEY_CONNECTION_STRING',
+    'VALKEY_URI',
+  ]);
   if (redisUrl) {
     try {
       const parsed = new URL(redisUrl);
@@ -35,10 +51,19 @@ function buildRedisConfig(configService: ConfigService) {
     }
   }
 
-  const host = String(configService.get('REDIS_HOST', 'localhost'));
-  const port = Number(configService.get('REDIS_PORT', 6379));
-  const username = String(configService.get('REDIS_USERNAME') || '').trim();
-  const password = String(configService.get('REDIS_PASSWORD') || '').trim();
+  const host =
+    getFirstConfigValue(configService, ['REDIS_HOST', 'VALKEY_HOST']) || 'localhost';
+  const port = Number(
+    getFirstConfigValue(configService, ['REDIS_PORT', 'VALKEY_PORT']) || '6379',
+  );
+  const username = getFirstConfigValue(configService, [
+    'REDIS_USERNAME',
+    'VALKEY_USERNAME',
+  ]);
+  const password = getFirstConfigValue(configService, [
+    'REDIS_PASSWORD',
+    'VALKEY_PASSWORD',
+  ]);
 
   return {
     host,

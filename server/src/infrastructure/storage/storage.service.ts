@@ -15,19 +15,41 @@ export class StorageService implements OnModuleInit {
 
   constructor(private readonly configService: ConfigService) {}
 
+  private getFirstConfigValue(keys: string[], fallback = ''): string {
+    for (const key of keys) {
+      const value = String(this.configService.get(key) || '').trim();
+      if (value) return value;
+    }
+
+    return fallback;
+  }
+
   async onModuleInit() {
-    this.endPoint = this.configService.get('MINIO_ENDPOINT', 'localhost');
-    this.port = parseInt(this.configService.get('MINIO_PORT', '9000'), 10);
-    this.useSSL = this.configService.get('MINIO_USE_SSL', 'false') === 'true';
-    this.bucketName = this.configService.get('MINIO_BUCKET', 'viewpoint-prism');
+    this.endPoint = this.getFirstConfigValue(['MINIO_ENDPOINT', 'S3_ENDPOINT'], 'localhost');
+    this.port = parseInt(this.getFirstConfigValue(['MINIO_PORT', 'S3_PORT'], '9000'), 10);
+    this.useSSL =
+      this.getFirstConfigValue(['MINIO_USE_SSL', 'S3_USE_SSL', 'S3_SSL'], 'false') === 'true';
+    this.bucketName = this.getFirstConfigValue(
+      ['MINIO_BUCKET', 'S3_BUCKET'],
+      'viewpoint-prism',
+    );
     this.publicBaseUrl =
-      this.configService.get('MINIO_PUBLIC_BASE_URL') ||
-      this.configService.get('APP_PUBLIC_URL') ||
-      this.configService.get('NEXTAUTH_URL') ||
+      this.getFirstConfigValue([
+        'MINIO_PUBLIC_BASE_URL',
+        'S3_PUBLIC_BASE_URL',
+        'APP_PUBLIC_URL',
+        'NEXTAUTH_URL',
+      ]) ||
       null;
 
-    const accessKey = this.configService.get('MINIO_ACCESS_KEY', 'minioadmin');
-    const secretKey = this.configService.get('MINIO_SECRET_KEY', 'minioadmin');
+    const accessKey = this.getFirstConfigValue(
+      ['MINIO_ACCESS_KEY', 'MINIO_ROOT_USER', 'S3_ACCESS_KEY', 'AWS_ACCESS_KEY_ID'],
+      'minioadmin',
+    );
+    const secretKey = this.getFirstConfigValue(
+      ['MINIO_SECRET_KEY', 'MINIO_ROOT_PASSWORD', 'S3_SECRET_KEY', 'AWS_SECRET_ACCESS_KEY'],
+      'minioadmin',
+    );
 
     this.client = new Minio.Client({
       endPoint: this.endPoint,
