@@ -90,13 +90,16 @@ Zeabur 不直接使用当前仓库里的 `docker-compose.yml`，建议拆成两�
 推荐在 Zeabur 中这样配置：
 
 1. 将 GitHub 仓库导入 Zeabur
-2. 新建 `server` 服务，Dockerfile 选择 `Dockerfile.server`
-3. 新建 `client` 服务，Dockerfile 选择 `Dockerfile.client`
+2. 新建 `server` 服务，服务名保持为 `server`，Dockerfile 选择 `Dockerfile.server`
+3. 新建 `client` 服务，服务名保持为 `client`，Dockerfile 选择 `Dockerfile.client`
 4. 为 `server` 绑定 PostgreSQL / Redis，并补齐对象存储与 AI 相关环境变量
 5. 为 `client` 配置：
    - `INTERNAL_API_URL=http://server:7871`
    - `NEXT_PUBLIC_API_URL=`
    - `NEXT_PUBLIC_WS_URL=https://你的后端公网域名`
+6. 如果 Zeabur 没有按服务名自动识别 Dockerfile，可额外设置：
+   - `client`：`ZBPACK_DOCKERFILE_NAME=client`
+   - `server`：`ZBPACK_DOCKERFILE_NAME=server`
 
 后端服务至少需要这些环境变量：
 
@@ -118,6 +121,8 @@ Zeabur 不直接使用当前仓库里的 `docker-compose.yml`，建议拆成两�
 - `Dockerfile.client` 已支持读取平台注入的 `PORT`，当前默认前端端口为 `7870`，便于与本地环境保持一致。
 - HTTP API 可以通过 Next rewrite 走同源 `/api`。
 - WebSocket 不走 Next rewrite，建议给后端单独分配一个公网域名并配置到 `NEXT_PUBLIC_WS_URL`。
+- 可直接复制 `zeabur/client.env.example` 与 `zeabur/server.env.example` 作为 Zeabur 环境变量模板。
+- 更完整的部署步骤见 `docs/zeabur-dual-deploy.md`。
 
 ## 基础环境变量
 
