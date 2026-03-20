@@ -285,7 +285,14 @@ export function PlayerCenter({ videoRef: externalVideoRef }: PlayerCenterProps =
   };
 
   const handleSeekInput = (e: React.FormEvent<HTMLInputElement>) => {
-    setScrubTime(parseFloat(e.currentTarget.value));
+    const next = parseFloat(e.currentTarget.value);
+    setScrubTime(next);
+
+    // Keyboard interactions on range inputs don't have pointer lifecycle,
+    // so commit immediately when there is no active drag gesture.
+    if (!seekGestureActiveRef.current) {
+      handleSeekCommit(next);
+    }
   };
 
   const handleSeekStart = () => {
@@ -317,6 +324,21 @@ export function PlayerCenter({ videoRef: externalVideoRef }: PlayerCenterProps =
     setIsScrubbing(false);
     commitSeek(next);
   };
+
+  useEffect(() => {
+    const handlePointerUp = () => {
+      if (!seekGestureActiveRef.current) return;
+      handleSeekCommit();
+    };
+
+    window.addEventListener('pointerup', handlePointerUp);
+    window.addEventListener('pointercancel', handlePointerUp);
+
+    return () => {
+      window.removeEventListener('pointerup', handlePointerUp);
+      window.removeEventListener('pointercancel', handlePointerUp);
+    };
+  }, [scrubTime, isScrubbing]);
 
   const handleVolumeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const next = parseFloat(e.target.value);
@@ -574,12 +596,7 @@ export function PlayerCenter({ videoRef: externalVideoRef }: PlayerCenterProps =
             step="0.1"
             value={isScrubbing ? scrubTime : currentTime}
             onInput={handleSeekInput}
-            onMouseDown={handleSeekStart}
-            onTouchStart={handleSeekStart}
-            onMouseUp={(e) => handleSeekCommit(parseFloat(e.currentTarget.value))}
-            onTouchEnd={() => handleSeekCommit()}
-            onKeyDown={handleSeekStart}
-            onKeyUp={(e) => handleSeekCommit(parseFloat(e.currentTarget.value))}
+            onPointerDown={handleSeekStart}
             onBlur={() => {
               if (seekGestureActiveRef.current || isScrubbing) {
                 handleSeekCommit();

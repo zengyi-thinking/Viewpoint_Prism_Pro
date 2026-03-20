@@ -80,6 +80,11 @@ export function useVideoBehaviorTracking(
   // Event batching
   const eventQueueRef = useRef<any[]>([]);
   const batchTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const lastQueuedEventRef = useRef<{
+    eventType: VideoEventType;
+    currentTime: number;
+    timestamp: number;
+  } | null>(null);
 
   // Device info (cached)
   const deviceInfoRef = useRef<{
@@ -189,6 +194,18 @@ export function useVideoBehaviorTracking(
       const state = trackingStateRef.current;
       const currentTime = data?.currentTime ?? state.currentTime;
 
+      if (eventType === VideoEventType.SEEK) {
+        const lastEvent = lastQueuedEventRef.current;
+        if (
+          lastEvent &&
+          lastEvent.eventType === VideoEventType.SEEK &&
+          Math.abs(lastEvent.currentTime - currentTime) < 0.05 &&
+          now - lastEvent.timestamp < 1000
+        ) {
+          return;
+        }
+      }
+
       const eventData = {
         videoId,
         eventType,
@@ -215,6 +232,11 @@ export function useVideoBehaviorTracking(
 
       // Add to queue
       eventQueueRef.current.push(eventData);
+      lastQueuedEventRef.current = {
+        eventType,
+        currentTime,
+        timestamp: now,
+      };
 
       // Immediate flush for important events or when queue is full
       if (

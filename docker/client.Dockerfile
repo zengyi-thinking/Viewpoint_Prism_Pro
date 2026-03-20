@@ -6,7 +6,9 @@ COPY package.json package-lock.json ./
 COPY client/package.json client/package.json
 COPY server/package.json server/package.json
 
-RUN npm ci --workspaces --include-workspace-root --include=dev
+RUN npm ci --workspaces --include-workspace-root --include=dev \
+  && mkdir -p /app/client \
+  && ln -s /app/node_modules /app/client/node_modules
 
 FROM deps AS builder
 
@@ -33,7 +35,7 @@ ENV HOSTNAME=0.0.0.0
 
 WORKDIR /app/client
 
-COPY --from=deps /app/node_modules /app/node_modules
+COPY --from=deps /app/client/node_modules ./node_modules
 COPY --from=builder /app/client/.next ./.next
 COPY --from=builder /app/client/public ./public
 COPY --from=builder /app/client/package.json ./package.json

@@ -96,8 +96,10 @@ export class VideoBehaviorService {
    * Track multiple events in bulk (more efficient)
    */
   async trackBulkEvents(userId: string, dto: BulkTrackEventsDto) {
+    const dedupedEvents = this.dedupeBulkEvents(dto.events);
+
     // 批量模式下，先验证一次视频访问权限，避免每个事件都重复查询
-    const videoId = dto.events[0]?.videoId;
+    const videoId = dedupedEvents[0]?.videoId;
     if (!videoId) {
       this.logger.error('Bulk track failed: No videoId provided');
       return {
@@ -134,7 +136,7 @@ export class VideoBehaviorService {
     const activeSessionId = await this.getOrCreateActiveSession(userId, videoId, VideoActionContext.NORMAL);
 
     const results = await Promise.allSettled(
-      dto.events.map((event) => this.trackEvent(userId, { ...event, sessionId: activeSessionId }, true))
+      dedupedEvents.map((event) => this.trackEvent(userId, { ...event, sessionId: activeSessionId }, true))
     );
 
     const successful = results.filter((r) => r.status === 'fulfilled').length;
@@ -144,7 +146,7 @@ export class VideoBehaviorService {
     results.forEach((r, index) => {
       if (r.status === 'rejected') {
         const reason = r.reason;
-        const event = dto.events[index];
+        const event = dedupedEvents[index];
         this.logger.error(
           `Bulk track failed for event ${index}: videoId=${event?.videoId}, eventType=${event?.eventType}, error=${reason?.message || reason}`,
           reason?.stack,
@@ -155,10 +157,48 @@ export class VideoBehaviorService {
     this.logger.log(`Bulk tracking: ${successful} successful, ${failed} failed`);
 
     return {
-      total: dto.events.length,
+      total: dedupedEvents.length,
       successful,
       failed,
     };
+  }
+
+  private dedupeBulkEvents(events: TrackEventDto[]): TrackEventDto[] {
+    const deduped: TrackEventDto[] = [];
+
+    for (const event of events) {
+      const previous = deduped[deduped.length - 1];
+      if (!previous) {
+        deduped.push(event);
+        continue;
+      }
+
+      const previousTs = this.extractEventTimestamp(previous);
+      const currentTs = this.extractEventTimestamp(event);
+      const sameVideo = previous.videoId === event.videoId;
+      const sameType = previous.eventType === event.eventType;
+      const sameTime =
+        Math.abs(Number(previous.currentTime ?? 0) - Number(event.currentTime ?? 0)) < 0.05;
+      const closeInTime =
+        previousTs !== null &&
+        currentTs !== null &&
+        Math.abs(currentTs - previousTs) < 800;
+
+      if (sameVideo && sameType && sameTime && closeInTime) {
+        continue;
+      }
+
+      deduped.push(event);
+    }
+
+    return deduped;
+  }
+
+  private extractEventTimestamp(event: TrackEventDto): number | null {
+    const raw = (event.metadata as Record<string, unknown> | undefined)?.timestamp;
+    if (typeof raw !== 'string') return null;
+    const parsed = Date.parse(raw);
+    return Number.isNaN(parsed) ? null : parsed;
   }
 
   // ============================================================

@@ -356,10 +356,34 @@ export class VideoService {
       // Continue with database deletion
     }
 
-    // Delete from database (cascade will delete related records)
-    await this.prisma.videoSource.delete({
-      where: { id: videoId },
-    });
+    // Delete from database (cascade will delete related records).
+    // Use deleteMany so repeated/concurrent requests become effectively idempotent.
+    try {
+      const deleted = await this.prisma.videoSource.deleteMany({
+        where: {
+          id: videoId,
+          project: {
+            userId,
+          },
+        },
+      });
+
+      if (deleted.count === 0) {
+        this.logger.warn(`Video already deleted: ${videoId}`);
+        return;
+      }
+    } catch (error) {
+      if (
+        error &&
+        typeof error === 'object' &&
+        'code' in error &&
+        (error as { code?: string }).code === 'P2025'
+      ) {
+        this.logger.warn(`Video already deleted during concurrent request: ${videoId}`);
+        return;
+      }
+      throw error;
+    }
 
     this.logger.log(`Deleted video: ${videoId}`);
   }
