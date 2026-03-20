@@ -29,6 +29,9 @@ export function PlayerCenter({ videoRef: externalVideoRef }: PlayerCenterProps =
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const pendingSeekRef = useRef<number | null>(null);
+  const seekGestureActiveRef = useRef(false);
+  const lastSeekCommitRef = useRef<{ at: number; time: number } | null>(null);
+  const suppressPlaybackTrackUntilRef = useRef(0);
 
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -125,6 +128,7 @@ export function PlayerCenter({ videoRef: externalVideoRef }: PlayerCenterProps =
     setCurrentTime(target);
     setScrubTime(target);
     setCurrentPlaybackTime(target);
+    suppressPlaybackTrackUntilRef.current = Date.now() + 400;
     tracking.trackEvent(VideoEventType.SEEK, {
       previousTime,
       currentTime: target,
@@ -285,14 +289,31 @@ export function PlayerCenter({ videoRef: externalVideoRef }: PlayerCenterProps =
   };
 
   const handleSeekStart = () => {
+    seekGestureActiveRef.current = true;
     setIsScrubbing(true);
   };
 
   const handleSeekCommit = (value?: number) => {
     const next = value ?? scrubTime;
-    if (!isScrubbing && Math.abs(next - currentTime) < 0.05) {
+    const now = Date.now();
+    const lastCommit = lastSeekCommitRef.current;
+    const duplicateCommit =
+      lastCommit &&
+      now - lastCommit.at < 500 &&
+      Math.abs(lastCommit.time - next) < 0.05;
+
+    if (duplicateCommit) {
+      seekGestureActiveRef.current = false;
+      setIsScrubbing(false);
       return;
     }
+
+    if (!seekGestureActiveRef.current && !isScrubbing && Math.abs(next - currentTime) < 0.05) {
+      return;
+    }
+
+    lastSeekCommitRef.current = { at: now, time: next };
+    seekGestureActiveRef.current = false;
     setIsScrubbing(false);
     commitSeek(next);
   };
@@ -454,12 +475,18 @@ export function PlayerCenter({ videoRef: externalVideoRef }: PlayerCenterProps =
               onError={handleVideoError}
               onPlay={() => {
                 setIsPlaying(true);
+                if (Date.now() < suppressPlaybackTrackUntilRef.current) {
+                  return;
+                }
                 tracking.trackEvent(VideoEventType.PLAY, {
                   currentTime: videoRef.current?.currentTime ?? 0,
                 });
               }}
               onPause={() => {
                 setIsPlaying(false);
+                if (Date.now() < suppressPlaybackTrackUntilRef.current) {
+                  return;
+                }
                 tracking.trackEvent(VideoEventType.PAUSE, {
                   currentTime: videoRef.current?.currentTime ?? 0,
                 });
@@ -553,7 +580,11 @@ export function PlayerCenter({ videoRef: externalVideoRef }: PlayerCenterProps =
             onTouchEnd={() => handleSeekCommit()}
             onKeyDown={handleSeekStart}
             onKeyUp={(e) => handleSeekCommit(parseFloat(e.currentTarget.value))}
-            onBlur={() => handleSeekCommit()}
+            onBlur={() => {
+              if (seekGestureActiveRef.current || isScrubbing) {
+                handleSeekCommit();
+              }
+            }}
             className="h-1 w-full cursor-pointer appearance-none rounded-lg bg-bg-panel-tertiary accent-accent-primary"
           />
         </div>

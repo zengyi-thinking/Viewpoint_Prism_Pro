@@ -15,6 +15,39 @@ import { PrismaModule } from '../../prisma/prisma.module';
 import { WsModule } from '../websocket/ws.module';
 import { CreationModule } from '../../modules/prism-creation/creation.module';
 
+function buildRedisConfig(configService: ConfigService) {
+  const redisUrl = String(configService.get('REDIS_URL') || '').trim();
+  if (redisUrl) {
+    try {
+      const parsed = new URL(redisUrl);
+      const db = parsed.pathname?.replace(/^\//, '');
+
+      return {
+        host: parsed.hostname,
+        port: parsed.port ? Number(parsed.port) : 6379,
+        ...(parsed.username ? { username: decodeURIComponent(parsed.username) } : {}),
+        ...(parsed.password ? { password: decodeURIComponent(parsed.password) } : {}),
+        ...(db ? { db: Number(db) || 0 } : {}),
+        ...(parsed.protocol === 'rediss:' ? { tls: {} } : {}),
+      };
+    } catch {
+      // Fall through to explicit host/port fields if REDIS_URL is malformed.
+    }
+  }
+
+  const host = String(configService.get('REDIS_HOST', 'localhost'));
+  const port = Number(configService.get('REDIS_PORT', 6379));
+  const username = String(configService.get('REDIS_USERNAME') || '').trim();
+  const password = String(configService.get('REDIS_PASSWORD') || '').trim();
+
+  return {
+    host,
+    port,
+    ...(username ? { username } : {}),
+    ...(password ? { password } : {}),
+  };
+}
+
 @Module({
   imports: [
     // Import modules that provide dependencies for processors
@@ -29,60 +62,42 @@ import { CreationModule } from '../../modules/prism-creation/creation.module';
       {
         name: QUEUE_NAMES.TRANSCRIBE,
         useFactory: (configService: ConfigService) => ({
-          redis: {
-            host: configService.get('REDIS_HOST', 'localhost'),
-            port: configService.get('REDIS_PORT', 6379),
-          },
+          redis: buildRedisConfig(configService),
         }),
         inject: [ConfigService],
       },
       {
         name: QUEUE_NAMES.KEYFRAME,
         useFactory: (configService: ConfigService) => ({
-          redis: {
-            host: configService.get('REDIS_HOST', 'localhost'),
-            port: configService.get('REDIS_PORT', 6379),
-          },
+          redis: buildRedisConfig(configService),
         }),
         inject: [ConfigService],
       },
       {
         name: QUEUE_NAMES.RENDER,
         useFactory: (configService: ConfigService) => ({
-          redis: {
-            host: configService.get('REDIS_HOST', 'localhost'),
-            port: configService.get('REDIS_PORT', 6379),
-          },
+          redis: buildRedisConfig(configService),
         }),
         inject: [ConfigService],
       },
       {
         name: QUEUE_NAMES.TRANSLATE,
         useFactory: (configService: ConfigService) => ({
-          redis: {
-            host: configService.get('REDIS_HOST', 'localhost'),
-            port: configService.get('REDIS_PORT', 6379),
-          },
+          redis: buildRedisConfig(configService),
         }),
         inject: [ConfigService],
       },
       {
         name: QUEUE_NAMES.EXPORT,
         useFactory: (configService: ConfigService) => ({
-          redis: {
-            host: configService.get('REDIS_HOST', 'localhost'),
-            port: configService.get('REDIS_PORT', 6379),
-          },
+          redis: buildRedisConfig(configService),
         }),
         inject: [ConfigService],
       },
       {
         name: QUEUE_NAMES.PREVIEW,
         useFactory: (configService: ConfigService) => ({
-          redis: {
-            host: configService.get('REDIS_HOST', 'localhost'),
-            port: configService.get('REDIS_PORT', 6379),
-          },
+          redis: buildRedisConfig(configService),
         }),
         inject: [ConfigService],
       },
