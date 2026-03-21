@@ -145,10 +145,16 @@ export async function apiFetch<T>(path: string, options?: RequestInit): Promise<
     const body = contentType.includes('application/json')
       ? await res.json().catch(() => ({}))
       : await res.text().catch(() => '');
-    const message =
-      typeof body === 'string'
-        ? body
-        : (body as { message?: string })?.message;
+    // 兼容多种错误响应格式：{ message: string } | { error: string } | string
+    let message: string | undefined;
+    if (typeof body === 'string') {
+      message = body;
+    } else if (body) {
+      message = (body as { message?: string })?.message
+        ?? (body as { error?: string })?.error
+        ?? (body as { msg?: string })?.msg
+        ?? JSON.stringify(body);
+    }
     throw new Error(message || `请求失败 (${res.status})`);
   }
 

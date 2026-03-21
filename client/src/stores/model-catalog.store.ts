@@ -327,6 +327,20 @@ const DEFAULT_PROFILES: ModelProfile[] = [
     baseUrl: 'https://api.openai.com/v1',
     apiKey: '',
   },
+  {
+    id: 'sf-vlm',
+    name: 'Qwen2.5-VL VLM',
+    family: 'siliconflow',
+    capability: 'tools',
+    modelId: 'Qwen/Qwen2.5-VL-32B-Instruct',
+    description: '硅基流动视觉语言模型，支持图像分析和描述。',
+    tag: 'VLM',
+    enabled: true,
+    useGlobalBase: true,
+    useGlobalKey: true,
+    baseUrl: '',
+    apiKey: '',
+  },
 ];
 
 function createCustomProfile(capability: CapabilityTab, index: number): ModelProfile {

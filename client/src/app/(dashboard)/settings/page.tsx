@@ -439,7 +439,8 @@ function buildRuntimeProviderConfigs(
       models: {
         asr: pickModel('siliconflow', 'tools') || pickModel('siliconflow', 'audio'),
         chat: pickModel('siliconflow', 'chat'),
-        multimodal: pickModel('siliconflow', 'chat'),
+        // Use VLM model for multimodal (Qwen/Qwen2.5-VL-32B-Instruct)
+        multimodal: pickModel('siliconflow', 'tools') || 'Qwen/Qwen2.5-VL-32B-Instruct',
         image: pickModel('siliconflow', 'image'),
         video: pickModel('siliconflow', 'video'),
         tts: pickModel('siliconflow', 'audio'),

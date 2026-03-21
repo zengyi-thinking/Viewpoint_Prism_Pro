@@ -92,12 +92,16 @@ export class OpenAIProvider extends BaseProvider {
       prompt,
       image,
       imageUrl,
-      model =
-        this.configService.get<string>('CREATION_AI_VISION_MODEL') ||
-        this.configService.get<string>('OPENAI_MODEL_VISION') ||
-        this.configService.get<string>('SILICONFLOW_MODEL_VLM') ||
-        'gpt-4o',
     } = payload;
+
+    // Handle empty string env vars - trim and check for truthy value
+    const rawModel =
+      this.configService.get<string>('CREATION_AI_VISION_MODEL') ||
+      this.configService.get<string>('OPENAI_MODEL_VISION') ||
+      this.configService.get<string>('SILICONFLOW_MODEL_VLM') ||
+      '';
+    const effectiveModel = (rawModel && rawModel.trim()) ? rawModel : 'gpt-4o';
+    const model = payload?.model || effectiveModel;
 
     // Build content array with text and image
     const content: any[] = [

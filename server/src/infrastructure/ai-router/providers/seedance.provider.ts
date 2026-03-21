@@ -57,7 +57,22 @@ export class SeedanceProvider extends BaseProvider {
       taskType === AITaskType.MULTIMODAL
         ? this.configService.get<string>('SILICONFLOW_MODEL_VLM')
         : this.configService.get<string>('SILICONFLOW_MODEL_LLM');
-    const model = payload?.model || defaultModel || 'deepseek-ai/DeepSeek-V3';
+    // Fix: Use proper VLM fallback for MULTIMODAL tasks (DeepSeek-V3 is not a VLM!)
+    const fallbackModel = taskType === AITaskType.MULTIMODAL
+      ? 'Qwen/Qwen2.5-VL-32B-Instruct'
+      : 'deepseek-ai/DeepSeek-V3';
+    // Handle empty string defaultModel
+    const effectiveModel = (defaultModel && defaultModel.trim()) ? defaultModel : undefined;
+    const model = payload?.model || effectiveModel || fallbackModel;
+
+    // Debug logging for MULTIMODAL
+    if (taskType === AITaskType.MULTIMODAL) {
+      this.logger.log(
+        `MULTIMODAL model selection: payload.model=${payload?.model}, ` +
+        `defaultModel=${defaultModel}, effectiveModel=${effectiveModel}, ` +
+        `fallbackModel=${fallbackModel}, final=${model}`
+      );
+    }
 
     const messages: any[] = payload?.messages || [];
 
